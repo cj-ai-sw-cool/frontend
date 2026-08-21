@@ -39,6 +39,13 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  /* 프로젝트 추가 토큰 — shadcn 기본 슬롯에 대응이 없는 것만 등록한다.
+     여기 등록해야 `text-status-error` `bg-status-success/10` 같은 Tailwind 클래스가 생긴다. */
+  --color-status-success: var(--status-success);
+  --color-status-error: var(--status-error);
+  --color-outline-variant: var(--outline-variant);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -48,74 +55,174 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ⚠️ 잠정 토큰 — localWork/stitch-sample.html (팀원 제공 Stitch 샘플) 기준.
+   디자인 확정본 수령 시 이 블록의 값만 교체하면 된다. 컴포넌트는 수정 불필요.
+
+   원칙
+   - Stitch(MD3) 팔레트의 "값"만 가져온다. 슬롯 이름은 shadcn 것을 그대로 쓰고,
+     각 슬롯의 "역할"에 맞는 Stitch 색을 고른다. 이름이 같다고 기계적으로 옮기면 안 되는
+     자리는 아래 주석에 이유를 적어 뒀다.
+   - 주석의 "Stitch: xxx" 는 stitch-sample.html 의 tailwind.config 색 이름이고,
+     "(NNN행)" 은 샘플의 P2 Packing Terminal 화면(273~643행) 안의 줄 번호다.
+   - 폰트는 이번 범위 밖(Stitch 는 IBM Plex Sans, 현재는 Geist). app/layout.tsx 는 팀 공유 파일.
+
+   ── 2차 개정: "산업용 터미널 / 윈도우98풍 브루탈리즘" 룩 반영 ──────────────
+   1차 개정에서는 "Stitch 의 각진 모서리·두꺼운 테두리는 생김새라서 재현하지 않는다"고
+   판단했지만 그게 틀렸다. 샘플이 스스로 "Industrial Reset", "brutalist aesthetic" 이라
+   적어 뒀고 `border-2 border-on-background` 를 72회 쓴다 — 그 자체가 의도된 디자인이다.
+   이번 개정에서 바꾼 것은 네 가지다.
+     ① 바탕을 거의 흰색(#fbf9f8)에서 회색조(#dcd9d9)로 내려 흰 카드가 떠 보이게 했다.
+     ② --border / --input 을 연회색(#c4c6d4)에서 on-background(#1b1c1c) 검정으로 바꿨다.
+     ③ --radius 를 샘플의 borderRadius.DEFAULT(0.125rem)로 낮춰 모서리를 각지게 했다.
+     ④ --secondary / --muted / --accent 를 회색 위계에 맞춰 다시 배치했다.
+   --sidebar* 8개는 라이트·다크 모두 손대지 않았다 — 샘플 5개 화면 전부가
+   "회색 바탕 위 남색 내비게이션"(bg-sidebar-bg #003087)을 쓰는 의도된 구성이다.
+
+   ── 회색 위계 (샘플 P2 화면 실사용값) ────────────────────────────────────
+     어두움 ─────────────────────────────────────────────────────► 밝음
+     #dcd9d9        #e0e0e0         #e4e2e1          #eae8e7          #ffffff
+     surface-dim    surface-panel   surface-variant  surface-cont-high  ...-lowest
+     --background   --secondary     --accent         --muted          --card/--popover
+     body(431행)    상단 토트 바      hover 상태        목록 행           카드 안쪽 흰 영역
+     좌측 품목      (486행)          (524행            (524·589행)      (489·560·576행)
+     패널(498행)    우측 패널         hover:bg-
+                    (558·566행)      surface-variant)
+   카드(#ffffff)가 바탕(#dcd9d9)보다 밝아야, 2px 검정 테두리와 함께 패널이 떠 보인다. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* 바탕 — 샘플 P2 의 <body class="bg-surface-dim">(431행)이 그대로 이 값이고,
+     같은 화면의 인라인 스타일도 #D9D9D9("surface-content fallback", 427행)로 거의 같다.
+     위계의 맨 아래(가장 어두운 회색)라서 그 위에 놓이는 모든 표면이 밝아진다. */
+  --background: #dcd9d9; /* Stitch: surface-dim */
+  --foreground: #1b1c1c; /* Stitch: on-surface / on-background */
+
+  /* 카드는 위계의 맨 위(흰색). 샘플에서 제품 이미지 칸(560행)·박스 추천 칸(576행)·
+     입력창(489행)이 전부 bg-surface-container-lowest 다. */
+  --card: #ffffff; /* Stitch: surface-container-lowest */
+  --card-foreground: #1b1c1c; /* Stitch: on-surface */
+  --popover: #ffffff; /* Stitch: surface-container-lowest */
+  --popover-foreground: #1b1c1c; /* Stitch: on-surface */
+
+  --primary: #001d59; /* Stitch: primary — 브랜드 네이비. 주요 액션 버튼 배경 */
+  --primary-foreground: #ffffff; /* Stitch: on-primary */
+
+  /* ⚠️ 시맨틱 충돌 지점.
+     Stitch 의 secondary(#7e5700)는 MD3 의 "진한 갈색 강조색"이라 텍스트/아이콘용이다.
+     shadcn 의 --secondary 는 <Button variant="secondary"> 의 "연한 보조 버튼 배경"이라
+     역할이 정반대다. 그대로 옮기면 보조 버튼이 갈색 덩어리가 된다.
+     → 역할에 맞는 중성색을 넣는다. 샘플에서 패널 크롬(상단 토트 바 486행,
+       우측 패널 558·566행)이 쓰는 surface-panel 이 딱 그 자리다. */
+  --secondary: #e0e0e0; /* Stitch: surface-panel */
+  --secondary-foreground: #1b1c1c; /* Stitch: on-surface */
+
+  /* 목록 행·옅은 블록 배경. 샘플의 비선택 품목 행(524·538행)과
+     박스 재고 칸(589행)이 bg-surface-container-high 다. */
+  --muted: #eae8e7; /* Stitch: surface-container-high */
+  --muted-foreground: #444652; /* Stitch: on-surface-variant */
+
+  /* --accent 는 hover/선택 상태 배경(SelectItem focus 등)이다.
+     1차 개정에서는 옅은 파랑(primary-fixed)을 썼지만, 샘플이 hover 에 실제로 쓰는 값은
+     surface-variant 다(524행 hover:bg-surface-variant, 439행 상단 아이콘 hover).
+     "선택됨"의 강조색(amber #fcb40d)은 사이드바 활성 항목(--sidebar-primary)에만 남긴다 —
+     본문의 모든 hover 가 amber 로 번지면 회색조 위계가 무너진다. */
+  --accent: #e4e2e1; /* Stitch: surface-variant / surface-container-highest */
+  --accent-foreground: #1b1c1c; /* Stitch: on-surface */
+
+  --destructive: #ba1a1a; /* Stitch: error */
+
+  /* ★ 브루탈리즘의 핵심.
+     샘플의 .hc-border 는 `2px solid #000000` 이고, 실사용 클래스는
+     `border-2 border-on-background`(#1b1c1c)로 파일 전체 72회 등장한다.
+     테두리 "색"을 여기서 검정으로 잡아 두면 components/ui 쪽은 "두께"(border-2)만
+     지정하면 되고, 디자인 확정본이 오면 이 두 줄만 바꾸면 된다.
+     ⚠️ --input 은 shadcn 이 테두리색뿐 아니라 `disabled:bg-input/50` 처럼 "배경"으로도
+        겸용하는 자리가 있다. 검정이 된 지금 그대로 두면 비활성 입력이 짙은 회색 덩어리가
+        되므로, 그 자리들은 components/ui 에서 bg-muted 로 바꿔 뒀다(input.tsx 주석 참고). */
+  --border: #1b1c1c; /* Stitch: on-background */
+  --input: #1b1c1c; /* Stitch: on-background */
+  --ring: #003087; /* Stitch: primary-container — 포커스 링 */
+
+  /* 차트는 이 화면에서 쓰지 않지만 기존 슬롯이라 브랜드 계열로 채워 둔다(P3 대시보드용) */
+  --chart-1: #003087; /* Stitch: primary-container */
+  --chart-2: #fcb40d; /* Stitch: secondary-container */
+  --chart-3: #1b5e20; /* Stitch: status-success */
+  --chart-4: #f1815c; /* Stitch: on-tertiary-container */
+  --chart-5: #747683; /* Stitch: outline */
+
+  /* 샘플 tailwind.config 의 borderRadius.DEFAULT 그대로(347행).
+     @theme inline 의 --radius-sm ~ --radius-4xl 이 전부 이 값에서 파생되므로,
+     컴포넌트 안의 rounded-lg / rounded-xl 같은 클래스는 손대지 않아도 같이 각져진다. */
+  --radius: 0.125rem; /* Stitch: borderRadius.DEFAULT */
+
+  /* 사이드바 슬롯: 현재 앱은 상단 네비(app-nav.tsx)를 쓰지만 슬롯 자체는 남아 있다.
+     Stitch 샘플의 좌측 네비 색을 그대로 대응시켜 뒀다. */
+  --sidebar: #003087; /* Stitch: sidebar-bg */
+  --sidebar-foreground: #ffffff; /* Stitch: text-on-dark */
+  --sidebar-primary: #fcb40d; /* Stitch: secondary-container — 샘플의 활성 메뉴 배경 */
+  --sidebar-primary-foreground: #1b1c1c; /* Stitch: on-surface */
+  --sidebar-accent: #ffffff1a; /* Stitch 샘플의 hover:bg-white/10 */
+  --sidebar-accent-foreground: #ffffff; /* Stitch: text-on-dark */
+  --sidebar-border: #ffffff33; /* 샘플의 border-outline-variant/30 */
+  --sidebar-ring: #b4c5ff; /* Stitch: inverse-primary */
+
+  /* shadcn 에 대응 슬롯이 없어 새로 만든 것 — 이 화면에서 실제로 쓰는 3개만 옮겼다.
+     status-error 는 destructive 와 값이 같지만 역할이 다르다:
+       destructive = "삭제 같은 파괴적 액션", status-error = "수량 불일치·품절 같은 상태 표시".
+     디자인 확정본에서 둘이 갈라질 수 있으므로 지금부터 분리해 둔다. */
+  --status-success: #1b5e20; /* Stitch: status-success */
+  --status-error: #ba1a1a; /* Stitch: status-error */
+  --outline-variant: #c4c6d4; /* Stitch: outline-variant — 구분선 전용 */
 }
 
+/* ⚠️ 다크 팔레트는 Stitch 샘플에 없다(darkMode: "class" 선언만 있고 색 정의가 없음).
+   아래 값은 라이트 토큰의 명도를 뒤집어 MD3 규칙대로 구성한 **파생값**이다.
+   이번 브루탈리즘 개정분도 마찬가지로 파생이다 — 샘플에 근거가 없으므로 규칙만 맞췄다:
+     · 라이트에서 "가장 어두운 회색이 바탕, 흰색이 카드" 였으니 다크는 그 반대로
+       "가장 어두운 색이 바탕, 한 단계 밝은 색이 카드" 를 유지한다.
+     · 라이트의 검정 테두리(#1b1c1c)에 대응하는 다크 테두리는 밝은 회색(#e4e2e1)이다.
+       어두운 배경 위에서 검정 2px 테두리는 아예 안 보이므로 명도를 뒤집어야 브루탈리즘이 산다.
+     · --secondary 와 --accent 가 같은 값인 것은 shadcn 기본 다크 테마와 같은 관례다
+       (라이트에서 한 칸 차이였던 두 회색이 다크에서는 구분 실익이 없다).
+   - primary / primary-foreground 는 MD3 규칙 그대로 inverse-primary / on-primary-fixed 를 썼다.
+   - 팔레트에 대응이 아예 없는 것(destructive, status-success)은 "파생"이라고 표시했다.
+   디자인 확정본에 다크가 포함되면 이 블록 전체를 교체한다. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #131313; /* 파생 — 라이트 background(#dcd9d9)의 명도 반전 */
+  --foreground: #e4e2e1; /* Stitch: surface-container-highest 를 다크 본문색으로 */
+  --card: #1b1c1c; /* 라이트 on-surface 값을 다크 표면으로 뒤집어 사용 */
+  --card-foreground: #e4e2e1;
+  --popover: #1b1c1c;
+  --popover-foreground: #e4e2e1;
+  --primary: #b4c5ff; /* Stitch: inverse-primary — MD3 다크 primary 규칙 */
+  --primary-foreground: #00174b; /* Stitch: on-primary-fixed */
+  --secondary: #303030; /* Stitch: inverse-surface — 라이트 surface-panel 대응 */
+  --secondary-foreground: #f2f0f0; /* Stitch: inverse-on-surface */
+  --muted: #262626; /* 파생 — background 와 card 사이 명도 */
+  --muted-foreground: #c4c6d4; /* Stitch: outline-variant */
+  --accent: #303030; /* 파생 — 라이트 surface-variant(hover) 대응. secondary 와 같은 값 */
+  --accent-foreground: #f2f0f0; /* Stitch: inverse-on-surface */
+  --destructive: #ffb4ab; /* 파생 — 어두운 배경에서 #ba1a1a 는 대비가 안 나온다 */
+  /* 라이트의 검정 2px 테두리를 명도 반전한 값. 라이트와 마찬가지로 두 슬롯이 같다 */
+  --border: #e4e2e1; /* Stitch: surface-container-highest */
+  --input: #e4e2e1; /* Stitch: surface-container-highest */
+  --ring: #7f9df8; /* Stitch: on-primary-container */
+  --chart-1: #7f9df8; /* Stitch: on-primary-container */
+  --chart-2: #ffba31; /* Stitch: secondary-fixed-dim */
+  --chart-3: #8fd99a; /* 파생 — status-success 명도 반전 */
+  --chart-4: #ffb59d; /* Stitch: tertiary-fixed-dim */
+  --chart-5: #c4c6d4; /* Stitch: outline-variant */
+  --sidebar: #00174b; /* Stitch: on-primary-fixed — 라이트 sidebar-bg 보다 한 단계 어둡게 */
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffba31; /* Stitch: secondary-fixed-dim */
+  --sidebar-primary-foreground: #271900; /* Stitch: on-secondary-fixed */
+  --sidebar-accent: #ffffff1a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #ffffff26;
+  --sidebar-ring: #b4c5ff; /* Stitch: inverse-primary */
+  --status-success: #8fd99a; /* 파생 — #1b5e20 명도 반전 */
+  --status-error: #ffb4ab; /* 파생 — #ba1a1a 명도 반전 */
+  --outline-variant: #444652; /* Stitch: on-surface-variant — 다크에서 구분선 역할 */
 }
+/* ⚠️ 잠정 토큰 블록 끝 */
 
 @layer base {
   * {
@@ -126,5 +233,51 @@
   }
   html {
     @apply font-sans;
+  }
+
+  /* ── 커스텀 스크롤바 ──────────────────────────────────────────────────────
+     샘플의 "Custom scrollbar for brutalist aesthetic" 블록(626~639행) 이식.
+     기본 스크롤바는 둥글고 얇아서 2px 각진 테두리 옆에 있으면 혼자 튄다.
+
+     값은 전부 토큰 참조다(하드코딩 없음). 라이트 기준으로 샘플과 정확히 일치한다:
+       track  var(--secondary)  = #e0e0e0  (샘플 surface-panel)
+       thumb  var(--background) = #dcd9d9  (샘플 surface-dim)
+       hover  var(--accent)     = #e4e2e1  (샘플 surface-variant)
+       테두리 var(--border)     = #1b1c1c  (샘플 on-background)
+     다크에서는 같은 토큰이 반전값을 내주므로 규칙을 따로 쓸 필요가 없다.
+
+     적용 범위 — 전역 `::-webkit-scrollbar` 대신 `.custom-scrollbar` 클래스로 간 이유:
+       사이드바(<nav>)도 overflow-y-auto 라서 전역으로 걸면 남색 배경 위에 회색
+       스크롤바가 얹혀 튄다. 클래스를 app/layout.tsx 의 <main> 에만 붙이면
+       사이드바는 자연히 제외된다.
+       자손 선택자(`.custom-scrollbar *`)를 같이 둔 것은 본문 안쪽에 따로 생기는
+       스크롤 영역(Table 컨테이너의 가로 스크롤 등)까지 한 번에 덮기 위해서다.
+       Portal 로 <body> 직속에 붙는 팝오버(Select 드롭다운)는 이 범위 밖이라
+       기본 스크롤바로 남는다 — 짧은 목록이라 실사용상 문제 없다고 봤다. */
+  .custom-scrollbar,
+  .custom-scrollbar * {
+    /* Firefox 는 ::-webkit-* 계열을 전부 무시한다 → 표준 속성으로 폴백을 같이 준다.
+       scrollbar-color 는 "thumb track" 순서다. 테두리는 표준 속성에 없어 재현 불가. */
+    scrollbar-width: auto;
+    scrollbar-color: var(--background) var(--secondary);
+  }
+  .custom-scrollbar::-webkit-scrollbar,
+  .custom-scrollbar *::-webkit-scrollbar {
+    width: 16px;
+    height: 16px; /* 가로 스크롤도 같은 두께로 — 샘플은 세로만 정의했다 */
+  }
+  .custom-scrollbar::-webkit-scrollbar-track,
+  .custom-scrollbar *::-webkit-scrollbar-track {
+    background: var(--secondary);
+    border-left: 2px solid var(--border);
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb,
+  .custom-scrollbar *::-webkit-scrollbar-thumb {
+    background: var(--background);
+    border: 2px solid var(--border);
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+  .custom-scrollbar *::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
   }
 }
