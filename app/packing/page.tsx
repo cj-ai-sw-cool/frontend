@@ -30,7 +30,7 @@ import {
  *     좌: 품목 리스트 (제품 / 계획 수량 / 실수량 / 포장시 취급 주의)
  *     우: 제품 이미지 → 박스 추천 → 포장 완료
  *
- * 재고 현황은 이 화면에서 **제거됐다 (D-18)** — 제품 재고·박스 재고 목록 둘 다.
+ * 재고 현황은 이 화면에서 **제거됐다 (D-19)** — 제품 재고·박스 재고 목록 둘 다.
  *   판단에 실제로 쓰이는 추천 박스의 재고만 박스 추천 패널에 남는다(3-2 `recommendedBox.stockQty`).
  *
  * 호출 순서 (docs/02-api-spec.md §5)
@@ -267,7 +267,7 @@ export default function PackingPage() {
             </CardHeader>
             <CardContent>
               {/* 3-2 recommendedBox / finalBox / fillerRecommended 표시 + 3-3 오버라이드.
-                  추천 박스의 재고(recommendedBox.stockQty)는 여기 남는다 — D-18 이 지운 것은
+                  추천 박스의 재고(recommendedBox.stockQty)는 여기 남는다 — D-19 이 지운 것은
                   전체 재고 목록이지, 판단에 쓰이는 이 값이 아니다. */}
               {shipment === undefined ? (
                 <Placeholder>토트를 스캔하면 추천 박스가 표시됩니다 (3-2 / 3-3)</Placeholder>
@@ -287,7 +287,7 @@ export default function PackingPage() {
 
           {/* 하단 액션 — 샘플 608~619행의 버튼 자리. 샘플처럼 패널로 감싸지 않고 버튼 자체를
               놓는다(포장 완료가 이 화면에서 가장 큰 요소여야 한다).
-              옆의 "재피킹" 버튼도 여기 함께 들어간다 — D-19 로 화면에 두기로 확정됐고,
+              옆의 "재피킹" 버튼도 여기 함께 들어간다 — D-20 로 화면에 두기로 확정됐고,
               호출할 API 는 없다(D-06). 그래서 컴포넌트에 넘길 props 도 없다.
               3-8. OUT_OF_STOCK·INVALID_STATE(409) 방어. 성공 시 대시보드 캐시 무효화. */}
           <PackCompleteButton

@@ -120,11 +120,11 @@ export const MOCK_BOX_TYPES: BoxType[] = [
   { boxTypeId: 5, name: "D호", innerCm: [41.0, 31.0, 28.0], stockQty: 0 },
 ];
 
-/* ── 제품 재고: 이 화면에서 제거됨 (D-18) ───────────────── */
+/* ── 제품 재고: 이 화면에서 제거됨 (D-19) ───────────────── */
 
 /**
  * 예전에 이 자리에 `ProductStockRow` 임시 타입과 `MOCK_PRODUCT_STOCK` 이 있었다.
- * docs/04-decisions.md **D-18** 로 출고 포장 화면에서 재고 현황 영역(제품 재고 + 박스 재고
+ * docs/04-decisions.md **D-19** 로 출고 포장 화면에서 재고 현황 영역(제품 재고 + 박스 재고
  * 목록)을 통째로 걷어내면서 함께 지웠다.
  *
  * 지운 이유
