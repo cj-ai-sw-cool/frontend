@@ -8,19 +8,28 @@
  * - 모든 mock 은 `@/lib/types` 의 계약 타입으로 타입 표기한다.
  *   → docs/02-api-spec.md 가 바뀌어 타입이 달라지면 여기서 **컴파일 에러**가 난다.
  *     mock 이 계약에서 조용히 벗어나는 것을 막는 장치다.
- * - 값 자체는 docs/02-api-spec.md §1-1 ~ §1-7 의 JSON 예시를 옮겼고,
+ * - 값 자체는 docs/02-api-spec.md §1-1 ~ §1-6 의 JSON 예시를 옮겼고,
  *   분기를 눈으로 확인하려고 몇 건을 덧붙였다(아래 표 참고).
  *
  * ── 시나리오 표 (P1 이 화면을 열고 확인할 수 있는 경로) ──────────────────
  *   바코드              1-1 판정      1-3 측정 결과              확인 목적
- *   8801234567890      REGISTERED   INFERRED · 게이트 통과      치수 O → 바로 수량 입고
- *   8801234500022      NEW          INFERRED · 게이트 통과      정상 촬영 흐름 (샘플 값)
- *   8801234500033      NEW          INFERRED · 게이트 미통과    승인 버튼 잠금 + 사유 표시
- *   8801234500044      NEW          MEASURE_FAILED             수기 입력 fallback 자동 오픈
- *   그 외               UNKNOWN      —                          수기 등록(1-2) 진입
+ *   8801234567893      REGISTERED   INFERRED · 게이트 통과      치수 O → 바로 수량 입고
+ *   8801234500029      NEW          INFERRED · 게이트 통과      정상 촬영 흐름 (샘플 값)
+ *   8801234500036      NEW          INFERRED · 게이트 미통과    DB 입력 잠금 + 사유 표시
+ *   8801234500043      NEW          MEASURE_FAILED             수동 입력 모달 자동 오픈
+ *   그 외               UNKNOWN      —                          "코리안넷 마스터에 없는
+ *                                                              상품" 안내 후 종료 (D-21)
+ *
+ * ⚠️ 끝자리가 바뀌었다 (…890/022/033/044 → …893/029/036/043).
+ *    EAN-13 의 13번째 자리는 장식이 아니라 **앞 12자리로 계산되는 체크디짓**이다.
+ *    옛 값은 그 규칙을 안 지켜서, 우상단 바코드 그래픽이 네 시나리오 모두 "체크디짓 불일치"로
+ *    흐리게 렌더됐다(`_components/ean-13-barcode.tsx`). 22/33/44 니모닉을 잃는 대신
+ *    실제로 스캔 가능한 번호가 됐다.
+ *    ⚠️ **docs D-17 의 시연 상품 GTIN(8801234500011~66)과 백엔드 `V2__seed.sql` 은 아직 옛
+ *       값이다.** 실제 API 로 배선할 때 양쪽을 맞춰야 한다 — 안 맞추면 mock 에서 되던 스캔이
+ *       실서버에서 UNKNOWN 으로 떨어진다.
  */
 import type {
-  Category,
   ConfirmResponse,
   MeasurementFailed,
   MeasurementInferred,
@@ -42,7 +51,7 @@ import type {
 const MOCK_PRODUCTS: Product[] = [
   {
     productId: 41,
-    gtin: "8801234567890",
+    gtin: "8801234567893",
     name: "○○ 오렌지주스 500ml",
     categoryL: "음료",
     categoryM: "과채주스",
@@ -52,7 +61,7 @@ const MOCK_PRODUCTS: Product[] = [
   },
   {
     productId: 55,
-    gtin: "8801234500022",
+    gtin: "8801234500029",
     name: "△△ 머그컵 350ml",
     categoryL: "생활용품",
     categoryM: "주방용품",
@@ -62,7 +71,7 @@ const MOCK_PRODUCTS: Product[] = [
   },
   {
     productId: 56,
-    gtin: "8801234500033",
+    gtin: "8801234500036",
     name: "□□ 즉석밥 210g 3입",
     categoryL: "가공식품",
     categoryM: "즉석밥",
@@ -72,7 +81,7 @@ const MOCK_PRODUCTS: Product[] = [
   },
   {
     productId: 57,
-    gtin: "8801234500044",
+    gtin: "8801234500043",
     name: "◇◇ 생수 2L 6입",
     categoryL: "음료",
     categoryM: "생수",
@@ -263,21 +272,13 @@ export const MOCK_PRODUCT_IMAGES: Record<number, ProductImagesResponse | undefin
   },
 };
 
-/* ── 1-7 분류 목록 ───────────────────────────────────────── */
+/* ── 1-7 분류 목록 — v0.5 에서 삭제됨 (D-21) ─────────────── */
 
-/**
- * `GET /categories` 응답 mock — 대분류·중분류가 한 배열에 섞여 오고,
- * 프론트가 `parentCode` 로 트리를 만든다 (D-13).
- * 첫 두 건은 docs/02-api-spec.md §1-7 예시 그대로다.
+/*
+ * `GET /categories` 계약이 v0.5 에서 삭제되어 `MOCK_CATEGORIES` 도 함께 지웠다.
+ * 유일한 소비처가 1-2 수기 등록 폼의 분류 드롭다운이었는데 1-2 도 같이 사라졌다.
+ * 화면에 보이는 대분류·중분류는 1-1 응답의 `categoryL`/`categoryM`(위 MOCK_PRODUCTS)이
+ * 그대로 채우므로 별도 목록이 필요 없다 — 표시 전용이고 작업자가 고르지 않는다.
+ * ⚠️ `lib/types.ts` 의 `Category` 타입과 `lib/endpoints.ts` 의 categories 래퍼는 팀 공유
+ *    파일이라 남겨 뒀다. 이 파일에서는 호출도 참조도 없다.
  */
-export const MOCK_CATEGORIES: Category[] = [
-  { code: "C02", name: "음료", level: "LARGE", parentCode: null },
-  { code: "C0203", name: "과채주스", level: "MEDIUM", parentCode: "C02" },
-  { code: "C0204", name: "생수", level: "MEDIUM", parentCode: "C02" },
-  { code: "C01", name: "가공식품", level: "LARGE", parentCode: null },
-  { code: "C0101", name: "즉석밥", level: "MEDIUM", parentCode: "C01" },
-  { code: "C0102", name: "라면", level: "MEDIUM", parentCode: "C01" },
-  { code: "C03", name: "생활용품", level: "LARGE", parentCode: null },
-  { code: "C0301", name: "주방용품", level: "MEDIUM", parentCode: "C03" },
-  { code: "C0302", name: "세제", level: "MEDIUM", parentCode: "C03" },
-];

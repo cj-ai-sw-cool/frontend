@@ -4,6 +4,7 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useStageContainer } from "@/components/fixed-stage"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 /**
@@ -77,8 +78,11 @@ function SelectContent({
   align = "center",
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+  // 고정 스테이지 안에 붙여야 드롭다운도 같이 축소된다(안 그러면 뒤 화면보다 글자가 커진다).
+  // 배경·근거는 components/fixed-stage.tsx 의 "포탈 목적지" 주석 참고.
+  const stage = useStageContainer()
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={stage}>
       <SelectPrimitive.Content
         data-slot="select-content"
         data-align-trigger={position === "item-aligned"}

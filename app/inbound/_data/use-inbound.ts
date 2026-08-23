@@ -22,18 +22,20 @@
  *
  * 호출 래퍼는 `@/lib/endpoints` 의 `inbound` 를 쓴다(컴포넌트에서 fetch 직접 호출 금지).
  * 대응 관계: 1-1 useBarcodeScan / 1-3 useMeasure / 1-4 useConfirmMeasurement
- *            1-5 useStockIn / 1-6 useProductImages / 1-7 useCategories
+ *            1-5 useStockIn / 1-6 useProductImages
  *
- * ⚠️ TODO(P1): 1-2 `POST /inbound/products`(임시 마스터 생성) 훅은 아직 없다.
- *    UNKNOWN 판정 분기를 구현할 때 `inbound.createProduct(body: CreateProductRequest)` 를
- *    감싸는 `useCreateProduct` 를 여기에 추가하고, 성공 응답(Product)을 1-1 결과 자리에
- *    끼워 넣으면 이후 촬영 흐름이 동일하게 이어진다 (docs/02-api-spec.md §1-2).
+ * ⚠️ 1-2 `POST /inbound/products` 와 1-7 `GET /categories` 훅은 **만들지 않는다.**
+ *    두 계약이 v0.5 에서 삭제됐다 (D-21). 미등록 바코드는 1-1 에서 "코리안넷 마스터에 없는
+ *    상품"으로 안내하고 흐름을 종료하므로 임시 마스터를 만들 이유가 없고, 분류는 1-1 응답의
+ *    categoryL/categoryM 을 표시만 하므로 목록 조회도 필요 없다.
+ *    이전 개정의 `useCreateProduct` TODO(P1)는 이 결정으로 **소멸**했다.
+ *    ⚠️ `lib/types.ts` 의 `Category` 와 `lib/endpoints.ts` 의 categories/createProduct 래퍼는
+ *       팀 공유 파일이라 그대로 둔다 — 여기서 **호출만 끊었다.** 제거는 팀에 알린 뒤 따로 한다.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import type {
-  Category,
   ConfirmRequest,
   ConfirmResponse,
   MeasurementResponse,
@@ -42,7 +44,6 @@ import type {
   StockInResponse,
 } from "@/lib/types";
 import {
-  MOCK_CATEGORIES,
   MOCK_MEASUREMENT_BY_PRODUCT_ID,
   MOCK_PRODUCT_IMAGES,
   MOCK_SCAN_BY_BARCODE,
@@ -280,14 +281,6 @@ export function useConfirmMeasurement(): MutationResult<ConfirmVariables, Confir
 /** 1-5 수량 입고 — 촬영분 포함 전체 수량 (D-09) */
 export function useStockIn(): MutationResult<StockInVariables, StockInResponse> {
   return useMockMutation(runStockIn);
-}
-
-/**
- * 1-7 분류 목록 — 대분류·중분류 드롭다운의 선택지 (D-13).
- * 코드 체계는 서버 정본이라 화면은 `code` 만 주고받고, 이름은 표시에만 쓴다.
- */
-export function useCategories(): QueryResult<Category[]> {
-  return useMockQuery(true, MOCK_CATEGORIES);
 }
 
 /**

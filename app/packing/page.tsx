@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { PageHeader, Placeholder } from "@/components/common/page-header";
+import { Placeholder } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { BoxType } from "@/lib/types";
@@ -23,12 +23,42 @@ import {
 /**
  * 출고 포장 화면 — P2 담당 (docs/05-team-plan.md §2)
  *
- * 레이아웃 — Stitch 샘플 P2(localWork/stitch-sample.html 273~643행)의 골격을 따른다
- *   상단: 라인별 배송 내역 — 배송단위 리스트를 상태별로 (docs/02-api-spec.md §3-1, D-12)
- *   그 아래: 토트 바코드 — 전체 폭 전용 바 (샘플 486~494행). 화면의 진입 행동이라 독립시킨다
- *   그 아래 좌우 2단 (샘플 496~622행)
- *     좌: 품목 리스트 (제품 / 계획 수량 / 실수량 / 포장시 취급 주의)
- *     우: 제품 이미지 → 박스 추천 → 포장 완료
+ * ── 세로 예산: 916px 안에 전부 들어가야 한다 ─────────────
+ * 앱 셸이 1600×1004 고정 스테이지로 바뀌면서(f5277a9·94e0808) 본문 가용 영역이
+ * **1445×940 `overflow-hidden`** 이 됐다. 바깥에서 `p-grid-gap`(12) 이 이미 걸려 있어
+ * 이 화면이 실제로 쓰는 자리는 **1421×916** 이다.
+ *
+ * ⚠️ 예전 전제("높이는 기기마다 다르니 넘치면 페이지가 스크롤된다")는 **뒤집혔다.**
+ *    지금은 넘치면 스크롤이 아니라 **잘린다** — 실제로 라인별 배송 내역과 하단 액션이
+ *    화면 밖으로 잘려 나가 보이지 않았다. 창고 화면에서 잘린 경고는 오출고로 이어지므로
+ *    "넘치면 스크롤되겠지"에 기대지 않는다.
+ *    → 패널이 **자기 높이를 직접 들고**, 넘치는 내용은 **그 패널 안에서** 스크롤한다.
+ *      페이지 자체는 절대 스크롤되지 않는다.
+ *
+ * 세로 916 = 토트 바 80 + 12 + 2단 824
+ *   좌 691 : 라인별 배송 내역 240 + 12 + 품목 572                  = 824
+ *   우 718 : 제품 이미지 300 + 12 + 박스 추천 356 + 12 + 액션 144  = 824
+ * 가로 1421 = 좌 691 + 12 + 우 718
+ *   좌 691 은 Stitch 샘플 P2(localWork/stitch-sample.html 496행)의 고정 폭 그대로이고,
+ *   우측은 남는 자리를 전부 쓴다. 샘플에선 710 이었는데 바깥 여백이 16→12 로 줄어
+ *   8px 넓어진 것뿐이라 비율(≈49:51)은 같다.
+ *
+ * 패널 안 스크롤을 넣은 곳과 이유
+ *   품목 리스트   — 품목 수가 정해져 있지 않다. 표만 스크롤하고 **수량 불일치 경고 배너는
+ *                   위에 고정**한다(경고가 스크롤로 밀려나면 놓친다).
+ *   박스 추천     — 오버라이드·충전재·오류 문구가 상황에 따라 붙었다 떨어졌다 한다.
+ *   포장 완료 안내 — 409 실패 안내가 길어져도 잘려 사라지지 않게.
+ *   라인별 배송 내역 — 지금은 Placeholder 지만 3-1 리스트가 들어올 자리라 미리 스크롤 영역으로 둔다.
+ *
+ * ── 레이아웃 구성 ─────────────────────────────────────────
+ *   상단: 토트 바코드 — 전체 폭 전용 바 (샘플 486~494행). 화면의 진입 행동이라 독립시킨다
+ *   좌: 라인별 배송 내역 (3-1, D-12) + 품목 리스트 (제품 / 계획 수량 / 실수량 / 취급 주의)
+ *   우: 제품 이미지 → 박스 추천 → 포장 완료
+ *
+ * 라인별 배송 내역을 전체 폭 최상단에서 **좌측 단 위쪽으로 옮겼다.**
+ *   전체 폭으로 두면 그 높이가 좌우 두 단에서 동시에 빠져나가, 우측 3패널(이미지·박스·액션)이
+ *   들어갈 자리가 없어진다. 좌측 단 안으로 넣으면 세로 예산을 좌측만 쓰고,
+ *   3-1 리스트가 필요로 하는 가로 폭(배송단위·주문번호·상태·토트)도 691px 로 확보된다.
  *
  * 재고 현황은 이 화면에서 **제거됐다 (D-19)** — 제품 재고·박스 재고 목록 둘 다.
  *   판단에 실제로 쓰이는 추천 박스의 재고만 박스 추천 패널에 남는다(3-2 `recommendedBox.stockQty`).
@@ -37,11 +67,13 @@ import {
  *   3-5 scanTote → (제품 클릭) 1-6 images → [불일치 시 프론트 표시만, D-06]
  *   → [필요 시] 3-3 overrideBox → 3-8 complete
  *   래퍼는 `@/lib/endpoints` 의 `outbound` 를 쓴다.
+ *   1-6 은 계속 호출한다 — 다만 화면에는 **대표 한 장만** 그린다(카메라 전환 삭제).
+ *   자세한 근거는 `_components/product-image-panel.tsx` 주석 참고.
  *
  * ⚠️ 미정 — `lineId` 를 어디서 얻을지 정해야 한다. 라우트 파라미터(`/packing/[lineId]`)로 둘지,
  *    화면 안 셀렉터로 둘지에 따라 라우팅이 달라진다. P2 가 정하고 04-decisions.md 에 기록할 것.
- *    → 이번 작업에서는 결론을 내리지 않았으므로 라우트를 건드리지 않고 `/packing` 그대로 뒀다.
- *      3-1 라인별 배송 내역도 그래서 아직 Placeholder 다.
+ *    → 이번 작업에서도 결론을 내리지 않았으므로 라우트를 건드리지 않고 `/packing` 그대로 뒀다.
+ *      3-1 라인별 배송 내역도 그래서 아직 Placeholder 다 — 이번에 확정한 것은 **그 자리의 높이**뿐이다.
  *
  * ── 이 파일의 역할: 컨테이너 ──────────────────────────────
  * 데이터를 받는 곳과 화면을 그리는 곳을 나눠 놨다.
@@ -150,33 +182,19 @@ export default function PackingPage() {
   const isScanning = scan.isPending || shipmentQuery.isLoading;
 
   return (
-    <div className="flex flex-col gap-4">
-      <PageHeader
-        title="출고 포장"
-        description="토트 스캔 → 품목 확인 → 박스 추천 확인 → 포장 완료"
-      />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">라인별 배송 내역</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* TODO(P2): 3-1 GET /lines/{lineId}/shipments?status=
-              배송단위 리스트를 대기중(TOTE_ASSIGNED)/진행중(PACKING)/완료(PACKED) 로 표시 (D-12).
-              주문 단위 그룹 상세(A안)는 추후 확장이므로 지금은 리스트만.
-              상태 탭은 components/ui/tabs.tsx 사용.
-              ⚠️ lineId 출처(라우트 파라미터 vs 화면 셀렉터)가 정해져야 착수할 수 있다. */}
-          <Placeholder>라인 선택 · 상태별 배송단위 리스트 (3-1)</Placeholder>
-        </CardContent>
-      </Card>
-
-      {/* 토트 바코드 — 좌우 2단 위에 걸친 전체 폭 바 (샘플 486~494행).
+    /* 916 = 940(본문 높이) − 12×2(바깥 p-grid-gap). 여기서 padding 을 또 주면 안 된다.
+       높이를 `h-full` 이 아니라 실측값으로 박는 이유: 부모가 높이를 확정해 주지 않는 렌더
+       경로가 하나라도 있으면 flex-1 자식들이 통째로 0 으로 접힌다. 스테이지 크기는 고정이라
+       실측값이 흔들릴 일이 없다. */
+    <div className="flex h-[916px] flex-col gap-grid-gap">
+      {/* 토트 바코드 — 좌우 2단 위에 걸친 전체 폭 바 (샘플 486~494행), 높이 80.
           Card 의 기본 세로 배치·안쪽 여백을 눕히고 좌우 여백만 남겨, 안쪽 48px 입력 + 상하
           16px 여백 = 샘플과 같은 80px 가 되게 했다.
-          높이를 고정값이 아니라 최소값으로 둔 이유: 스캔 실패 문구가 길어질 때 바가 늘어나야
-          경고가 잘리지 않는다. 평소(안내 한 줄)에는 정확히 80px 로 보인다.
+          예전에는 스캔 실패 문구가 길어질 때 바가 늘어나도록 min-h 로 뒀지만, 지금은 늘어난
+          만큼 아래 2단이 잘리므로 **고정 높이(h-20)** 다. 문구가 길어질 때 잘리지 않게 하는 일은
+          바의 높이가 아니라 ToteScanInput 안쪽에서 처리한다(line-clamp + title 전문 보존).
           3-5 진입점. 재스캔은 멱등 (D-14). TOTE_NOT_ASSIGNED(404) 는 바 오른쪽에 표시된다. */}
-      <Card className="min-h-20 shrink-0 flex-row items-center gap-4 px-4 py-0">
+      <Card className="h-20 shrink-0 flex-row items-center gap-4 px-4 py-0">
         <ToteScanInput
           value={barcode}
           onChange={setBarcode}
@@ -196,81 +214,102 @@ export default function PackingPage() {
         ) : null}
       </Card>
 
-      {/* 좌우 2단 — 기준 해상도는 태블릿 가로(1180×820 ~ 1194×834).
-          Tailwind 브레이크포인트는 "뷰포트 폭" 기준인데 사이드바(155px)와 본문 패딩(24px×2)이
-          앞에서 폭을 먹는다. 그래서 본문이 실제로 쓰는 폭은 `뷰포트 - 203px` 다.
-            뷰포트 1024(`lg`) → 본문 821px   ← lg 를 그대로 쓰면 2단 진입이 너무 이르다
-            뷰포트 1100       → 본문  897px
-            뷰포트 1180(iPad Air 가로) → 본문 977px
-            뷰포트 1280(데스크톱)      → 본문 1077px
-          `lg` 대신 1100px 에서 2단으로 바꾼 이유: 821px 를 반으로 가르면 한 칸 ~400px 인데,
-          좌측 품목 테이블이 그 폭에서 찌그러진다.
-
-          비율은 1:1 이다 — 샘플을 그대로 환산한 값이다.
-            샘플 main 폭 1600 − 사이드바 155 = 1445, 좌우 패딩 16×2 를 빼면 안쪽 1413.
-            좌 691 + 간격 12 + 우 710 = 1413 → 691:710 ≈ 49:51, 즉 실질 1:1.
-          `minmax(0,...)` 는 테이블이 넓어질 때 칸이 비율을 무시하고 밀려나는 걸 막는다. */}
-      <div className="grid gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        {/* 좌 — 품목 리스트 (샘플 498~552행) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">품목</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* 3-2 items + 파생 취급속성. 실수량 입력·불일치 표시는 프론트 상태로만 (D-06) */}
-            {shipmentQuery.isLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-            ) : shipment === undefined ? (
-              <Placeholder>토트를 스캔하면 품목이 표시됩니다 (3-2)</Placeholder>
-            ) : (
-              <OrderDetailPanel
-                items={shipment.items}
-                actualQty={actualQty}
-                onActualQtyChange={handleActualQtyChange}
-                selectedProductId={selectedProductId}
-                onSelectProduct={setSelectedProductId}
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 우 — 제품 이미지 / 박스 추천 / 포장 완료 (샘플 554~621행).
-            샘플은 900px 고정 캔버스라 세 칸을 374:279:180 으로 잘라 쓰지만, 우리 본문은
-            높이가 기기마다 다르고 스크롤을 허용한다(app/layout.tsx 의 결정). 그래서 비율로
-            자르지 않고 내용 높이대로 쌓되, 이미지 패널에만 최소 높이를 줘서 찌그러지지 않게 한다. */}
-        <div className="flex flex-col gap-4">
-          <Card>
+      {/* 좌우 2단 — 높이 824(=916 − 토트 바 80 − 간격 12).
+          예전에는 `min-[1100px]` 브레이크포인트로 1단↔2단을 갈랐다. 그 판단은 **뒤집혔다** —
+          화면이 뷰포트를 직접 쓰지 않고 1600×1004 스테이지를 통째로 scale() 로 줄여 넣기
+          때문에(components/fixed-stage.tsx), 작은 기기에서는 폭이 좁아지는 게 아니라 전체가
+          작아진다. 즉 레이아웃이 바뀔 일이 없어서 브레이크포인트 자체가 의미를 잃었다.
+          `min-w-0` 은 그대로 필요하다 — 긴 제품명이 좌측 단을 밀어내지 못하게 막는다. */}
+      <div className="flex min-h-0 flex-1 gap-grid-gap">
+        {/* 좌 691 — 라인별 배송 내역 240 + 품목 572 */}
+        <div className="flex w-[691px] shrink-0 flex-col gap-grid-gap">
+          <Card className="h-[240px]">
             <CardHeader>
-              <CardTitle className="text-base">제품 이미지</CardTitle>
+              <CardTitle className="text-base">라인별 배송 내역</CardTitle>
             </CardHeader>
-            <CardContent>
-              {/* 1-6. 좌측에서 고른 품목의 입고 촬영본을 띄운다.
-                  ⚠️ mock 단계에는 이미지 파일이 없어 회색 자리표시가 대신 그려진다. */}
-              <div className="min-h-64">
-                <ProductImagePanel
-                  productName={selectedItem?.name ?? null}
-                  productGtin={selectedItem?.gtin ?? null}
-                  data={productImagesQuery.data}
-                  isLoading={productImagesQuery.isLoading}
-                />
-              </div>
+            <CardContent className="min-h-0 flex-1 overflow-y-auto">
+              {/* TODO(P2): 3-1 GET /lines/{lineId}/shipments?status=
+                  배송단위 리스트를 대기중(TOTE_ASSIGNED)/진행중(PACKING)/완료(PACKED) 로 표시 (D-12).
+                  주문 단위 그룹 상세(A안)는 추후 확장이므로 지금은 리스트만.
+                  상태 탭은 components/ui/tabs.tsx 사용.
+                  ⚠️ lineId 출처(라우트 파라미터 vs 화면 셀렉터)가 정해져야 착수할 수 있다.
+                  ⚠️ 구현할 때도 **이 안(166px)에서 리스트가 스크롤**되게 유지할 것.
+                     리스트 길이만큼 패널이 늘어나면 아래 품목 패널이 잘린다. */}
+              <FillArea>
+                <Placeholder>라인 선택 · 상태별 배송단위 리스트 (3-1)</Placeholder>
+              </FillArea>
             </CardContent>
           </Card>
 
-          <Card>
+          {/* 품목 — 남는 높이 전부(572). 좌측 단에서 유일하게 늘어나는 칸이다 */}
+          <Card className="min-h-0 flex-1">
+            <CardHeader>
+              <CardTitle className="text-base">품목</CardTitle>
+            </CardHeader>
+            <CardContent className="min-h-0 flex-1 overflow-hidden">
+              {/* 3-2 items + 파생 취급속성. 실수량 입력·불일치 표시는 프론트 상태로만 (D-06).
+                  스크롤은 이 안(OrderDetailPanel)에서 표만 따로 한다 — 경고 배너는 고정이다. */}
+              {shipmentQuery.isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : shipment === undefined ? (
+                <FillArea>
+                  <Placeholder>토트를 스캔하면 품목이 표시됩니다 (3-2)</Placeholder>
+                </FillArea>
+              ) : (
+                <OrderDetailPanel
+                  items={shipment.items}
+                  actualQty={actualQty}
+                  onActualQtyChange={handleActualQtyChange}
+                  selectedProductId={selectedProductId}
+                  onSelectProduct={setSelectedProductId}
+                />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* 우 718 — 제품 이미지 300 / 박스 추천 356 / 액션 144 (샘플 554~621행).
+            샘플은 900px 캔버스를 374:279:180 비율로 잘랐지만, 우리 세 칸은 담는 내용이 달라
+            비율 대신 **필요한 높이**로 잡았다.
+              이미지 300 : 사진 자리 194 + 상태 줄 20 + 카드 여백 (샘플 비율 ≈ 359 였다)
+              박스 356   : 박스 이름·내치수·재고 + 충전재 경고 + 박스 변경 셀렉트가 다 들어가는 최소치
+              액션 144   : 버튼 64 + 안내/실패 68 (샘플의 큰 버튼 자리를 우리 버튼 크기로 환산)
+            이미지에서 줄인 만큼(카메라 전환 버튼 삭제 포함)을 박스 추천이 가져갔다. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-grid-gap">
+          <Card className="h-[300px]">
+            <CardHeader>
+              <CardTitle className="text-base">제품 이미지</CardTitle>
+            </CardHeader>
+            <CardContent className="min-h-0 flex-1 overflow-hidden">
+              {/* 1-6. 좌측에서 고른 품목의 사진을 **대표 한 장만** 띄운다(카메라 전환 삭제).
+                  ⚠️ mock 단계에는 이미지 파일이 없어 회색 자리표시가 대신 그려진다. */}
+              <ProductImagePanel
+                productName={selectedItem?.name ?? null}
+                productGtin={selectedItem?.gtin ?? null}
+                data={productImagesQuery.data}
+                isLoading={productImagesQuery.isLoading}
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="h-[356px]">
             <CardHeader>
               <CardTitle className="text-base">박스 추천</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-h-0 flex-1 overflow-y-auto">
               {/* 3-2 recommendedBox / finalBox / fillerRecommended 표시 + 3-3 오버라이드.
                   추천 박스의 재고(recommendedBox.stockQty)는 여기 남는다 — D-19 이 지운 것은
-                  전체 재고 목록이지, 판단에 쓰이는 이 값이 아니다. */}
+                  전체 재고 목록이지, 판단에 쓰이는 이 값이 아니다.
+                  오버라이드하면 "원래 추천" 줄이 한 줄 늘어난다. 그때 잘리지 않도록
+                  이 칸은 고정 높이 + 안쪽 스크롤이다. */}
               {shipment === undefined ? (
-                <Placeholder>토트를 스캔하면 추천 박스가 표시됩니다 (3-2 / 3-3)</Placeholder>
+                <FillArea>
+                  <Placeholder>토트를 스캔하면 추천 박스가 표시됩니다 (3-2 / 3-3)</Placeholder>
+                </FillArea>
               ) : (
                 <BoxRecommendationPanel
                   recommendedBox={shipment.recommendedBox}
@@ -289,17 +328,31 @@ export default function PackingPage() {
               놓는다(포장 완료가 이 화면에서 가장 큰 요소여야 한다).
               옆의 "재피킹" 버튼도 여기 함께 들어간다 — D-20 로 화면에 두기로 확정됐고,
               호출할 API 는 없다(D-06). 그래서 컴포넌트에 넘길 props 도 없다.
-              3-8. OUT_OF_STOCK·INVALID_STATE(409) 방어. 성공 시 대시보드 캐시 무효화. */}
-          <PackCompleteButton
-            onComplete={handleComplete}
-            disabled={shipment === undefined}
-            isPending={completePacking.isPending}
-            error={completePacking.error}
-          />
+              3-8. OUT_OF_STOCK·INVALID_STATE(409) 방어. 성공 시 대시보드 캐시 무효화.
+              높이 144 를 이 칸이 그대로 쓴다(우측 단에서 마지막 칸이라 flex-1). */}
+          <div className="min-h-0 flex-1">
+            <PackCompleteButton
+              onComplete={handleComplete}
+              disabled={shipment === undefined}
+              isPending={completePacking.isPending}
+              error={completePacking.error}
+            />
+          </div>
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * 고정 높이 패널을 꽉 채우는 자리표시 영역.
+ *
+ * 공용 `Placeholder`(components/common/page-header.tsx)는 `min-h-32` 라서, 166~498px 짜리
+ * 패널 안에 넣으면 위쪽에 작게 몰리고 아래가 텅 빈다. 공용 컴포넌트는 입고·대시보드도 함께
+ * 쓰므로 여기서 고치지 않고, 자식에게 높이만 주입한다.
+ */
+function FillArea({ children }: { children: ReactNode }) {
+  return <div className="h-full [&>*]:h-full">{children}</div>;
 }
 
 /** 지금 어떤 배송단위를 잡고 있는지 한 줄로 — 토트 바 오른쪽 끝에 붙는다 */

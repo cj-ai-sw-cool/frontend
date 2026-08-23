@@ -134,11 +134,7 @@ export function BoxRecommendationPanel({
           <p role="alert" className="text-sm text-status-error">
             {error}
           </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            추천과 다른 박스를 쓰면 그 사실이 기록됩니다. 추천값은 지워지지 않습니다.
-          </p>
-        )}
+        ) : null}
       </div>
     </div>
   );
