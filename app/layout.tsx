@@ -114,7 +114,19 @@ const HEADER_ACTIONS: { icon: LucideIcon; label: string }[] = [
  *   눌러 놨지만, 여기서는 브라우저 동작에 기대지 않고 헤더·사이드바를 처음부터
  *   absolute 로 쓴다. 읽는 사람이 "왜 fixed 인데 스테이지 기준이지?"를 고민할 일이 없다.
  */
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  /* 개발 전용 팔레트 전환 패널을 **동적으로** 들여온다.
+     정적 import 로 두면 프로덕션에서도 빠지지 않는다 — 실제로 빼 보고 확인했다.
+     패널이 "use client" 모듈이라, 서버 컴포넌트가 그걸 import 하는 순간 죽은 JSX 와
+     무관하게 **클라이언트 엔트리**가 하나 만들어지고 청크가 HTML 에 실린다
+     (조건부 렌더만으로는 34KB 짜리 청크가 그대로 로드됐다).
+     아래처럼 NODE_ENV 분기 안에서 await import 하면 프로덕션에서는 그 분기 자체가
+     정적으로 죽어 참조가 사라진다. */
+  const DevPanel =
+    process.env.NODE_ENV === "production"
+      ? null
+      : (await import("@/components/palette-dev-panel")).PaletteDevPanel;
+
   return (
     <html lang="ko" className={`${ibmPlexSans.variable} ${ibmPlexSansKr.variable} antialiased`}>
       {/* 스테이지 **바깥**(레터박스)은 앱 팔레트가 아니라 "장비를 올려 둔 책상"이다.
@@ -183,6 +195,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           {/* Toaster 는 스테이지 밖에 둔다 — 안에 넣으면 scale 이 같이 먹어서
               좁은 화면에서 알림 글자까지 줄어든다. 알림은 항상 원본 크기로 보여야 한다. */}
           <Toaster />
+
+          {/* 개발 전용 팔레트 전환 패널. Toaster 와 같은 이유로 스테이지 밖이다.
+              프로덕션에서는 위 동적 import 분기가 죽어 DevPanel 이 null 이다. */}
+          {DevPanel === null ? null : <DevPanel />}
         </Providers>
       </body>
     </html>
