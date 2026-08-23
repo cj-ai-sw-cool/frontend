@@ -193,8 +193,22 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </FixedStage>
 
           {/* Toaster 는 스테이지 밖에 둔다 — 안에 넣으면 scale 이 같이 먹어서
-              좁은 화면에서 알림 글자까지 줄어든다. 알림은 항상 원본 크기로 보여야 한다. */}
-          <Toaster />
+              좁은 화면에서 알림 글자까지 줄어든다. 알림은 항상 원본 크기로 보여야 한다.
+
+              위치는 **스테이지 중앙**이다. 원래 기본값(우하단)이라 입고 화면의 하단
+              버튼 위에 겹쳐서 작업을 방해했다. 그런데 스테이지 밖에 있는 탓에
+              sonner 가 말하는 "중앙"은 뷰포트 중앙이고, 작업자가 보는 스테이지 중앙과
+              레터박스만큼 어긋난다(데스크톱에서 좌우 400px 이상). 그래서 좌표를
+              components/fixed-stage.tsx 가 내보내는 --stage-* 변수로 다시 잡는다 —
+              실제 계산은 globals.css 의 [data-sonner-toaster].stage-toaster 규칙에 있다.
+
+              ⚠️ className 은 components/ui/sonner.tsx 의 기본값("toaster group")을
+                 **덮어쓴다**(그 파일이 {...props} 를 뒤에 펼치기 때문). 그래서 기본값을
+                 그대로 옮겨 적고 stage-toaster 만 덧붙였다. 그 파일은 팀 공용이라
+                 이번 범위에서 수정하지 않는다.
+              ⚠️ style 은 넘기지 않는다 — 같은 이유로 sonner.tsx 가 심어 둔
+                 --normal-bg 같은 토큰 연결이 통째로 날아간다. */}
+          <Toaster position="top-center" className="toaster group stage-toaster" />
 
           {/* 개발 전용 팔레트 전환 패널. Toaster 와 같은 이유로 스테이지 밖이다.
               프로덕션에서는 위 동적 import 분기가 죽어 DevPanel 이 null 이다. */}

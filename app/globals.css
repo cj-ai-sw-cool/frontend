@@ -548,4 +548,41 @@
   .custom-scrollbar *::-webkit-scrollbar-thumb:hover {
     background: var(--accent);
   }
+
+}
+
+/* 토스트를 **스테이지 중앙**에 맞춘다 ──────────────────────────────────────
+   Toaster 는 스테이지 밖에 있다(축소되면 안 되므로 — app/layout.tsx 주석 참고).
+   그래서 sonner 가 기본으로 잡는 "화면 중앙"은 **뷰포트 중앙**이고, 작업자가 보는
+   스테이지의 중앙과 레터박스만큼 어긋난다. 데스크톱에서 좌우 여백이 400px 넘게
+   나오므로 무시할 수 없다.
+   components/fixed-stage.tsx 가 매 fit() 마다 스테이지의 실제 사각형을
+   --stage-left/top/width/height 로 <html> 에 내보내므로, 여기서는 그걸로 중앙을 계산한다.
+   토스트 자체에는 scale 이 걸리지 않으므로 원본 크기 그대로다.
+
+   세로 중앙 계산에 --front-toast-height 를 쓰는 이유:
+     sonner 의 루트 <ol> 은 높이가 0인 **기준점**일 뿐이고(토스트는 그 안에서
+     position:absolute 로 뜬다), 그래서 ol 을 중앙에 놓으면 토스트의 *윗변*이 중앙에
+     걸리고 아래로 흘러내린다. sonner 는 맨 앞 토스트의 실측 높이를 ol 자신의 인라인
+     스타일 --front-toast-height 로 노출하므로, 그 절반만 위로 올리면 토스트가 정확히
+     중앙에 온다. 매직넘버를 쓰지 않고 맞출 수 있는 유일한 지점이다.
+
+   ⚠️ 특정성 — sonner 자신의 규칙이 [data-sonner-toaster][data-x-position=center] 로
+      (0,2,0) 이고, 모바일 폭에서는 미디어 쿼리로 --mobile-offset-* 을 또 건다.
+      같은 (0,2,0) 으로 맞서면 sonner 스타일이 <style> 로 런타임 주입되는 탓에
+      소스 순서 싸움이 되어 결과가 불안정하다. 그래서 클래스를 하나 더 얹어
+      (0,3,0) 으로 확실히 이기게 했다. 클래스는 app/layout.tsx 에서 붙인다.
+
+   ⚠️ 이 규칙이 @layer base **밖**에 있는 것도 의도다. 처음에 base 안에 넣었다가
+      되돌렸다 — 레이어에 든 규칙은 **특정성과 무관하게** 레이어에 들지 않은 규칙에
+      전부 진다. sonner 는 스타일을 런타임에 <style> 로 주입하고 그건 언레이어드라,
+      base 안에서는 (0,3,0) 이든 뭐든 이길 수 없다. 레이어 바깥에 둬야 위 특정성 계산이
+      비로소 의미를 갖는다. */
+[data-sonner-toaster].stage-toaster[data-x-position="center"] {
+  left: calc(var(--stage-left, 0px) + var(--stage-width, 100vw) / 2);
+  top: calc(
+    var(--stage-top, 0px) + var(--stage-height, 100vh) / 2 - var(--front-toast-height, 0px) / 2
+  );
+  bottom: auto;
+  transform: translateX(-50%);
 }

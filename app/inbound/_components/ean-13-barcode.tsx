@@ -4,10 +4,14 @@
  * EAN-13 바코드 그래픽 — 디자인 확정본 우상단 96px 행의 위쪽 44px 자리다.
  * (확정본 body.html 150~183행: `<svg viewBox="0 0 107 44" preserveAspectRatio="none">`)
  *
- * ⚠️ **장식이 아니다.** 확정본의 SVG 는 고정된 막대 그림이지만, 우리는 아래 입력란에 찍힌
- *    숫자를 실제로 EAN-13 으로 인코딩해서 그린다. 스캐너로 찍든 손으로 치든 같은 값이
- *    같은 막대로 나오므로, 작업자가 "지금 화면이 들고 있는 바코드"를 눈으로 대조할 수 있다.
+ * ⚠️ **장식이 아니다.** 확정본의 SVG 는 고정된 막대 그림이지만, 우리는 값을 실제로
+ *    EAN-13 으로 인코딩해서 그린다. 스캐너로 찍든 손으로 치든 같은 값이 같은 막대로
+ *    나오므로, 작업자가 "지금 화면이 들고 있는 바코드"를 눈으로 대조할 수 있다.
  *    그림을 진짜로 만들어 두면 시연 중 스캐너 오독을 사람이 잡아낼 수 있다는 게 근거다.
+ *
+ * ⚠️ 여기 들어오는 `value` 는 입력란의 값이 아니라 **조회를 실행한 값**이다 (사용자 결정).
+ *    타이핑을 따라 그리면 한 자리마다 95개 모듈이 재배열돼 막대가 요동친다 —
+ *    호출부의 상태 분리와 근거는 `barcode-scan-row.tsx` 상단 주석에 있다.
  *
  * ── EAN-13 구조 (95 모듈) ────────────────────────────────────────────────
  *   좌 가드 101 (3)
@@ -140,7 +144,7 @@ export function Ean13Barcode({ value }: { value: string }) {
     return (
       <div className="border-outline-variant flex h-full w-full items-center justify-center border border-dashed">
         <span className="text-label-sm text-muted-foreground">
-          13자리를 입력하면 바코드가 그려집니다
+          조회한 바코드가 여기 그려집니다
         </span>
       </div>
     );

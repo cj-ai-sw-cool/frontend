@@ -73,6 +73,27 @@ const STAGE_HEIGHT = 1004;
     원본 fit() 의 `clientWidth - 24` 가 이 값의 좌우 합이다. */
 const BODY_PADDING = 12;
 
+/* ── 스테이지 사각형을 CSS 변수로 공개한다 ─────────────────────────────────
+   스테이지 밖에 있으면서 **스테이지 기준**으로 자리를 잡아야 하는 요소가 있다.
+   지금은 토스트가 그렇다: 축소되면 안 되니 스테이지 밖에 두는데(app/layout.tsx 의
+   Toaster 주석 참고), "화면 중앙"의 기준은 뷰포트가 아니라 작업자가 보고 있는
+   스테이지 중앙이어야 한다. 레터박스가 좌우 400px 넘게 남는 화면에서는 둘이 크게 다르다.
+
+   ⚠️ 실제로 어긋나는 축은 **세로**다. frame 이 mx-auto 라 가로는 뷰포트 중앙과
+      스테이지 중앙이 일치하지만, 세로는 body 가 위쪽부터 채우므로 폭이 scale 을
+      결정하는 화면에서 스테이지 아래에 빈 공간이 남는다. 그래도 네 값을 다 내보내는 건
+      "가로는 어차피 같다"는 가정이 바깥 레이아웃 변경에 조용히 깨지기 때문이다.
+
+   값을 <html> 에 얹으므로 소비자는 순수 CSS 로 계산할 수 있고, 컨텍스트나 클라이언트
+   컴포넌트를 하나 더 만들 필요가 없다(Toaster 는 app/layout.tsx 안에 그대로 둔다).
+   하이드레이션 전에는 변수가 없으므로 소비자는 반드시 var(..., 폴백) 형태로 써야 한다. */
+const STAGE_RECT_VARS = {
+  left: "--stage-left",
+  top: "--stage-top",
+  width: "--stage-width",
+  height: "--stage-height",
+} as const;
+
 /* ── 포탈 목적지 ─────────────────────────────────────────────────────────────
    Radix 의 Dialog/Select 는 내용을 포탈로 body 직속에 붙인다. 그런데 스테이지는
    transform: scale() 로 축소돼 있으므로, body 에 붙은 오버레이는 **축소가 안 걸린 채**
@@ -141,11 +162,28 @@ export function FixedStage({ children }: { children: ReactNode }) {
       stage.style.transform = `scale(${scale})`;
       frame.style.width = `${Math.round(STAGE_WIDTH * scale)}px`;
       frame.style.height = `${Math.round(STAGE_HEIGHT * scale)}px`;
+
+      // 축소된 스테이지가 화면에서 실제로 차지하는 사각형을 CSS 변수로 내보낸다.
+      // 스테이지 **밖**에 있으면서 스테이지 기준으로 자리를 잡아야 하는 것들
+      // (지금은 토스트)이 이 값을 쓴다. 자세한 건 위 STAGE_RECT_VARS 주석 참고.
+      // 프레임을 직접 재는 이유: 위 계산을 다시 해서 맞추면 body padding·mx-auto 같은
+      // 바깥 레이아웃이 바뀔 때 조용히 어긋난다. 실측이 스스로 교정된다.
+      const rect = frame.getBoundingClientRect();
+      root.style.setProperty(STAGE_RECT_VARS.left, `${rect.left}px`);
+      root.style.setProperty(STAGE_RECT_VARS.top, `${rect.top}px`);
+      root.style.setProperty(STAGE_RECT_VARS.width, `${rect.width}px`);
+      root.style.setProperty(STAGE_RECT_VARS.height, `${rect.height}px`);
     };
 
     fit();
     window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
+    return () => {
+      window.removeEventListener("resize", fit);
+      // 스테이지가 사라지면 변수도 걷는다. 남겨 두면 스테이지 없는 화면에서
+      // 옛날 좌표를 참조하는 요소가 엉뚱한 자리에 붙는다.
+      const root = document.documentElement;
+      for (const name of Object.values(STAGE_RECT_VARS)) root.style.removeProperty(name);
+    };
   }, [stageEl]);
 
   return (

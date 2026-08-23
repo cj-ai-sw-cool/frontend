@@ -65,8 +65,15 @@ import {
  */
 export default function InboundPage() {
   /* ── 화면 상태 (서버 데이터가 아닌 것만 여기서 관리) ────── */
-  /** 스캔 입력창에 찍힌 문자열. 우상단 EAN-13 그래픽도 이 값을 그린다 */
+  /** 스캔 입력창에 지금 찍혀 있는 문자열. 작업 중이라 한 자 칠 때마다 바뀐다 */
   const [barcode, setBarcode] = useState("");
+  /**
+   * **조회를 실행한** 바코드. 우상단 EAN-13 그래픽은 이 값만 그린다 (사용자 결정).
+   * 입력란 값과 일부러 나눠 둔 상태다 — 근거는 `_components/barcode-scan-row.tsx` 상단 주석.
+   * 성공 여부와 무관하게 "실행한 값"이라 1-1 을 보내는 시점에 박는다. UNKNOWN 이나
+   * 네트워크 실패로 끝나도 방금 무엇을 조회했는지가 그래픽에 그대로 남아야 하기 때문이다.
+   */
+  const [scannedBarcode, setScannedBarcode] = useState("");
   /** 수동 입력 모달이 열려 있는가. 측정 실패면 아래에서 자동으로 연다 (§1-3) */
   const [isManualOpen, setIsManualOpen] = useState(false);
   /** 입고할 수량 — 촬영에 쓴 실물을 포함한 전체 수량이다 (D-09) */
@@ -142,6 +149,8 @@ export default function InboundPage() {
 
   /* ── 이벤트 ────────────────────────────────────────────── */
   const handleScan = useCallback(() => {
+    // 조회를 "실행한" 값을 여기서 확정한다 — 응답을 기다리지 않는다(위 상태 주석 참고)
+    setScannedBarcode(barcode.trim());
     scan.mutate(barcode, {
       onSuccess: () => {
         // 새 바코드를 잡으면 이전 상품의 화면 상태를 전부 버린다
@@ -256,6 +265,7 @@ export default function InboundPage() {
         {/* 1-1 진입점. 못 찾은 바코드도 200 + UNKNOWN 이라 이 행의 에러 자리는 평소 비어 있다 */}
         <BarcodeScanRow
           value={barcode}
+          scannedValue={scannedBarcode}
           onChange={setBarcode}
           onScan={handleScan}
           isPending={scan.isPending}
