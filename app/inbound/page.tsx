@@ -2,17 +2,26 @@
 
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
-import { PageHeader } from "@/components/common/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { ConfirmRequest, ProductImagesResponse } from "@/lib/types";
-import { BarcodeScanInput, ScanJudgmentPanel } from "./_components/barcode-scan-input";
-import { ConfirmForm } from "./_components/confirm-form";
+import { ApiError } from "@/lib/api";
+import type {
+  ConfirmRequest,
+  Dimensions,
+  Handling,
+  MeasurementResponse,
+  ProductImagesResponse,
+  ScanResponse,
+  StockInResponse,
+} from "@/lib/types";
+import { ActionButtons } from "./_components/action-buttons";
+import { BarcodeScanRow } from "./_components/barcode-scan-row";
+import { HandlingPanel } from "./_components/handling-panel";
+import { ManualInputDialog } from "./_components/manual-input-dialog";
 import { MeasurementPanel } from "./_components/measurement-panel";
+import { ProductInfoPanel } from "./_components/product-info-panel";
 import { ProductPhotoPanel } from "./_components/product-photo-panel";
-import { StockInPanel } from "./_components/stock-in-panel";
+import { QuantityPanel } from "./_components/quantity-panel";
 import {
   useBarcodeScan,
-  useCategories,
   useConfirmMeasurement,
   useMeasure,
   useProductImages,
@@ -22,50 +31,60 @@ import {
 /**
  * 입고 등록 화면 — P1 담당 (docs/05-team-plan.md §2)
  *
- * 레이아웃 — Stitch 샘플 P1(localWork/stitch-sample.html)의 골격을 따른다.
- *   샘플은 같은 화면을 두 상태로 그려 뒀다 — 측정 전 644~1053행 / 측정 후 1054~1436행.
- *   두 구간의 구조는 완전히 같고 값만 다르므로(-- → 45.5 / 30.2 / 20.0 / 12.4),
- *   화면은 하나로 만들고 값이 있고 없고만 갈랐다.
+ * 레이아웃은 **디자인 확정본**(라이브: p1-terminal.vercel.app)을 그대로 옮긴 것이다.
+ * 이전 Stitch 샘플 기준 레이아웃(전체 폭 바코드 바 + 판정 카드 + 1.8:1 2단)은 폐기됐다 —
+ * 그 비율 산정은 "본문 폭이 뷰포트에 따라 변한다"는 전제 위에 있었는데, 앱 셸이
+ * 1600×1004 고정 스테이지로 바뀌면서 전제 자체가 사라졌다(app/layout.tsx). 지금 본문은
+ * **정확히 1445×940px** 이고 스크롤이 없다. 넘치면 잘린다.
  *
- *   맨 위: 제품 바코드 — 좌우 2단 위에 걸친 전체 폭 바
- *          (샘플은 상단 앱바 안 815~821행이지만 우리 헤더는 화면 3개가 공유하는 껍데기라
- *           입고 전용 입력을 넣을 수 없다. 출고 포장 화면이 토트 바코드에 쓴 규약을 따랐다)
- *   그 아래: 1-1 판정 — 전체 폭. 어느 분기냐가 이후 화면 전체를 가르므로 좌우보다 먼저 읽혀야 한다
- *   그 아래 좌우 2단
- *     좌(샘플 871~948행): 자동 측정 데이터 / 제품 메인·서브 촬영 사진
- *     우(샘플 949~1049행): 제품 정보·분류 / 수기 입력 / 취급 주의사항 / 수량 / 하단 버튼
+ * ── 세로·가로 예산 (검산) ────────────────────────────────────────────────
+ *   main 안쪽 = 1445 - 24 × 940 - 24 = 1421 × 916   (p-grid-gap 12px 은 layout.tsx 가 이미 준다)
+ *   가로: 좌 920 + gap 12 + 우 flex-1(489) = 1421
+ *   좌 920 세로: 283 + 12 + 366 + 12 + 243 = 916 ✓
+ *   우 489 세로: 96 + 12 + [flex-1] + 12 + 188 + 12 + 84 + 12 + 216 = 916
+ *                → flex-1(제품 정보) = 916 - 608 - 48 = 284 ✓
+ *   각 패널이 자기 높이를 스스로 들고 있고(h-[...] + shrink-0), 늘어나는 칸은 제품 정보
+ *   하나뿐이다. 그래서 어떤 상태에서도 세로 합이 916 을 넘지 않는다.
  *
  * 호출 순서 (docs/02-api-spec.md §5)
- *   1-1 scan → 1-3 measure → [게이트 미통과 시 재촬영 or MANUAL] → 1-4 confirm → 1-5 stock-in
+ *   1-1 scan → 1-3 measure → [게이트 미통과 시 재촬영 or 수동 입력] → 1-4 confirm → 1-5 stock-in
  *   래퍼는 `@/lib/endpoints` 의 `inbound` 를 쓴다.
  *
  * 재고는 1-5 에서만 늘어난다 (D-09) — 1-4 확정은 치수만 확정하고 inventory_tx 를 만들지 않는다.
- * 분류는 이름이 아니라 코드로 주고받는다 (D-13) — 선택지는 1-7 응답이다.
+ *
+ * ⚠️ 분류는 **표시 전용**이다 (D-21). 1-2 `POST /inbound/products` 와 1-7 `GET /categories` 가
+ *    v0.5 에서 삭제되어, 작업자가 분류를 고르는 UI 도 수기 등록 폼도 만들지 않는다.
+ *    UNKNOWN 은 안내 후 흐름 종료다. 관련 TODO(P1) 세 개(수기 등록 폼 / useCreateProduct /
+ *    이름→코드 역조회)는 전부 소멸했다.
  *
  * ── 이 파일의 역할: 컨테이너 ──────────────────────────────
  * 데이터를 받는 곳과 화면을 그리는 곳을 나눠 놨다(출고 포장 화면과 같은 구조다).
  *   `_data/use-inbound.ts`  데이터를 가져온다 (지금은 mock, 나중에 실제 API)
  *   `_components/*`         받은 값을 그리기만 한다 (fetch 없음, props 만)
  *   `page.tsx` (이 파일)    둘을 이어 붙이고 화면 상태를 들고 있다
- *
- * ⚠️ 이 화면은 **틀만** 만들어 둔 상태다. 분기별 세부 동작은 P1 이 채운다 —
- *    자리마다 TODO(P1) 을 남겼고, 분기 안쪽의 더 구체적인 지시는 각 부품 파일에 있다.
  */
 export default function InboundPage() {
   /* ── 화면 상태 (서버 데이터가 아닌 것만 여기서 관리) ────── */
-  /** 스캔 입력창에 찍힌 문자열 */
+  /** 스캔 입력창에 찍힌 문자열. 우상단 EAN-13 그래픽도 이 값을 그린다 */
   const [barcode, setBarcode] = useState("");
-  /** 수기 입력 칸이 열려 있는가. 측정 실패면 아래에서 자동으로 연다 (§1-3) */
+  /** 수동 입력 모달이 열려 있는가. 측정 실패면 아래에서 자동으로 연다 (§1-3) */
   const [isManualOpen, setIsManualOpen] = useState(false);
   /** 입고할 수량 — 촬영에 쓴 실물을 포함한 전체 수량이다 (D-09) */
   const [qty, setQty] = useState(1);
+  /** 1-4 요청의 handling. 기본값은 1-3 응답의 handlingDefaults 에서 깔린다 */
+  const [handling, setHandling] = useState<Handling>(EMPTY_HANDLING);
+  /**
+   * 수동 입력 모달에서 `적용` 한 값. null 이면 아직 수기 경로가 아니다.
+   * 이 값이 채워지면 `DB 입력` 이 **MANUAL 경로로 해제**된다 — 게이트 미통과·측정 실패의
+   * 두 해제 수단 중 하나다(§1-3). `weightKg: null` 은 "세션 저울값을 그대로 쓴다"는 뜻이다.
+   */
+  const [manual, setManual] = useState<{ dims: Dimensions; weightKg: number | null } | null>(null);
 
   /* ── 데이터 ────────────────────────────────────────────── */
   const scan = useBarcodeScan(); // 1-1
   const measure = useMeasure(); // 1-3
   const confirm = useConfirmMeasurement(); // 1-4
   const stockIn = useStockIn(); // 1-5
-  const categoriesQuery = useCategories(); // 1-7
 
   /** 1-1 로 잡힌 상품. UNKNOWN 이면 계약대로 null 이다 */
   const product = scan.data?.product ?? null;
@@ -81,33 +100,6 @@ export default function InboundPage() {
     isConfirmed && product !== null ? product.productId : null,
   );
 
-  /* ── 3분기 판정 (1-1) ──────────────────────────────────────
-     입고 업무의 핵심 분기다. 어느 갈래인지는 서버가 정하므로 화면에서 다시 계산하지 않는다.
-       REGISTERED (마스터 O + 치수 O) → 촬영 없이 수량 입력 UI 를 열고 1-5
-       NEW        (마스터 O + 치수 X) → 촬영·추론(1-3) 으로 진입
-       UNKNOWN    (마스터 X)          → 1-2 임시 마스터 생성 후 NEW 와 같은 흐름
-
-     TODO(P1): 분기별 **동작**을 채운다. 여기서는 "무엇을 열고 잠글지"의 뼈대만 잡았다.
-       · REGISTERED: 촬영·확정 영역을 잠그고 수량 패널로 포커스를 옮길지, 재촬영 경로를 남길지.
-       · NEW: 스캔 직후 자동으로 1-3 을 부를지, 지금처럼 촬영 버튼을 눌러야 나가게 둘지.
-         (자동이면 작업자가 물건을 촬영함에 넣기 전에 찍힌다 — 그래서 지금은 수동이다)
-       · UNKNOWN: 1-2 수기 등록 폼. 훅부터 없다 — `_data/use-inbound.ts` 에
-         useCreateProduct 를 먼저 추가해야 한다. 입력 필드와 진입 방식은
-         `_components/barcode-scan-input.tsx` 의 UNKNOWN 분기 주석에 적어 뒀다.
-     각 분기가 화면에서 무슨 뜻인지는 ScanJudgmentPanel 이 그린다. */
-  const judgment = scan.data?.judgment;
-
-  /**
-   * 수량 입고(1-5)를 열어도 되는 시점.
-   * 계약이 정한 두 갈래만 반영했다 — REGISTERED 는 치수가 이미 확정돼 바로,
-   * 그 밖에는 1-4 확정에 성공한 뒤다.
-   *
-   * TODO(P1): 확정 없이 입고를 허용할 경우가 있는지 정한다. 02 §1-5 는 dimStatus 를
-   *   전제하지 않아서 계약만으로는 판단할 수 없다. 허용한다면 여기 조건을 넓히고,
-   *   금지한다면 그대로 두되 04-decisions.md 에 근거를 남길 것.
-   */
-  const canStockIn = judgment === "REGISTERED" || isConfirmed;
-
   /* ── 사진 (1-3 → 확정 후 1-6) ──────────────────────────── */
   const images = isConfirmed
     ? (productImagesQuery.data?.images ?? [])
@@ -120,6 +112,34 @@ export default function InboundPage() {
       ? null
       : IMAGE_SOURCE_LABEL[productImagesQuery.data.source];
 
+  /* ── 무엇을 누를 수 있는가 ──────────────────────────────── */
+  const isBusy = scan.isPending || measure.isPending || confirm.isPending || stockIn.isPending;
+
+  const plan = buildSubmitPlan({
+    scanResult: scan.data,
+    measurement,
+    isConfirmed,
+    manual,
+    stockInResult: stockIn.data,
+  });
+
+  /**
+   * 게이트 미통과·측정 실패라 "해제 수단 두 갈래"를 제시해야 하는 상태인가 (§1-3).
+   * 이 값이 true 면 하단 `촬영`(재촬영)과 우상단 `수동 입력` 양쪽에 같은 강조가 켜진다 —
+   * 두 곳이 동시에 빛나는 것이 "길이 둘"이라는 표현 그 자체다.
+   * 수기 치수를 이미 적용했으면(manual !== null) 갈래가 정해진 것이므로 끈다.
+   */
+  const isUnlockUrged =
+    measurement !== undefined &&
+    !isConfirmed &&
+    manual === null &&
+    (measurement.status === "MEASURE_FAILED" || !measurement.gatePassed);
+
+  /** 재측정도 같은 1-3 이다 (§1-3). 확정·입고가 끝난 뒤에는 새 바코드부터 시작한다 */
+  const canCapture = product !== null && !isBusy && !isConfirmed && stockIn.data === undefined;
+  /** 1-4 MANUAL 은 sessionId 가 있어야 성립하므로, 촬영 전에는 수동 입력을 열지 않는다 */
+  const canManualInput = measurement !== undefined && !isConfirmed && !isBusy;
+
   /* ── 이벤트 ────────────────────────────────────────────── */
   const handleScan = useCallback(() => {
     scan.mutate(barcode, {
@@ -129,199 +149,258 @@ export default function InboundPage() {
         confirm.reset();
         stockIn.reset();
         setIsManualOpen(false);
+        setManual(null);
+        setHandling(EMPTY_HANDLING);
         setQty(1);
       },
     });
   }, [barcode, scan, measure, confirm, stockIn]);
 
   /** 촬영 = 첫 촬영과 재촬영을 겸한다. 재촬영은 같은 productId 로 1-3 재호출 (§1-3) */
-  const handleMeasure = useCallback(() => {
+  const handleCapture = useCallback(() => {
     if (product === null) return;
-    // 재촬영하면 새 세션이 열리므로 이전 확정 결과는 이 화면과 무관해진다
+    // 재촬영하면 새 세션이 열리므로 이전 확정 결과와 수기 입력값은 이 화면과 무관해진다
     confirm.reset();
+    setManual(null);
     measure.mutate(product.productId, {
       onSuccess: (result) => {
+        // 취급속성 기본값은 서버의 category_attribute_map 에서 온다 (§1-3)
+        setHandling(result.status === "INFERRED" ? result.handlingDefaults : EMPTY_HANDLING);
         // §1-3 이 정한 동작: 측정 실패면 수동 입력 fallback 을 자동으로 연다
         setIsManualOpen(result.status === "MEASURE_FAILED");
       },
     });
   }, [product, measure, confirm]);
 
-  const handleConfirm = useCallback(
-    (request: ConfirmRequest) => {
-      if (measurement === undefined) return;
-      confirm.mutate({ sessionId: measurement.sessionId, body: request });
-    },
-    [measurement, confirm],
-  );
+  const handleApplyManual = useCallback((dims: Dimensions, weightKg: number | null) => {
+    setManual({ dims, weightKg });
+    setIsManualOpen(false);
+  }, []);
 
-  const handleStockIn = useCallback(() => {
-    if (product === null) return;
-    stockIn.mutate(
-      { productId: product.productId, qty },
+  /**
+   * `DB 입력` 하나가 필요한 것만 순차로 부른다 (버튼 합침 결정 — action-buttons.tsx 주석).
+   *   STOCK_IN               1-5 만
+   *   CONFIRM_THEN_STOCK_IN  1-4 confirm 성공 → onSuccess 에서 1-5 연쇄
+   * 확정이 실패하면 연쇄가 끊겨 입고도 일어나지 않는다 — `dimStatus=NONE` 인 채 재고만
+   * 늘어나는 경로는 없다.
+   */
+  const handleDbSubmit = useCallback(() => {
+    if (product === null || plan.kind === "BLOCKED") return;
+
+    const runStockIn = () => {
+      stockIn.mutate(
+        { productId: product.productId, qty },
+        {
+          onSuccess: (result) => {
+            toast.success(`입고 완료 — ${product.name} 현재 재고 ${result.stockQty}개`);
+            // TODO(P1): 입고 후 화면을 어디까지 비울지 정한다. 출고 포장 화면은 완료 시
+            //   전부 비우고 다음 토트를 받지만, 입고는 같은 상품을 나눠 넣는 경우가 있어
+            //   비우면 오히려 방해가 될 수 있다. 지금은 아무것도 비우지 않고, 대신
+            //   `DB 입력` 을 잠가 중복 입고만 막는다(buildSubmitPlan 첫 분기).
+          },
+          onError: (error) => toast.error("입고에 실패했습니다", { description: error.message }),
+        },
+      );
+    };
+
+    if (plan.kind === "STOCK_IN") {
+      runStockIn();
+      return;
+    }
+
+    if (measurement === undefined) return; // 타입 좁히기용 — plan 이 이미 보장한다
+    const body: ConfirmRequest =
+      plan.method === "MANUAL" && manual !== null
+        ? { method: "MANUAL", dims: manual.dims, weightKg: manual.weightKg, handling }
+        : // 세션 저울값을 쓰라는 뜻으로 null 을 보낸다 (§1-4 — 생략/null 이면 measured_weight_kg)
+          { method: "APPROVE", weightKg: null, handling };
+
+    confirm.mutate(
+      { sessionId: measurement.sessionId, body },
       {
-        onSuccess: (result) => {
-          toast.success(`입고 완료 — ${product.name} 현재 재고 ${result.stockQty}개`);
-          // TODO(P1): 입고 후 화면을 어디까지 비울지 정한다. 출고 포장 화면은 완료 시
-          //   전부 비우고 다음 토트를 받지만, 입고는 같은 상품을 나눠 넣는 경우가 있어
-          //   비우면 오히려 방해가 될 수 있다. 지금은 아무것도 비우지 않는다.
+        onSuccess: runStockIn,
+        onError: (error) => {
+          const { title, detail } = describeConfirmFailure(error);
+          toast.error(title, { description: detail });
         },
       },
     );
-  }, [product, qty, stockIn]);
+  }, [product, plan, measurement, manual, handling, qty, stockIn, confirm]);
 
   /* ── 표시 ──────────────────────────────────────────────── */
   return (
-    <div className="flex flex-col gap-4">
-      <PageHeader
-        title="입고 등록"
-        description="바코드 스캔 → 촬영·추론 → 측정 확정 → 수량 입고"
-      />
+    <div className="gap-grid-gap flex h-full">
+      {/* ── 좌 920px (확정본 72~144행) ─────────────────────── */}
+      <div className="gap-grid-gap flex w-[920px] shrink-0 flex-col">
+        {/* 1-3. 가로·세로·높이는 추론값이고 무게는 저울 실측값이라 게이트와 무관하다.
+            신뢰도·게이트 사유도 이 패널이 그린다(계약 필수 UI ②). */}
+        <MeasurementPanel
+          data={measurement}
+          isLoading={measure.isPending}
+          error={measure.error?.message ?? null}
+        />
 
-      {/* 제품 바코드 — 좌우 2단 위에 걸친 전체 폭 바 (출고 포장 화면과 같은 규약).
-          Card 의 기본 세로 배치·안쪽 여백을 눕히고 좌우 여백만 남겨, 안쪽 48px 입력 +
-          상하 16px 여백 = 샘플 상단 바와 같은 80px 가 되게 했다.
-          높이를 고정값이 아니라 최소값으로 둔 이유: 스캔 실패 문구가 길어질 때 바가 늘어나야
-          경고가 잘리지 않는다.
-          1-1 진입점. 못 찾은 바코드도 200 + UNKNOWN 이라 이 바의 에러 자리는 평소 비어 있다. */}
-      <Card className="min-h-20 shrink-0 flex-row items-center gap-4 px-4 py-0">
-        <BarcodeScanInput
+        {/* 확정 전에는 1-3 의 images, 확정 후에는 1-6 응답이다(위 images 계산 참고).
+            ⚠️ mock 단계에는 이미지 파일이 없어 회색 자리표시가 대신 그려진다.
+            메인·서브 두 패널을 한 부품이 그린다 — 계약이 주는 건 배열 하나뿐이라
+            어느 장이 메인인지가 배열 순서로만 정해지기 때문이다. */}
+        <ProductPhotoPanel
+          images={images}
+          isLoading={measure.isPending || productImagesQuery.isLoading}
+          sourceLabel={sourceLabel}
+        />
+      </div>
+
+      {/* ── 우 489px (확정본 146~240행) ────────────────────── */}
+      <div className="gap-grid-gap flex min-w-0 flex-1 flex-col">
+        {/* 1-1 진입점. 못 찾은 바코드도 200 + UNKNOWN 이라 이 행의 에러 자리는 평소 비어 있다 */}
+        <BarcodeScanRow
           value={barcode}
           onChange={setBarcode}
           onScan={handleScan}
           isPending={scan.isPending}
           error={scan.error?.message ?? null}
+          canManualInput={canManualInput}
+          onOpenManual={() => setIsManualOpen(true)}
+          isManualUrged={isUnlockUrged}
         />
-      </Card>
 
-      {/* 1-1 판정 — 전체 폭으로 뺐다. 샘플에는 대응 패널이 없다(샘플은 분기를 그리지 않는다).
-          좌우 어느 컬럼에도 넣지 않은 이유: 어느 갈래냐가 촬영을 할지 말지까지 가르므로
-          두 컬럼보다 먼저 읽혀야 한다. */}
-      <Card>
-        <CardHeader>
-          <CardTitle>바코드 판정</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ScanJudgmentPanel result={scan.data} isPending={scan.isPending} />
-        </CardContent>
-      </Card>
+        {/* 1-1 표시값 + 판정 배지(계약 필수 UI ①) + 분류 읽기 전용(계약 필수 UI ③, D-21) */}
+        <ProductInfoPanel result={scan.data} isPending={scan.isPending} />
 
-      {/* 좌우 2단 — 기준 해상도는 태블릿 가로(1180×820 ~ 1194×834).
-          Tailwind 브레이크포인트는 "뷰포트 폭" 기준인데 사이드바(155px)와 본문 패딩(24px×2)이
-          앞에서 폭을 먹는다. 그래서 본문이 실제로 쓰는 폭은 `뷰포트 - 203px` 다.
-            뷰포트 1180(iPad Air 가로) → 본문 977px, 2단 간격 16 을 빼면 배분 대상 961px
-            뷰포트 1600(샘플 캔버스)   → 본문 1397px, 같은 방식으로 1381px
+        {/* 1-4 요청의 handling. 확정 경로가 아니면 나갈 곳이 없어 잠근다 */}
+        <HandlingPanel
+          value={handling}
+          onChange={setHandling}
+          disabled={product === null || isConfirmed || measurement === undefined}
+        />
 
-          비율은 샘플의 970:438(≈2.21:1, 69:31)을 그대로 쓰지 않고 1.8:1(≈64:36)로 넓혔다.
-            · 샘플대로면 1180px 에서 우측이 298px 이고, 카드 안쪽은 좌우 여백 16×2 를 빼 266px.
-              대분류·중분류가 한 줄에 둘이라(간격 12) 셀렉트 하나가 127px 인데, 좌우 여백과
-              펼침 화살표가 40px 남짓을 먹어 글자 자리는 87px — 16px 글자로 다섯 자 남짓이다.
-              1-7 이 주는 이름이 "생활용품"만 돼도 이미 아슬아슬하다.
-            · 1.8:1 이면 우측 343px → 안쪽 311px → 셀렉트 149px → 글자 자리 109px(예닐곱 자).
-            · 좌측은 618px 로 줄지만 자동 측정 4칸이 각 137px 이라(안쪽 586 − 간격 36 을 4등분)
-              30px 숫자 + 단위가 그대로 들어간다. 사진 서브 2칸도 각 287px 로 여유가 있다.
-            · 넓힌 진짜 이유는 우측이 샘플보다 담는 게 많아서다 — 샘플 우측에 없는
-              (1) 저장 경로 미정으로 잠긴 특이사항·등급 칸, (2) 가로·세로 자동 정렬 안내(D-18),
-              (3) 확정/실패 알림, (4) 촬영분 포함 안내(D-09) 가 전부 이 컬럼에 있다.
-              1600px 로 되돌리면 우측이 493px 로 샘플(438px)보다 55px 넓어지는데, 위 네 가지가
-              차지하는 몫이라고 보면 된다.
-          2단 진입점 1100px 는 출고 포장 화면과 같은 값이다 — 1024px 에서 갈랐다간 본문이
-          821px 뿐이라 한 칸이 400px 대로 찌그러진다.
-          최소폭을 0 으로 잡아 두는 것은 안쪽 내용이 넓어질 때 칸이 비율을 무시하고 밀려나는
-          것을 막기 위해서다. */}
-      <div className="grid gap-4 min-[1100px]:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]">
-        {/* ── 좌 (샘플 871~948행) ─────────────────────────── */}
-        <div className="flex flex-col gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>자동 측정 데이터</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* 1-3. 가로·세로·높이는 추론값이고 무게는 저울 실측값이라 게이트와 무관하다.
-                  게이트 미통과 사유·측정 실패 안내도 이 패널이 그린다. */}
-              <MeasurementPanel
-                data={measurement}
-                isLoading={measure.isPending}
-                error={measure.error?.message ?? null}
-              />
-            </CardContent>
-          </Card>
+        {/* 1-5 의 qty. ★ 상품이 잡히면 항상 활성이다 — 확정 여부를 보지 않는다(수량 게이트 제거) */}
+        <QuantityPanel qty={qty} onQtyChange={setQty} disabled={product === null} />
 
-          {/* 샘플은 메인(913~929행)과 서브(930~947행)를 별도 패널로 그리지만, 우리는 한 부품이
-              둘 다 그린다 — 계약이 주는 것은 카메라 번호가 붙은 사진 한 배열이고, 어느 장이
-              메인인지는 배열 순서로만 정해지기 때문이다. 카드를 둘로 가르면 같은 배열을 두 번
-              넘겨야 한다. */}
-          <Card>
-            <CardHeader>
-              <CardTitle>제품 촬영 사진</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* 확정 전에는 1-3 의 images, 확정 후에는 1-6 응답이다(위 images 계산 참고).
-                  ⚠️ mock 단계에는 이미지 파일이 없어 회색 자리표시가 대신 그려진다. */}
-              <ProductPhotoPanel
-                images={images}
-                isLoading={measure.isPending || productImagesQuery.isLoading}
-                sourceLabel={sourceLabel}
-              />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* ── 우 (샘플 949~1049행) ────────────────────────── */}
-        <div className="flex flex-col gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>제품 정보 · 취급속성 · 측정 확정</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* 1-4 확정(APPROVE / MANUAL) + 1-1 표시값 + 1-7 분류 드롭다운.
-                  key 를 상품·세션 기준으로 주는 이유: 이 폼은 기본값을 defaultValues 로만
-                  잡으므로, 새 스캔이나 새 촬영이 오면 통째로 다시 마운트돼야 기본값이 갱신된다.
-                  같은 세션 안에서는 리렌더가 몇 번 일어나도 작업자 입력이 지워지지 않는다. */}
-              <ConfirmForm
-                key={`${product?.productId ?? "none"}:${measurement?.sessionId ?? "none"}`}
-                product={product}
-                measurement={measurement}
-                categories={categoriesQuery.data ?? EMPTY_CATEGORIES}
-                isCategoriesLoading={categoriesQuery.isLoading}
-                isManualOpen={isManualOpen}
-                onToggleManual={setIsManualOpen}
-                onConfirm={handleConfirm}
-                onRemeasure={handleMeasure}
-                isConfirming={confirm.isPending}
-                isMeasuring={measure.isPending}
-                confirmResult={confirm.data}
-                confirmError={confirm.error}
-              />
-            </CardContent>
-          </Card>
-
-          {/* 수량 입고 — 샘플은 이 패널(1026~1037행)을 하단 버튼(1039~1048행) **위**에 두지만,
-              우리는 하단 버튼이 확정 폼(1-4)에 속해 있어서 그 아래로 내렸다.
-              호출 순서가 1-4 → 1-5 라 화면 순서도 그대로 두는 편이 읽기 쉽다. */}
-          <Card>
-            <CardHeader>
-              <CardTitle>수량 입고</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* 1-5. 재고가 늘어나는 유일한 지점이고, 촬영에 쓴 실물도 이 수량에 포함된다 (D-09) */}
-              <StockInPanel
-                product={product}
-                qty={qty}
-                onQtyChange={setQty}
-                onStockIn={handleStockIn}
-                canStockIn={canStockIn}
-                isPending={stockIn.isPending}
-                result={stockIn.data}
-                error={stockIn.error}
-              />
-            </CardContent>
-          </Card>
-        </div>
+        {/* 촬영(1-3) / DB 입력(1-4 → 1-5 연쇄) */}
+        <ActionButtons
+          captureLabel={measurement === undefined ? "촬영" : "재촬영"}
+          canCapture={canCapture}
+          isCapturing={measure.isPending}
+          isCaptureUrged={isUnlockUrged}
+          onCapture={handleCapture}
+          canSubmit={plan.kind !== "BLOCKED" && !isBusy}
+          isSubmitting={confirm.isPending || stockIn.isPending}
+          submitHint={plan.hint}
+          onSubmit={handleDbSubmit}
+        />
       </div>
+
+      {/* 확정본 242~287행. Radix Dialog 라 여기 자리에는 DOM 이 생기지 않는다(포탈) */}
+      <ManualInputDialog
+        open={isManualOpen}
+        onOpenChange={setIsManualOpen}
+        measurement={measurement}
+        onApply={handleApplyManual}
+      />
     </div>
   );
 }
+
+/* ── DB 입력 한 번이 무엇을 부를지 ───────────────────────── */
+
+type SubmitPlan =
+  /** 1-5 만 부른다 — 치수가 이미 확정된 상품 */
+  | { kind: "STOCK_IN"; hint: string }
+  /** 1-4 confirm 성공 뒤 1-5 를 연쇄로 부른다 */
+  | { kind: "CONFIRM_THEN_STOCK_IN"; method: "APPROVE" | "MANUAL"; hint: string }
+  /** 지금은 누를 수 없다. hint 가 그 이유다 */
+  | { kind: "BLOCKED"; hint: string };
+
+/**
+ * 확정(1-4)과 입고(1-5)를 버튼 하나로 합친 뒤, "지금 무엇이 나가야 하는가"를 한 곳에서 정한다.
+ * 순수 함수라 화면 상태만 보고 판정하며 API 를 부르지 않는다.
+ *
+ * ⚠️ 이것이 이전 `canStockIn = judgment === "REGISTERED" || isConfirmed` 게이트를 대체한다.
+ *    게이트를 없앤 게 아니라 **수량 칸에서 버튼으로 옮긴 것**이다. 잠기는 조건 자체는
+ *    오히려 늘었다(무게 미확정·게이트 미통과·측정 실패가 전부 여기서 걸린다).
+ */
+function buildSubmitPlan({
+  scanResult,
+  measurement,
+  isConfirmed,
+  manual,
+  stockInResult,
+}: {
+  scanResult: ScanResponse | undefined;
+  measurement: MeasurementResponse | undefined;
+  isConfirmed: boolean;
+  manual: { dims: Dimensions; weightKg: number | null } | null;
+  stockInResult: StockInResponse | undefined;
+}): SubmitPlan {
+  /* 이미 넣었다 — 두 번 누르면 재고가 두 번 는다.
+     ⚠️ 계약(§1-5)에 멱등 규정이 없어 서버가 막아 주지 않는다. 그래서 화면이 막는다.
+     TODO(P1): 백엔드에 멱등 키를 요청할지, 화면 잠금으로 둘지 정하면 여기를 고친다. */
+  if (stockInResult !== undefined) {
+    return {
+      kind: "BLOCKED",
+      hint: `입고 완료 · 현재 재고 ${stockInResult.stockQty}개 — 새 바코드를 스캔하세요`,
+    };
+  }
+
+  if (scanResult?.product == null) {
+    // UNKNOWN 은 안내 후 종료다 — 등록 폼도 분류 선택도 없다 (D-21, §1-1)
+    return {
+      kind: "BLOCKED",
+      hint:
+        scanResult?.judgment === "UNKNOWN"
+          ? "코리안넷 마스터에 없는 상품 — 입고 대상이 아닙니다"
+          : "바코드를 스캔하세요 (1-1)",
+    };
+  }
+
+  // 이번 화면에서 방금 확정했거나(1-4 성공), 애초에 치수가 확정된 상품(REGISTERED)
+  if (isConfirmed) return { kind: "STOCK_IN", hint: "치수 확정됨 · 1-5 입고" };
+  if (scanResult.judgment === "REGISTERED") {
+    return { kind: "STOCK_IN", hint: "치수가 이미 확정된 상품 · 1-5 입고만 나갑니다" };
+  }
+
+  /* 여기부터 NEW — 촬영·확정을 거쳐야 한다 */
+  if (measurement === undefined) {
+    return { kind: "BLOCKED", hint: "촬영이 필요합니다 — 왼쪽 촬영 버튼 (1-3)" };
+  }
+
+  // 수기 치수를 적용했으면 게이트와 무관하게 MANUAL 로 확정할 수 있다 (§1-4 는 항상 허용)
+  if (manual !== null) {
+    if (manual.weightKg == null && measurement.weightKg == null) {
+      return { kind: "BLOCKED", hint: "무게가 없습니다 — 수동 입력에서 무게를 채우세요" };
+    }
+    return {
+      kind: "CONFIRM_THEN_STOCK_IN",
+      method: "MANUAL",
+      hint: "수기 치수 적용됨 · 1-4 MANUAL → 1-5 입고",
+    };
+  }
+
+  /* ★ 해제 수단은 두 가지뿐이다 — 재촬영(1-3 재호출) 또는 수기 확정(1-4 MANUAL). §1-3 */
+  if (measurement.status === "MEASURE_FAILED") {
+    return {
+      kind: "BLOCKED",
+      hint: `측정 실패 (${measurement.failReason}) — 재촬영하거나 수동 입력으로 확정하세요`,
+    };
+  }
+  if (!measurement.gatePassed) {
+    return {
+      kind: "BLOCKED",
+      hint: `게이트 미통과 (${measurement.gateFailReasons.join(" · ")}) — 재촬영 또는 수동 입력`,
+    };
+  }
+
+  // 무게는 게이트와 무관하지만 확정에는 필요하다 (§1-4 — 없으면 400 VALIDATION_ERROR)
+  if (measurement.weightKg == null) {
+    return { kind: "BLOCKED", hint: "저울값 미수신 — 수동 입력에서 무게를 채우세요" };
+  }
+
+  return { kind: "CONFIRM_THEN_STOCK_IN", method: "APPROVE", hint: "1-4 승인 → 1-5 입고" };
+}
+
+/* ── 조각 ────────────────────────────────────────────────── */
 
 /** 1-6 응답의 source 를 사람 말로 — 사진이 촬영 원본인지 마스터 대체인지 알려 준다 */
 const IMAGE_SOURCE_LABEL: Record<ProductImagesResponse["source"], string> = {
@@ -329,5 +408,39 @@ const IMAGE_SOURCE_LABEL: Record<ProductImagesResponse["source"], string> = {
   MASTER_FALLBACK: "마스터 대체 이미지",
 };
 
-/** 분류 목록이 오기 전 넘길 빈 배열 — 매 렌더 새 배열을 만들지 않도록 모듈 상수로 둔다 */
-const EMPTY_CATEGORIES: never[] = [];
+/** 촬영 전·새 스캔 직후의 취급속성. 1-3 이 오면 handlingDefaults 로 덮인다 */
+const EMPTY_HANDLING: Handling = { refrigerate: false, fragile: false, irregular: false };
+
+/**
+ * 1-4 실패 안내.
+ * 계약이 정한 실패는 409 `GATE_NOT_PASSED` / 409 `SESSION_ALREADY_CONFIRMED` /
+ * 400 `VALIDATION_ERROR` 다. 코드별로 작업자가 할 행동이 다르므로 메시지를 가른다.
+ * 판별은 `lib/api.ts` 의 `ApiError.is()` 를 쓴다 — 문자열 비교를 흩뿌리지 않기 위해서.
+ *
+ * ⚠️ 알림을 화면 안 카드가 아니라 toast 로 띄우는 이유: 본문이 940px 고정에 스크롤이 없어
+ *    상태에 따라 늘어나는 알림 상자를 놓을 자리가 없다. Toaster 는 스테이지 밖에 있어
+ *    (app/layout.tsx) 축소도 안 걸리고 항상 원본 크기로 읽힌다.
+ */
+function describeConfirmFailure(error: Error): { title: string; detail: string } {
+  if (error instanceof ApiError) {
+    if (error.is("GATE_NOT_PASSED")) {
+      return {
+        title: "게이트 미통과 세션은 승인할 수 없습니다",
+        detail: "재촬영해서 신뢰도를 높이거나, 수동 입력으로 확정하세요.",
+      };
+    }
+    if (error.is("SESSION_ALREADY_CONFIRMED")) {
+      return {
+        title: "이미 확정된 세션입니다",
+        detail: "다시 확정할 수 없습니다. 새로 촬영하거나 수량 입고로 넘어가세요.",
+      };
+    }
+    if (error.is("VALIDATION_ERROR")) {
+      return {
+        title: "입력값을 확정할 수 없습니다",
+        detail: `${error.message} 무게가 비어 있으면 확정할 수 없습니다.`,
+      };
+    }
+  }
+  return { title: "측정 확정에 실패했습니다", detail: error.message };
+}
