@@ -81,10 +81,15 @@ export const MOCK_TOTE_BARCODE_TO_SHIPMENT_ID: Record<string, number | undefined
  *    외부 URL 은 쓰지 않는다(네트워크·CSP 의존을 만들지 않기 위해).
  *
  * 키는 productId 이고, MOCK_SHIPMENT_DETAIL.items 의 세 건에 각각 다른 상태를 물려 뒀다.
- *   41 → MEASUREMENT   : 측정 원본 2장(카메라 2대)   … 정상 + 카메라 전환 확인용
- *   58 → MASTER_FALLBACK: 마스터 대체 1장(cameraNo null) … source 표기 분기 확인용
+ *   41 → MEASUREMENT   : 측정 원본 2장(카메라 2대)   … 여러 장이 와도 대표 1장만 그리는지 확인용
+ *   58 → MASTER_FALLBACK: 코리안넷 대표 1장(cameraNo null) … source 표기 분기 확인용
  *   72 → images 가 빈 배열                              … "이미지 없음" 상태 확인용
  * 키에 없는 productId 는 undefined 가 나온다(= 404 자리).
+ *
+ * 41 이 2장인 이유가 바뀌었다 — 예전에는 화면 아래 `카메라 1`·`카메라 2` 전환 버튼을 확인하려고
+ * 넣어 뒀지만, 그 버튼은 삭제됐다(대표 한 장만 표시). 데이터는 그대로 두는 게 맞다:
+ * 계약상 1-6 은 여러 장을 줄 수 있고, 화면이 그중 대표를 고른다는 규칙(`pickRepresentative`)이
+ * 실제로 지켜지는지는 **여러 장이 오는 mock 이 있어야** 확인된다.
  */
 export const MOCK_PRODUCT_IMAGES: Record<number, ProductImagesResponse | undefined> = {
   41: {

@@ -72,111 +72,117 @@ export function OrderDetailPanel({
   ).length;
 
   return (
-    <div className="space-y-3">
+    /* 부모(Card)가 높이를 정해 준다. 경고 배너는 위에 고정하고 **표만** 스크롤한다 —
+       배너까지 같이 스크롤되면 품목이 많을 때 수량 불일치 경고가 위로 밀려나 사라지고,
+       놓친 불일치는 그대로 오출고가 된다. */
+    <div className="flex h-full flex-col gap-3">
       {mismatchCount > 0 ? (
         <div
           role="alert"
-          className="rounded-lg border border-status-error/40 bg-status-error/10 px-3 py-2 text-sm text-status-error"
+          className="shrink-0 rounded-lg border border-status-error/40 bg-status-error/10 px-3 py-2 text-sm text-status-error"
         >
           <span className="font-medium">수량 불일치 {mismatchCount}건</span> — 실물을 다시
           확인한 뒤 토트를 재스캔하세요. 이 표시는 화면 전용이며 서버로 전송되지 않습니다.
         </div>
       ) : null}
 
-      <Table className="table-fixed">
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[43%]">제품</TableHead>
-            <TableHead className="w-[14%] text-center">계획 수량</TableHead>
-            <TableHead className="w-[15%] text-center">실수량</TableHead>
-            <TableHead className="w-[28%] pl-3">포장시 취급 주의</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((item) => {
-            const actual = resolveActual(actualQty, item);
-            const isMismatch = actual !== item.qty;
-            const isSelected = item.productId === selectedProductId;
+      {/* 품목 수는 정해져 있지 않다. 고정 스테이지에서는 넘치면 잘리므로 여기서 스크롤한다 */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <Table className="table-fixed">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[43%]">제품</TableHead>
+              <TableHead className="w-[14%] text-center">계획 수량</TableHead>
+              <TableHead className="w-[15%] text-center">실수량</TableHead>
+              <TableHead className="w-[28%] pl-3">포장시 취급 주의</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((item) => {
+              const actual = resolveActual(actualQty, item);
+              const isMismatch = actual !== item.qty;
+              const isSelected = item.productId === selectedProductId;
 
-            return (
-              <TableRow
-                key={item.productId}
-                // TableRow 가 이미 선택 상태 배경을 들고 있다(data-[state=selected])
-                data-state={isSelected ? "selected" : undefined}
-                className={cn(isMismatch && !isSelected && "bg-status-error/5")}
-              >
-                <TableCell className="align-top">
-                  {/*
-                    제품 이름 자체가 "이 품목을 보겠다" 버튼이다.
-                    행 전체에 onClick 을 걸면 실수량 입력칸을 누를 때도 같이 눌리고,
-                    키보드로는 아예 닿지 않는다. 진짜 버튼으로 두면 둘 다 해결된다.
-                    선택됐을 때 붙는 하드 섀도우는 샘플 510행의 선택 행 표현을 옮긴 것으로,
-                    색은 전경색 토큰을 그대로 참조한다(components/ui/button.tsx 와 같은 방식).
-                  */}
-                  <button
-                    type="button"
-                    aria-pressed={isSelected}
-                    onClick={() => onSelectProduct(item.productId)}
-                    title={item.name}
-                    className="flex w-full min-w-0 flex-col gap-0.5 border-2 border-transparent px-2 py-1 text-left transition-colors hover:bg-accent aria-pressed:border-border aria-pressed:bg-card aria-pressed:shadow-[4px_4px_0px_0px_var(--color-foreground)]"
-                  >
-                    <span className="block truncate font-medium">{item.name}</span>
-                    <span className="block truncate font-mono text-xs text-muted-foreground">
-                      {item.gtin}
-                    </span>
-                  </button>
-                </TableCell>
+              return (
+                <TableRow
+                  key={item.productId}
+                  // TableRow 가 이미 선택 상태 배경을 들고 있다(data-[state=selected])
+                  data-state={isSelected ? "selected" : undefined}
+                  className={cn(isMismatch && !isSelected && "bg-status-error/5")}
+                >
+                  <TableCell className="align-top">
+                    {/*
+                      제품 이름 자체가 "이 품목을 보겠다" 버튼이다.
+                      행 전체에 onClick 을 걸면 실수량 입력칸을 누를 때도 같이 눌리고,
+                      키보드로는 아예 닿지 않는다. 진짜 버튼으로 두면 둘 다 해결된다.
+                      선택됐을 때 붙는 하드 섀도우는 샘플 510행의 선택 행 표현을 옮긴 것으로,
+                      색은 전경색 토큰을 그대로 참조한다(components/ui/button.tsx 와 같은 방식).
+                    */}
+                    <button
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => onSelectProduct(item.productId)}
+                      title={item.name}
+                      className="flex w-full min-w-0 flex-col gap-0.5 border-2 border-transparent px-2 py-1 text-left transition-colors hover:bg-accent aria-pressed:border-border aria-pressed:bg-card aria-pressed:shadow-[4px_4px_0px_0px_var(--color-foreground)]"
+                    >
+                      <span className="block truncate font-medium">{item.name}</span>
+                      <span className="block truncate font-mono text-xs text-muted-foreground">
+                        {item.gtin}
+                      </span>
+                    </button>
+                  </TableCell>
 
-                <TableCell className="pt-3 text-center align-top text-2xl leading-none font-bold tabular-nums">
-                  {item.qty}
-                </TableCell>
+                  <TableCell className="pt-3 text-center align-top text-2xl leading-none font-bold tabular-nums">
+                    {item.qty}
+                  </TableCell>
 
-                <TableCell className="align-top">
-                  <Input
-                    type="number"
-                    min={0}
-                    inputMode="numeric"
-                    aria-label={`${item.name} 실수량`}
-                    aria-invalid={isMismatch ? true : undefined}
-                    value={actual}
-                    onChange={(event) =>
-                      onActualQtyChange(item.productId, toQty(event.target.value))
-                    }
-                    className={cn(
-                      // 샘플 517행의 실수량 칸(60×48)에 맞춘 크기 — 좁은 칸에 들어가야 한다
-                      "mx-auto h-12 w-[60px] px-1 text-center text-lg tabular-nums md:text-lg",
-                      isMismatch && "border-status-error",
+                  <TableCell className="align-top">
+                    <Input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      aria-label={`${item.name} 실수량`}
+                      aria-invalid={isMismatch ? true : undefined}
+                      value={actual}
+                      onChange={(event) =>
+                        onActualQtyChange(item.productId, toQty(event.target.value))
+                      }
+                      className={cn(
+                        // 샘플 517행의 실수량 칸(60×48)에 맞춘 크기 — 좁은 칸에 들어가야 한다
+                        "mx-auto h-12 w-[60px] px-1 text-center text-lg tabular-nums md:text-lg",
+                        isMismatch && "border-status-error",
+                      )}
+                    />
+                    {isMismatch ? (
+                      <div className="mt-1 text-center text-xs font-medium text-status-error tabular-nums">
+                        {formatDiff(actual - item.qty)}
+                      </div>
+                    ) : null}
+                  </TableCell>
+
+                  <TableCell className="pl-3 align-top whitespace-normal">
+                    {item.handling.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {item.handling.map((code) => (
+                          <Badge
+                            key={code}
+                            variant={HANDLING_EMPHASIZED.has(code) ? "default" : "outline"}
+                          >
+                            {HANDLING_LABEL[code] ?? code}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      // 샘플 547행도 빈 값 대신 "해당 없음"을 흐리게 적어 둔다
+                      <span className="text-muted-foreground">해당 없음</span>
                     )}
-                  />
-                  {isMismatch ? (
-                    <div className="mt-1 text-center text-xs font-medium text-status-error tabular-nums">
-                      {formatDiff(actual - item.qty)}
-                    </div>
-                  ) : null}
-                </TableCell>
-
-                <TableCell className="pl-3 align-top whitespace-normal">
-                  {item.handling.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {item.handling.map((code) => (
-                        <Badge
-                          key={code}
-                          variant={HANDLING_EMPHASIZED.has(code) ? "default" : "outline"}
-                        >
-                          {HANDLING_LABEL[code] ?? code}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : (
-                    // 샘플 547행도 빈 값 대신 "해당 없음"을 흐리게 적어 둔다
-                    <span className="text-muted-foreground">해당 없음</span>
-                  )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
