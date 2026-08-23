@@ -4,6 +4,7 @@ import * as React from "react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useStageContainer } from "@/components/fixed-stage"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -20,9 +21,20 @@ function DialogTrigger({
 }
 
 function DialogPortal({
+  container,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+  // 고정 스테이지 안에 붙여야 오버레이도 같이 축소된다.
+  // 스테이지 밖(또는 마운트 전)이면 null 이고, 그때 Radix 는 body 로 폴백한다.
+  // 배경·근거는 components/fixed-stage.tsx 의 "포탈 목적지" 주석 참고.
+  const stage = useStageContainer()
+  return (
+    <DialogPrimitive.Portal
+      data-slot="dialog-portal"
+      container={container ?? stage}
+      {...props}
+    />
+  )
 }
 
 function DialogClose({
