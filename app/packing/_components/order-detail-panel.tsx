@@ -82,7 +82,7 @@ export function OrderDetailPanel({
           className="shrink-0 rounded-lg border border-status-error/40 bg-status-error/10 px-3 py-2 text-sm text-status-error"
         >
           <span className="font-medium">수량 불일치 {mismatchCount}건</span> — 실물을 다시
-          확인한 뒤 토트를 재스캔하세요. 이 표시는 화면 전용이며 서버로 전송되지 않습니다.
+          확인한 뒤 토트를 재스캔하세요.
         </div>
       ) : null}
 
