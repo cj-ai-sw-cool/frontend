@@ -151,12 +151,7 @@ export default function PackingPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title="출고 포장"
-        description="토트 스캔 → 품목 확인 → 박스 추천 확인 → 포장 완료"
-      />
-
-      <Card>
+       <Card>
         <CardHeader>
           <CardTitle className="text-base">라인별 배송 내역</CardTitle>
         </CardHeader>
@@ -169,7 +164,7 @@ export default function PackingPage() {
           <Placeholder>라인 선택 · 상태별 배송단위 리스트 (3-1)</Placeholder>
         </CardContent>
       </Card>
-
+ 
       {/* 토트 바코드 — 좌우 2단 위에 걸친 전체 폭 바 (샘플 486~494행).
           Card 의 기본 세로 배치·안쪽 여백을 눕히고 좌우 여백만 남겨, 안쪽 48px 입력 + 상하
           16px 여백 = 샘플과 같은 80px 가 되게 했다.
