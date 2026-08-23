@@ -13,12 +13,21 @@
  *
  * ── 시나리오 표 (P1 이 화면을 열고 확인할 수 있는 경로) ──────────────────
  *   바코드              1-1 판정      1-3 측정 결과              확인 목적
- *   8801234567890      REGISTERED   INFERRED · 게이트 통과      치수 O → 바로 수량 입고
- *   8801234500022      NEW          INFERRED · 게이트 통과      정상 촬영 흐름 (샘플 값)
- *   8801234500033      NEW          INFERRED · 게이트 미통과    DB 입력 잠금 + 사유 표시
- *   8801234500044      NEW          MEASURE_FAILED             수동 입력 모달 자동 오픈
+ *   8801234567893      REGISTERED   INFERRED · 게이트 통과      치수 O → 바로 수량 입고
+ *   8801234500029      NEW          INFERRED · 게이트 통과      정상 촬영 흐름 (샘플 값)
+ *   8801234500036      NEW          INFERRED · 게이트 미통과    DB 입력 잠금 + 사유 표시
+ *   8801234500043      NEW          MEASURE_FAILED             수동 입력 모달 자동 오픈
  *   그 외               UNKNOWN      —                          "코리안넷 마스터에 없는
  *                                                              상품" 안내 후 종료 (D-21)
+ *
+ * ⚠️ 끝자리가 바뀌었다 (…890/022/033/044 → …893/029/036/043).
+ *    EAN-13 의 13번째 자리는 장식이 아니라 **앞 12자리로 계산되는 체크디짓**이다.
+ *    옛 값은 그 규칙을 안 지켜서, 우상단 바코드 그래픽이 네 시나리오 모두 "체크디짓 불일치"로
+ *    흐리게 렌더됐다(`_components/ean-13-barcode.tsx`). 22/33/44 니모닉을 잃는 대신
+ *    실제로 스캔 가능한 번호가 됐다.
+ *    ⚠️ **docs D-17 의 시연 상품 GTIN(8801234500011~66)과 백엔드 `V2__seed.sql` 은 아직 옛
+ *       값이다.** 실제 API 로 배선할 때 양쪽을 맞춰야 한다 — 안 맞추면 mock 에서 되던 스캔이
+ *       실서버에서 UNKNOWN 으로 떨어진다.
  */
 import type {
   ConfirmResponse,
@@ -42,7 +51,7 @@ import type {
 const MOCK_PRODUCTS: Product[] = [
   {
     productId: 41,
-    gtin: "8801234567890",
+    gtin: "8801234567893",
     name: "○○ 오렌지주스 500ml",
     categoryL: "음료",
     categoryM: "과채주스",
@@ -52,7 +61,7 @@ const MOCK_PRODUCTS: Product[] = [
   },
   {
     productId: 55,
-    gtin: "8801234500022",
+    gtin: "8801234500029",
     name: "△△ 머그컵 350ml",
     categoryL: "생활용품",
     categoryM: "주방용품",
@@ -62,7 +71,7 @@ const MOCK_PRODUCTS: Product[] = [
   },
   {
     productId: 56,
-    gtin: "8801234500033",
+    gtin: "8801234500036",
     name: "□□ 즉석밥 210g 3입",
     categoryL: "가공식품",
     categoryM: "즉석밥",
@@ -72,7 +81,7 @@ const MOCK_PRODUCTS: Product[] = [
   },
   {
     productId: 57,
-    gtin: "8801234500044",
+    gtin: "8801234500043",
     name: "◇◇ 생수 2L 6입",
     categoryL: "음료",
     categoryM: "생수",
