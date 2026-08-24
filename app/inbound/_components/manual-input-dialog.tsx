@@ -30,10 +30,19 @@ import type { Dimensions, MeasurementResponse } from "@/lib/types";
  *   뒤 화면보다 20% 크게 뜬다. components/ui/dialog.tsx 의 포탈 목적지가 이미 스테이지로
  *   배선돼 있어(fixed-stage.tsx 의 "포탈 목적지" 주석) 함께 축소된다.
  *
- * ── 왜 여기서 확정(1-4)을 부르지 않나 ────────────────────────────────────
- *   §1-3 이 정한 해제 수단은 재촬영 또는 수기 확정 둘뿐이고, 둘 다 최종적으로는
- *   `DB 입력` 한 번으로 끝나야 한다(버튼 합침 결정). 이 모달이 스스로 확정까지 해 버리면
- *   확정과 입고가 다시 두 번의 누름으로 갈라진다. 그래서 여기서는 **치수만 넘긴다.**
+ * ── 왜 여기서 API 를 하나도 부르지 않나 ──────────────────────────────────
+ *   `적용` 은 값을 부모에 기록하고 닫기만 한다. 확정(1-4)도, 세션 확보(1-3)도 안 한다.
+ *   · 확정을 여기서 하면 확정과 입고가 다시 두 번의 누름으로 갈라진다(버튼 합침 결정).
+ *   · 세션 확보를 여기서 하면 **촬영이 불가한 상황에서 모달이 그대로 멈춘다.** 수기 입력은
+ *     바로 그 상황을 위한 탈출구인데, 탈출구가 촬영에 묶이면 뜻이 없다.
+ *   그래서 1-3 이 필요하면 그건 `DB 입력` 시점에 부모가 부른다(page.tsx handleDbSubmit).
+ *   ⚠️ 이전 개정에는 "적용 시점에 세션을 확보한다"고 적혀 있었다 — 위 이유로 뒤집혔다.
+ *
+ * ── 값은 부모가 들고 있다 ────────────────────────────────────────────────
+ *   Radix 는 닫히면 이 안을 언마운트하므로 폼 상태는 매번 사라진다. 그래서 `defaultValues` 를
+ *   **이전에 적용한 수기값 → 추론값 → 빈 칸** 순으로 깐다. 수기값이 이긴 상태에서 좌측
+ *   측정 패널이 `--` 를 그리므로, 모달을 다시 여는 것이 작업자가 자기 숫자를 되보는
+ *   두 번째 경로다(measurement-panel.tsx 상단 주석 ★).
  *
  * ── ★ D-18 안내 ────────────────────────────────────────────────────────
  *   서버는 MANUAL 로 받은 dims 도 **가로·세로를 스왑 정렬해서 저장**한다
@@ -86,12 +95,15 @@ export function ManualInputDialog({
   open,
   onOpenChange,
   measurement,
+  applied,
   onApply,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** 1-3 응답 — 추론값을 초기값으로 깔고, 세션 저울값 유무를 알린다 */
+  /** 1-3 응답 — 추론값을 초기값으로 깔고, 세션 저울값 유무를 알린다. 촬영 전이면 undefined */
   measurement?: MeasurementResponse;
+  /** 이전에 `적용` 한 수기값. 있으면 추론값보다 먼저 초기값으로 깔린다 */
+  applied?: { dims: Dimensions; weightKg: number | null } | null;
   /** 적용 — 값만 부모로 올린다. `weightKg: null` 은 "세션 저울값을 그대로 쓴다"는 뜻이다 */
   onApply: (dims: Dimensions, weightKg: number | null) => void;
 }) {
@@ -112,8 +124,13 @@ export function ManualInputDialog({
         </DialogHeader>
 
         {/* Radix 는 닫히면 이 안을 통째로 언마운트한다 — 그래서 열 때마다 폼이 새로 마운트되고
-            defaultValues 가 그 시점의 추론값으로 다시 잡힌다. useEffect reset 이 필요 없다. */}
-        <ManualForm measurement={measurement} onApply={onApply} onCancel={() => onOpenChange(false)} />
+            defaultValues 가 그 시점의 값으로 다시 잡힌다. useEffect reset 이 필요 없다. */}
+        <ManualForm
+          measurement={measurement}
+          applied={applied}
+          onApply={onApply}
+          onCancel={() => onOpenChange(false)}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -121,15 +138,18 @@ export function ManualInputDialog({
 
 function ManualForm({
   measurement,
+  applied,
   onApply,
   onCancel,
 }: {
   measurement?: MeasurementResponse;
+  applied?: { dims: Dimensions; weightKg: number | null } | null;
   onApply: (dims: Dimensions, weightKg: number | null) => void;
   onCancel: () => void;
 }) {
   const inferred = measurement?.status === "INFERRED" ? measurement : null;
   const hasSessionWeight = measurement?.weightKg != null;
+  const hasSession = measurement !== undefined;
 
   /**
    * 수기 칸을 추론값으로 미리 채우는 이유: 수기 확정은 보통 "추론값을 조금 고치는" 작업이라
@@ -139,10 +159,15 @@ function ManualForm({
   const form = useForm({
     resolver: zodResolver(manualSchema),
     defaultValues: {
-      widthCm: inferred ? String(inferred.inferred.widthCm) : "",
-      lengthCm: inferred ? String(inferred.inferred.lengthCm) : "",
-      heightCm: inferred ? String(inferred.inferred.heightCm) : "",
-      weightKg: measurement?.weightKg == null ? "" : String(measurement.weightKg),
+      widthCm: applied ? String(applied.dims.widthCm) : inferred ? String(inferred.inferred.widthCm) : "",
+      lengthCm: applied ? String(applied.dims.lengthCm) : inferred ? String(inferred.inferred.lengthCm) : "",
+      heightCm: applied ? String(applied.dims.heightCm) : inferred ? String(inferred.inferred.heightCm) : "",
+      weightKg:
+        applied?.weightKg != null
+          ? String(applied.weightKg)
+          : measurement?.weightKg == null
+            ? ""
+            : String(measurement.weightKg),
     },
   });
 
@@ -162,11 +187,28 @@ function ManualForm({
 
   return (
     <div className="p-panel-padding flex flex-col gap-4">
-      {/* ★ D-18 안내 — 축 규약을 작업자에게 알리는 유일한 장치다(파일 상단 주석) */}
+      {/* ★ D-18 안내.
+          ⚠️ 이전 개정의 "이 문구가 축 규약을 알리는 **유일한** 장치"라는 서술은 더 이상 맞지
+             않다 — 이제 `적용` 직후 화면이 **정렬된 결과를 실제로 보여준다**(page.tsx 의
+             sortAxes 가 저장 전에 같은 규칙을 적용하고, 그 값이 측정 패널 헤더 줄과 이 폼의
+             기본값에 그대로 뜬다). 그래서 문구도 "저장됩니다"에서 "표시·저장됩니다"로 고쳤다:
+             작업자가 넣은 순서와 다르게 **보이는** 것이 버그가 아니라 규약임을 미리 알린다. */}
       <p className="text-label-sm bg-muted border-2 p-3 font-normal">
-        <span className="font-bold">가로·세로는 서버가 자동 정렬합니다.</span> 긴 쪽이 가로, 짧은
-        쪽이 세로로 저장되므로 순서를 바꿔 입력해도 됩니다. 높이는 그대로 저장됩니다.
+        <span className="font-bold">긴 쪽이 가로, 짧은 쪽이 세로로 저장</span>됩니다. (높이는 그대로)
       </p>
+
+      {/* 촬영 전이면 — `DB 입력` 이 촬영을 한 번 돌린다는 사실을 미리 알린다.
+          ⚠️ 계약 제약이다: 1-4 는 sessionId 를 경로 파라미터로 받고 그 세션은 1-3 만 만든다.
+             그래서 촬영이 물리적으로 불가해도 1-3 을 한 번은 불러야 수기 확정이 성립한다.
+             촬영이 MEASURE_FAILED 로 와도 sessionId 는 실려 오므로(§1-3) 흐름은 이어진다. */}
+      {!hasSession ? (
+        <p className="text-label-sm text-muted-foreground">
+          아직 촬영 전입니다. 수기값은 지금 기록되고,{" "}
+          <span className="text-foreground font-bold">DB 입력</span> 을 누를 때 확정에 필요한 측정
+          세션을 만들기 위해 촬영이 한 번 실행됩니다 (최대 8초). 추론값은 여기 입력한 수기값으로
+          덮입니다.
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3">
         <DimensionField form={form} name="widthCm" label="가로" unit="cm" />
@@ -177,27 +219,26 @@ function ManualForm({
           name="weightKg"
           label="무게"
           unit="kg"
-          note={
-            hasSessionWeight
-              ? "비우면 저울값을 그대로 씁니다"
-              : "저울값이 없습니다 — 입력해야 확정됩니다"
-          }
+          note={hasSessionWeight ? undefined : "저울값이 없습니다"}
         />
       </div>
 
       {/* 확정본 281~284행: 취소 / 적용, 각 72px */}
       <div className="gap-grid-gap flex">
+        {/* ⚠️ 비활성에 투명도를 쓰지 않는다 — 글씨가 안 읽히는 것이 이 화면의 원래 불만이었다
+            (barcode-scan-row.tsx 의 같은 결정과 짝). 이 두 버튼은 지금 잠기는 경우가 없지만
+            규칙을 한 화면 안에서 통일해 둔다. */}
         <button
           type="button"
           onClick={onCancel}
-          className="bg-card text-action-lg hover:bg-muted h-[72px] flex-1 border-2 active:translate-y-1"
+          className="bg-card text-action-lg hover:bg-muted disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 h-[72px] flex-1 border-2 active:translate-y-1"
         >
           취소
         </button>
         <button
           type="button"
           onClick={submit}
-          className="bg-primary text-primary-foreground text-action-lg h-[72px] flex-1 border-2 active:translate-y-1"
+          className="bg-primary text-primary-foreground text-action-lg disabled:bg-muted disabled:text-muted-foreground h-[72px] flex-1 border-2 opacity-100 active:translate-y-1"
         >
           적용
         </button>

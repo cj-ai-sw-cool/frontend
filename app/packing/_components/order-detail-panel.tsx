@@ -19,8 +19,6 @@ import { cn } from "@/lib/utils";
  * 순수 표시용(presentational): API 를 부르지 않는다. 실수량·선택 상태는 부모(page.tsx)가
  * 들고 있고 여기서는 값과 변경 콜백만 받는다.
  *
- * 컬럼 구성은 Stitch 샘플 P2(localWork/stitch-sample.html 501~506행)를 그대로 따랐다.
- *   제품 43% · 계획 수량 14% · 실수량 15% · 포장시 취급 주의 28%
  * 샘플에는 없던 "확인"(일치/불일치) 컬럼은 없앴다 — 불일치는 행 배경과 실수량 칸 밑의
  * 증감 표시, 그리고 표 위의 경고 배너로 이미 세 번 드러난다.
  *
@@ -91,8 +89,8 @@ export function OrderDetailPanel({
         <Table className="table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[43%]">제품</TableHead>
-              <TableHead className="w-[14%] text-center">계획 수량</TableHead>
+              <TableHead className="w-[45%]">제품</TableHead>
+              <TableHead className="w-[12%] text-center">계획 수량</TableHead>
               <TableHead className="w-[15%] text-center">실수량</TableHead>
               <TableHead className="w-[28%] pl-3">포장시 취급 주의</TableHead>
             </TableRow>
@@ -117,6 +115,7 @@ export function OrderDetailPanel({
                       키보드로는 아예 닿지 않는다. 진짜 버튼으로 두면 둘 다 해결된다.
                       선택됐을 때 붙는 하드 섀도우는 샘플 510행의 선택 행 표현을 옮긴 것으로,
                       색은 전경색 토큰을 그대로 참조한다(components/ui/button.tsx 와 같은 방식).
+
                     */}
                     <button
                       type="button"
@@ -125,7 +124,9 @@ export function OrderDetailPanel({
                       title={item.name}
                       className="flex w-full min-w-0 flex-col gap-0.5 border-2 border-transparent px-2 py-1 text-left transition-colors hover:bg-accent aria-pressed:border-border aria-pressed:bg-card aria-pressed:shadow-[4px_4px_0px_0px_var(--color-foreground)]"
                     >
-                      <span className="block truncate font-medium">{item.name}</span>
+                      <span className="block truncate text-2xl font-semibold">
+                        {item.name}
+                      </span>
                       <span className="block truncate font-mono text-xs text-muted-foreground">
                         {item.gtin}
                       </span>

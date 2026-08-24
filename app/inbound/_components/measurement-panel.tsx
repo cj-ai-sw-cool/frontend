@@ -1,7 +1,7 @@
 "use client";
 
 import { Radio } from "lucide-react";
-import type { MeasurementResponse } from "@/lib/types";
+import type { Dimensions, MeasurementResponse } from "@/lib/types";
 
 /**
  * 자동 측정 데이터 — docs/02-api-spec.md §1-3 `POST /inbound/measurements`.
@@ -42,20 +42,48 @@ import type { MeasurementResponse } from "@/lib/types";
  *   사유를 별도 줄이 아니라 헤더 행 안에 넣은 것이 핵심이다 — 줄을 추가하면 상태에 따라
  *   네 칸의 높이가 203 → 175 로 흔들리는데, 숫자 68px 이 들어앉은 칸이 상태마다 크기가
  *   달라지면 눈이 값을 못 좇는다. 헤더 행은 어차피 h2 와 배지 사이가 비어 있었다.
+ *
+ * ── ★ 이 패널은 "자동 측정" 값만 그린다 (사용자 결정) ────────────────────
+ *   수기 입력이 이긴 상태에서는 네 칸이 **전부 `--`** 가 된다. 수기값을 여기 대신 그리지
+ *   않는다 — 패널 제목이 "자동 측정 데이터"인데 사람이 친 숫자를 그리면 라벨이 거짓말이 된다.
+ *   `--` 자체가 **"자동 측정값은 지금 무효"** 라는 신호다.
+ *
+ *   우선권은 last-write-wins 다(page.tsx 의 manualDims 주석):
+ *     촬영(1-3) 성공 → 수기값을 버린다 → 이 패널이 추론값을 그린다
+ *     수기 적용       → 추론 표시를 죽인다 → 이 패널이 `--` 가 된다
+ *
+ *   ⚠️ 그렇다고 작업자가 자기가 친 숫자를 **아무 데서도 못 보면 안 된다.** 두 군데서 본다:
+ *     ① 헤더 행의 한 줄 — 수기값과 "DB 입력 시 저장된다"는 사실을 같이 적는다.
+ *        칸이 아니라 줄이라 "자동 측정" 라벨과 섞이지 않고, 세로도 0px 먹는다.
+ *     ② 수동 입력 모달을 다시 열면 친 값이 그대로 남아 있다(page.tsx 가 들고 있다).
  */
 export function MeasurementPanel({
   data,
+  manualDims,
+  manualWeightKg,
   isLoading,
   error,
 }: {
   /** 1-3 응답. 아직 촬영 전이면 undefined */
   data?: MeasurementResponse;
+  /**
+   * 수기 입력이 이긴 상태의 치수. null 이면 추론값이 이긴 상태다.
+   * ⚠️ 이 값은 **칸에 그려지지 않는다** — 네 칸을 `--` 로 만들고 헤더 행 한 줄로만 알린다
+   *    (위 주석 ★ 참고). 축 정렬(D-18)은 page.tsx 가 이미 끝낸 상태로 넘어온다.
+   */
+  manualDims?: Dimensions | null;
+  /** 수기 무게. 비웠으면 null — 그때는 세션 저울값이 쓰인다 (§1-4) */
+  manualWeightKg?: number | null;
   isLoading: boolean;
   /** 촬영 호출 자체가 실패했을 때(네트워크·5xx). MEASURE_FAILED 는 여기가 아니라 data 로 온다 */
   error?: string | null;
 }) {
-  const inferred = data?.status === "INFERRED" ? data : null;
-  const problem = describeProblem(data, error);
+  const isManualWinning = manualDims != null;
+  // 수기가 이기면 자동 측정값은 무효다 — 추론값도 저울값도 그리지 않는다
+  const inferred = !isManualWinning && data?.status === "INFERRED" ? data : null;
+  const weightKg = isManualWinning ? undefined : data?.weightKg;
+
+  const notice = describeNotice({ data, error, manualDims, manualWeightKg });
 
   return (
     <section className="bg-accent p-panel-padding flex h-[283px] shrink-0 flex-col border-2">
@@ -67,14 +95,16 @@ export function MeasurementPanel({
                재촬영(1-3 재호출) 또는 수기 확정(1-4 MANUAL). 실제 방어선은 서버다:
                미통과 세션에 APPROVE 하면 409 GATE_NOT_PASSED 가 온다. */}
         <p
-          role={problem === "" ? undefined : "alert"}
-          title={problem === "" ? undefined : problem}
-          className="text-label-sm text-status-error min-w-0 flex-1 truncate font-medium"
+          role={notice.tone === "error" ? "alert" : undefined}
+          title={notice.text === "" ? undefined : notice.text}
+          className={`text-label-sm min-w-0 flex-1 truncate font-medium ${
+            notice.tone === "error" ? "text-status-error" : "text-foreground"
+          }`}
         >
-          {problem}
+          {notice.text}
         </p>
 
-        <StatusBadge data={data} isLoading={isLoading} />
+        <StatusBadge data={data} isManualWinning={isManualWinning} isLoading={isLoading} />
       </div>
 
       {/* 네 칸 — 확정본 82~107행. 값이 없으면 "--" 를 그린다(확정본 측정 전 상태와 같다) */}
@@ -82,15 +112,44 @@ export function MeasurementPanel({
         <MeasurementCell label="가로" value={formatCm(inferred?.inferred.widthCm)} unit="cm" />
         <MeasurementCell label="세로" value={formatCm(inferred?.inferred.lengthCm)} unit="cm" />
         <MeasurementCell label="높이" value={formatCm(inferred?.inferred.heightCm)} unit="cm" />
-        <MeasurementCell label="무게" value={formatKg(data?.weightKg)} unit="kg" />
+        <MeasurementCell label="무게" value={formatKg(weightKg)} unit="kg" />
       </div>
     </section>
   );
 }
 
 /**
- * 헤더 행 가운데의 사유 한 줄. 문제가 없으면 빈 문자열이라 자리만 남고 아무것도 안 그린다.
+ * 헤더 행 가운데의 한 줄. 빈 문자열이면 자리만 남고 아무것도 안 그린다.
  *
+ * 우선순위가 곧 "지금 작업자에게 제일 중요한 사실"이다.
+ *   ① 수기가 이김 → 네 칸이 `--` 인 이유와 **친 값 자체**를 알린다. 오류가 아니라 중립색이다.
+ *                   이 줄이 없으면 작업자는 방금 친 숫자를 화면 어디서도 못 본다.
+ *   ② 문제        → 게이트 미통과·측정 실패·호출 실패
+ */
+function describeNotice({
+  data,
+  error,
+  manualDims,
+  manualWeightKg,
+}: {
+  data: MeasurementResponse | undefined;
+  error: string | null | undefined;
+  manualDims?: Dimensions | null;
+  manualWeightKg?: number | null;
+}): { tone: "error" | "info"; text: string } {
+  if (manualDims != null) {
+    const { widthCm, lengthCm, heightCm } = manualDims;
+    // 헤더 행에 남는 폭이 450px 남짓이라 짧게 쓴다. 잘려도 title 로 전문이 뜬다.
+    const weight = manualWeightKg == null ? "무게 저울값" : `${formatKg(manualWeightKg)} kg`;
+    return {
+      tone: "info",
+      text: `수기 ${formatCm(widthCm)} / ${formatCm(lengthCm)} / ${formatCm(heightCm)} cm · ${weight} — DB 입력 시 저장`,
+    };
+  }
+  return { tone: "error", text: describeProblem(data, error) };
+}
+
+/**
  * TODO(P1): 사유 코드 → 한국어 라벨 맵을 붙인다.
  *   02 에는 코드 목록이 없고 계약은 string[] 뿐이라 지금은 코드를 그대로 보여준다.
  *   AI/백엔드와 코드 목록이 정해지면 app/packing/_components/order-detail-panel.tsx 의
@@ -121,8 +180,16 @@ function describeProblem(
  *    어색해 보이지만, 우리 팔레트에 "오류 배경 위 글자" 슬롯이 없어서 흰색 토큰 중
  *    의미가 가장 가까운 것을 골랐다. 하드코딩(#fff)하면 팔레트 전환이 이 자리만 안 먹는다.
  */
-function StatusBadge({ data, isLoading }: { data?: MeasurementResponse; isLoading: boolean }) {
-  const { tone, label } = describeStatus(data, isLoading);
+function StatusBadge({
+  data,
+  isManualWinning,
+  isLoading,
+}: {
+  data?: MeasurementResponse;
+  isManualWinning: boolean;
+  isLoading: boolean;
+}) {
+  const { tone, label } = describeStatus(data, isManualWinning, isLoading);
   return (
     <span
       className={`text-label-sm flex h-8 shrink-0 items-center gap-2 border px-4 ${
@@ -141,9 +208,13 @@ function StatusBadge({ data, isLoading }: { data?: MeasurementResponse; isLoadin
 
 function describeStatus(
   data: MeasurementResponse | undefined,
+  isManualWinning: boolean,
   isLoading: boolean,
 ): { tone: "ok" | "error" | "idle"; label: string } {
   if (isLoading) return { tone: "idle", label: "MEASURING…" };
+  // 수기가 이기면 자동 측정 상태(신뢰도·게이트)는 더 이상 이 화면의 판단 근거가 아니다.
+  // 배지가 계속 `MEASURED · 93%` 라고 말하면 `--` 인 칸과 정면으로 어긋난다.
+  if (isManualWinning) return { tone: "ok", label: "MANUAL · 수기 입력" };
   if (data === undefined) return { tone: "idle", label: "STANDBY" };
   if (data.status === "MEASURE_FAILED") return { tone: "error", label: "FAILED" };
   const percent = `${(data.confidence * 100).toFixed(0)}%`;

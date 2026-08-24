@@ -25,6 +25,13 @@ import type { BoxType } from "@/lib/types";
  *   나중에 되짚을 수 있어야 하므로, 화면에서도 추천값을 지우지 않고 나란히 보여준다.
  *
  * 단위는 cm 고정 (D-03).
+ *
+ * 이 패널의 세로 예산 (page.tsx 의 우측 단 356px → 안쪽 282px)
+ *   박스 이름 48 + 치수·재고 40 + 4 = 92 · 충전재 36 · 구분선 1 · 박스 변경 76
+ *   + 칸 사이 12×4 = **253**. 오버라이드 줄(+32)이나 실패 문구(+28)가 붙어도 282 안이다.
+ *   자리를 만든 방법: 칸 사이 간격을 16→12(grid-gap 과 같은 값)로 좁히고 "박스 변경"
+ *   라벨을 16→14px 로 낮췄다. 둘 다 읽는 데 지장이 없는 곳이고, 그렇게 아낀 20px 이
+ *   박스 이름을 30→48px 로 키우는 데 들어갔다.
  */
 export function BoxRecommendationPanel({
   recommendedBox,
@@ -57,7 +64,7 @@ export function BoxRecommendationPanel({
     finalBox.boxTypeId !== recommendedBox.boxTypeId;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {effectiveBox === null ? (
         <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
           추천 박스가 없습니다. 아래에서 직접 선택하세요.
@@ -65,8 +72,7 @@ export function BoxRecommendationPanel({
       ) : (
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            {/* Stitch 의 measurement-xl(32px)에 대응 — 멀리서도 박스 호수가 보여야 한다 */}
-            <span className="text-3xl leading-none font-bold">{effectiveBox.name}</span>
+            <span className="text-5xl leading-none font-bold">{effectiveBox.name}</span>
             {isOverridden ? <Badge variant="secondary">오버라이드됨</Badge> : null}
           </div>
 
@@ -105,7 +111,7 @@ export function BoxRecommendationPanel({
       <Separator />
 
       <div className="space-y-2">
-        <Label htmlFor="box-override" className="text-base">
+        <Label htmlFor="box-override" className="text-sm">
           박스 변경
         </Label>
         <Select
@@ -130,6 +136,12 @@ export function BoxRecommendationPanel({
           </SelectContent>
         </Select>
 
+        {/* 3-3 실패만 표시한다. 평소에는 아무것도 그리지 않는다 — 여기 있던 상시 안내
+            ("추천과 다른 박스를 쓰면 그 사실이 기록됩니다…")는 삭제됐다(사용자 결정).
+            에러 표시는 남는다: 오버라이드가 실패하면 셀렉트 값만 되돌아갈 뿐 화면에는 아무
+            일도 일어나지 않아서, 작업자가 왜 안 바뀌는지 알 방법이 없다.
+            안내와 에러를 삼항 양쪽에 묶어 두면 안내를 지울 때 에러까지 함께 사라지므로,
+            **에러가 있을 때만 렌더**하는 형태로 분리해 뒀다. */}
         {error ? (
           <p role="alert" className="text-sm text-status-error">
             {error}
