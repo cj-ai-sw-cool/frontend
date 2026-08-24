@@ -43,6 +43,7 @@ export function ActionButtons({
   onCapture,
   canSubmit,
   isSubmitting,
+  submitBusyLabel,
   submitHint,
   onSubmit,
 }: {
@@ -55,6 +56,8 @@ export function ActionButtons({
   onCapture: () => void;
   canSubmit: boolean;
   isSubmitting: boolean;
+  /** 진행 중일 때 버튼이 달 라벨 — 1-3 / 1-4 / 1-5 중 어느 단계인지 부모가 정해 준다 */
+  submitBusyLabel: string;
   /** 지금 누르면 무슨 API 가 나가는지, 혹은 왜 잠겼는지 — 부모가 만든 한 줄 */
   submitHint: string;
   onSubmit: () => void;
@@ -82,7 +85,7 @@ export function ActionButtons({
           둘 다 브랜드 네이비이고 명도 차이만 있어 역할이 흐트러지지 않는다. */}
       <ActionButton
         icon={Save}
-        label={isSubmitting ? "처리 중…" : "DB 입력"}
+        label={isSubmitting ? submitBusyLabel : "DB 입력"}
         hint={submitHint}
         disabled={!canSubmit}
         urged={false}
@@ -121,7 +124,10 @@ function ActionButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`flex min-w-0 flex-col items-center justify-center gap-3 border-2 px-4 text-center active:translate-y-1 disabled:opacity-50 ${
+      // ⚠️ 비활성에 투명도를 쓰지 않는다 — 216px 짜리 판이 반투명해지면 안쪽 라벨과
+      //    잠긴 사유가 같이 흐려져서 "왜 못 누르는지"를 읽을 수 없다. 이 화면의 원래
+      //    불만이 정확히 그것이었다(barcode-scan-row.tsx 의 같은 결정과 짝).
+      className={`flex min-w-0 flex-col items-center justify-center gap-3 border-2 px-4 text-center active:translate-y-1 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 ${
         urged ? "ring-status-error ring-4" : ""
       } ${className}`}
     >

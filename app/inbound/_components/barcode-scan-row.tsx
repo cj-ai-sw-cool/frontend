@@ -73,8 +73,22 @@ export function BarcodeScanRow({
   error?: string | null;
   /**
    * 수동 입력을 열 수 있는가.
-   * 1-4 MANUAL 은 **세션이 있어야** 성립하므로(§1-4 는 sessionId 경로 파라미터를 받는다),
-   * 촬영(1-3) 전에는 치수를 받아 둬도 보낼 곳이 없다. 그래서 세션이 생긴 뒤에만 연다.
+   *
+   * ⚠️ **판단이 뒤집혔다** (사용자 결정). 이전 개정은 "1-4 MANUAL 은 세션이 있어야 성립하므로
+   *    (§1-4 는 sessionId 를 경로 파라미터로 받는다) 촬영(1-3) 전에는 치수를 받아 둬도 보낼
+   *    곳이 없다"는 이유로 **촬영 뒤에만** 열었다. 계약 서술은 지금도 맞다 — 틀린 건
+   *    "그러니 버튼을 잠근다"는 결론이었다.
+   *    · 실제 증상: 이 버튼은 화면에서 제일 큰 글씨(32px)인데도 **평소에 흐리게** 보였다.
+   *      원인은 색·크기가 아니라 `disabled:opacity-50` 이었다 — 촬영 전이 기본 상태라
+   *      작업자가 이 버튼을 보는 시간의 대부분이 비활성이었다.
+   *    · 업무 근거가 더 크다: **촬영이 물리적으로 불가한 경우가 있다.** 촬영이 메인 기능이고
+   *      화면도 그쪽을 유도하지만, 불가할 때 입고 자체가 막히면 안 된다.
+   *    · 그래서 조건은 이제 `product !== null` **하나뿐**이다. 촬영 여부도, 확정 여부도 보지
+   *      않는다 — 이미 확정된 상품(REGISTERED 포함)도 수기로 고쳐 다시 저장할 수 있어야
+   *      한다는 것이 사용자 요구다.
+   *    · 세션은 `적용` 이 아니라 **`DB 입력` 시점**에 확보한다(없으면 1-3 을 먼저 부른다 —
+   *      page.tsx 의 handleDbSubmit 참고). `적용` 에서 부르면 촬영이 불가한 상황에서
+   *      모달이 그대로 멈춘다.
    */
   canManualInput: boolean;
   onOpenManual: () => void;
@@ -165,7 +179,11 @@ export function BarcodeScanRow({
         type="button"
         disabled={!canManualInput}
         onClick={onOpenManual}
-        className={`text-action-lg h-full shrink-0 rounded-none px-6 ${
+        // ⚠️ `disabled:opacity-50`(components/ui/button.tsx, 팀 공유라 못 고침)을 이 버튼에서만
+        //    덮는다. 반투명은 "지금 못 쓴다"를 알리는 대신 **글씨를 못 읽게** 만든다 —
+        //    32px 흰 글자 / 네이비 배경(대비 15.7:1)이 회색 얼룩이 됐던 자리다.
+        //    비활성일 때는 투명도 대신 **연한 배경 + 읽히는 글자색**으로 간다.
+        className={`text-action-lg h-full shrink-0 rounded-none px-6 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 ${
           isManualUrged ? "ring-status-error ring-4" : ""
         }`}
       >

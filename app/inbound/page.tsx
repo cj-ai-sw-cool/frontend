@@ -81,9 +81,19 @@ export default function InboundPage() {
   /** 1-4 요청의 handling. 기본값은 1-3 응답의 handlingDefaults 에서 깔린다 */
   const [handling, setHandling] = useState<Handling>(EMPTY_HANDLING);
   /**
-   * 수동 입력 모달에서 `적용` 한 값. null 이면 아직 수기 경로가 아니다.
-   * 이 값이 채워지면 `DB 입력` 이 **MANUAL 경로로 해제**된다 — 게이트 미통과·측정 실패의
-   * 두 해제 수단 중 하나다(§1-3). `weightKg: null` 은 "세션 저울값을 그대로 쓴다"는 뜻이다.
+   * 수동 입력 모달에서 `적용` 한 값. null 이면 **추론값이 이긴 상태**다.
+   * `weightKg: null` 은 "세션 저울값을 그대로 쓴다"는 뜻이다 (§1-4).
+   *
+   * ── ★ 우선권: 마지막에 한 것이 이긴다 (사용자 결정) ─────────────────────
+   *   촬영(1-3) 성공 → 이 값을 **비운다**  → 추론값이 이긴다
+   *   수기 `적용`    → 이 값을 **채운다**  → 수기값이 이기고 측정 패널이 `--` 가 된다
+   *   그래서 순서가 곧 결과다:
+   *     수기 → 촬영 → DB 입력  = 촬영값 저장 (촬영이 수기를 지웠다)
+   *     촬영 → 수기 → DB 입력  = 수기값 저장 (수기가 추론 표시를 죽였다)
+   *   ⚠️ 이전 개정은 이 값을 "게이트 미통과·측정 실패의 해제 수단"으로만 봤다. 뒤집힌 게
+   *      아니라 **넓어졌다** — 이제 정상 경로에서도 언제든 쓸 수 있고, 이미 확정된 상품의
+   *      치수를 고치는 수단이기도 하다. 촬영이 메인이지만 촬영이 불가할 수도 있기 때문이다.
+   *   ⚠️ 여기 담기는 dims 는 **축 정렬(D-18)을 이미 끝낸** 값이다 — sortAxes 참고.
    */
   const [manual, setManual] = useState<{ dims: Dimensions; weightKg: number | null } | null>(null);
 
@@ -122,6 +132,20 @@ export default function InboundPage() {
   /* ── 무엇을 누를 수 있는가 ──────────────────────────────── */
   const isBusy = scan.isPending || measure.isPending || confirm.isPending || stockIn.isPending;
 
+  /**
+   * `DB 입력` 이 최대 3단계(1-3 → 1-4 → 1-5)를 연쇄하므로, 지금 어느 단계인지를 버튼이
+   * 직접 말한다. 통째로 "처리 중…" 하나로 두면 1-3 의 8초 동안 작업자가 멈춘 줄 안다 —
+   * 세 단계 중 **1-3 만** 오래 걸리는데(기대 3초·상한 8초, §1-3) 그게 어느 단계인지
+   * 알면 기다릴 수 있다. 나머지 둘은 mock 0.35초씩이라 사실상 스쳐 지나간다.
+   */
+  const busyLabel = measure.isPending
+    ? "촬영 중… (최대 8초)"
+    : confirm.isPending
+      ? "치수 확정 중…"
+      : stockIn.isPending
+        ? "입고 중…"
+        : "처리 중…";
+
   const plan = buildSubmitPlan({
     scanResult: scan.data,
     measurement,
@@ -142,10 +166,22 @@ export default function InboundPage() {
     manual === null &&
     (measurement.status === "MEASURE_FAILED" || !measurement.gatePassed);
 
-  /** 재측정도 같은 1-3 이다 (§1-3). 확정·입고가 끝난 뒤에는 새 바코드부터 시작한다 */
-  const canCapture = product !== null && !isBusy && !isConfirmed && stockIn.data === undefined;
-  /** 1-4 MANUAL 은 sessionId 가 있어야 성립하므로, 촬영 전에는 수동 입력을 열지 않는다 */
-  const canManualInput = measurement !== undefined && !isConfirmed && !isBusy;
+  /**
+   * 재측정도 같은 1-3 이다 (§1-3).
+   * ⚠️ `!isConfirmed` 를 **뺐다.** last-write-wins 를 택한 이상 "확정 후에는 다시 못 찍는다"가
+   *    앞뒤가 안 맞는다 — 수기는 언제든 되는데 촬영만 막으면, 촬영이 메인 기능이라는 전제와
+   *    정면으로 어긋난다. 확정 뒤 재촬영은 새 세션을 열고(이전 미확정 세션은 서버가 DISCARDED
+   *    처리한다) 그 값이 다시 이긴다.
+   * ⚠️ `stockIn.data === undefined` 는 **남겼다.** 이건 확정이 아니라 **이중 입고** 방어다
+   *    (§1-5 에 멱등 규정이 없다). 입고까지 끝난 뒤에 치수를 고치려면 새 바코드부터다 —
+   *    되돌리기 경로를 새로 만드는 것은 이번 범위 밖이라 PM 보고 항목으로 남긴다.
+   */
+  const canCapture = product !== null && !isBusy && stockIn.data === undefined;
+  /**
+   * ★ 수동 입력은 **언제든** 열린다 — 조건은 상품이 잡혔는가 하나뿐이다 (사용자 결정).
+   * 촬영 여부도 확정 여부도 보지 않는다. 근거는 barcode-scan-row.tsx 의 canManualInput 주석.
+   */
+  const canManualInput = product !== null;
 
   /* ── 이벤트 ────────────────────────────────────────────── */
   const handleScan = useCallback(() => {
@@ -168,11 +204,12 @@ export default function InboundPage() {
   /** 촬영 = 첫 촬영과 재촬영을 겸한다. 재촬영은 같은 productId 로 1-3 재호출 (§1-3) */
   const handleCapture = useCallback(() => {
     if (product === null) return;
-    // 재촬영하면 새 세션이 열리므로 이전 확정 결과와 수기 입력값은 이 화면과 무관해진다
+    // 재촬영하면 새 세션이 열리므로 이전 확정 결과는 이 화면과 무관해진다
     confirm.reset();
-    setManual(null);
     measure.mutate(product.productId, {
       onSuccess: (result) => {
+        // ★ last-write-wins — 촬영이 성공했으므로 수기값을 버린다(위 manual 상태 주석)
+        setManual(null);
         // 취급속성 기본값은 서버의 category_attribute_map 에서 온다 (§1-3)
         setHandling(result.status === "INFERRED" ? result.handlingDefaults : EMPTY_HANDLING);
         // §1-3 이 정한 동작: 측정 실패면 수동 입력 fallback 을 자동으로 연다
@@ -181,8 +218,13 @@ export default function InboundPage() {
     });
   }, [product, measure, confirm]);
 
+  /**
+   * `적용` — 값만 기록하고 닫는다. API 는 부르지 않는다(모달 주석 참고).
+   * ★ 축 정렬(D-18)을 **여기서 한 번** 한다: 저장 전 정렬과 화면 표시가 같은 값이 되도록
+   *   경계에서 한 번만 돌린다. 여러 군데서 정렬하면 언젠가 어긋난다.
+   */
   const handleApplyManual = useCallback((dims: Dimensions, weightKg: number | null) => {
-    setManual({ dims, weightKg });
+    setManual({ dims: sortAxes(dims), weightKg });
     setIsManualOpen(false);
   }, []);
 
@@ -217,24 +259,50 @@ export default function InboundPage() {
       return;
     }
 
-    if (measurement === undefined) return; // 타입 좁히기용 — plan 이 이미 보장한다
-    const body: ConfirmRequest =
-      plan.method === "MANUAL" && manual !== null
-        ? { method: "MANUAL", dims: manual.dims, weightKg: manual.weightKg, handling }
-        : // 세션 저울값을 쓰라는 뜻으로 null 을 보낸다 (§1-4 — 생략/null 이면 measured_weight_kg)
-          { method: "APPROVE", weightKg: null, handling };
+    /** 세션 하나를 받아 1-4 → 1-5 를 잇는다. 세션이 어디서 왔는지는 여기서 신경 쓰지 않는다 */
+    const runConfirmThenStockIn = (sessionId: number) => {
+      const body: ConfirmRequest =
+        plan.method === "MANUAL" && manual !== null
+          ? { method: "MANUAL", dims: manual.dims, weightKg: manual.weightKg, handling }
+          : // 세션 저울값을 쓰라는 뜻으로 null 을 보낸다 (§1-4 — 생략/null 이면 measured_weight_kg)
+            { method: "APPROVE", weightKg: null, handling };
 
-    confirm.mutate(
-      { sessionId: measurement.sessionId, body },
-      {
-        onSuccess: runStockIn,
-        onError: (error) => {
-          const { title, detail } = describeConfirmFailure(error);
-          toast.error(title, { description: detail });
+      confirm.mutate(
+        { sessionId, body },
+        {
+          onSuccess: runStockIn,
+          onError: (error) => {
+            const { title, detail } = describeConfirmFailure(error);
+            toast.error(title, { description: detail });
+          },
         },
-      },
-    );
-  }, [product, plan, measurement, manual, handling, qty, stockIn, confirm]);
+      );
+    };
+
+    if (measurement !== undefined) {
+      runConfirmThenStockIn(measurement.sessionId);
+      return;
+    }
+
+    /* ── 세션이 없다: 1-3 → 1-4 MANUAL → 1-5 세 단계 연쇄 ──────────────────
+       계약 제약이다 — 1-4 는 sessionId 를 경로 파라미터로 받고, 그 세션은 1-3 만 만든다.
+       그래서 촬영이 물리적으로 불가해도 1-3 을 한 번은 불러야 수기 확정이 성립한다.
+       ⚠️ 여기서 setManual(null) 을 하지 않는다. handleCapture 의 촬영은 "작업자가 찍겠다고
+          누른 것"이라 수기값을 지우는 게 맞지만, 이 1-3 은 **수기값을 저장하기 위한**
+          세션 확보다. 지우면 방금 친 값이 사라지고 APPROVE 로 새어 나간다. */
+    if (plan.kind !== "CONFIRM_THEN_STOCK_IN" || plan.method !== "MANUAL") return;
+    measure.mutate(product.productId, {
+      // ⚠️ MEASURE_FAILED 도 성공 경로다 — HTTP 에러가 아니라 상태값이고 sessionId 가
+      //    실려 온다(§1-3). 오히려 촬영이 불가한 상황의 정상 경로다. 흐름을 끊지 않는다.
+      onSuccess: (result) => runConfirmThenStockIn(result.sessionId),
+      // 진짜 실패(네트워크·5xx)면 세션이 없어 확정이 불가능하다. 수기값은 그대로 두고
+      // 이유만 알린다 — 다시 누르면 곧 재시도이고, 촬영 버튼으로 가도 된다.
+      onError: (error) =>
+        toast.error("측정 세션을 만들지 못해 확정할 수 없습니다", {
+          description: `${error.message} 수기 입력값은 그대로 남아 있습니다. 다시 DB 입력을 누르거나 촬영을 실행하세요.`,
+        }),
+    });
+  }, [product, plan, measurement, manual, handling, qty, stockIn, confirm, measure]);
 
   /* ── 표시 ──────────────────────────────────────────────── */
   return (
@@ -245,6 +313,8 @@ export default function InboundPage() {
             신뢰도·게이트 사유도 이 패널이 그린다(계약 필수 UI ②). */}
         <MeasurementPanel
           data={measurement}
+          manualDims={manual?.dims ?? null}
+          manualWeightKg={manual?.weightKg ?? null}
           isLoading={measure.isPending}
           error={measure.error?.message ?? null}
         />
@@ -296,7 +366,8 @@ export default function InboundPage() {
           isCaptureUrged={isUnlockUrged}
           onCapture={handleCapture}
           canSubmit={plan.kind !== "BLOCKED" && !isBusy}
-          isSubmitting={confirm.isPending || stockIn.isPending}
+          isSubmitting={isBusy}
+          submitBusyLabel={busyLabel}
           submitHint={plan.hint}
           onSubmit={handleDbSubmit}
         />
@@ -307,6 +378,7 @@ export default function InboundPage() {
         open={isManualOpen}
         onOpenChange={setIsManualOpen}
         measurement={measurement}
+        applied={manual}
         onApply={handleApplyManual}
       />
     </div>
@@ -365,6 +437,26 @@ function buildSubmitPlan({
     };
   }
 
+  /* ★ 수기값이 이긴 상태가 **제일 먼저**다 (last-write-wins).
+     REGISTERED 든 이미 확정됐든, 수기로 고쳤으면 그 값을 저장해야 한다 —
+     "기존 데이터도 수기로 수정할 수 있어야 한다"가 사용자 요구다.
+     §1-4 는 MANUAL 을 게이트·상태와 무관하게 항상 허용하므로 계약상으로도 걸리는 게 없다. */
+  if (manual !== null) {
+    // 세션이 있는데 양쪽 다 무게가 없으면 확정이 400 이다 (§1-4). 미리 잡아 준다.
+    // 세션이 없으면 1-3 이 저울값을 실어 올 수 있으므로 여기서 막지 않는다.
+    if (measurement !== undefined && manual.weightKg == null && measurement.weightKg == null) {
+      return { kind: "BLOCKED", hint: "무게가 없습니다 — 수동 입력에서 무게를 채우세요" };
+    }
+    return {
+      kind: "CONFIRM_THEN_STOCK_IN",
+      method: "MANUAL",
+      hint:
+        measurement === undefined
+          ? "수기값 저장 · 1-3 세션 확보 → 1-4 MANUAL → 1-5 입고"
+          : "수기값 저장 · 1-4 MANUAL → 1-5 입고",
+    };
+  }
+
   // 이번 화면에서 방금 확정했거나(1-4 성공), 애초에 치수가 확정된 상품(REGISTERED)
   if (isConfirmed) return { kind: "STOCK_IN", hint: "치수 확정됨 · 1-5 입고" };
   if (scanResult.judgment === "REGISTERED") {
@@ -373,19 +465,7 @@ function buildSubmitPlan({
 
   /* 여기부터 NEW — 촬영·확정을 거쳐야 한다 */
   if (measurement === undefined) {
-    return { kind: "BLOCKED", hint: "촬영이 필요합니다 — 왼쪽 촬영 버튼 (1-3)" };
-  }
-
-  // 수기 치수를 적용했으면 게이트와 무관하게 MANUAL 로 확정할 수 있다 (§1-4 는 항상 허용)
-  if (manual !== null) {
-    if (manual.weightKg == null && measurement.weightKg == null) {
-      return { kind: "BLOCKED", hint: "무게가 없습니다 — 수동 입력에서 무게를 채우세요" };
-    }
-    return {
-      kind: "CONFIRM_THEN_STOCK_IN",
-      method: "MANUAL",
-      hint: "수기 치수 적용됨 · 1-4 MANUAL → 1-5 입고",
-    };
+    return { kind: "BLOCKED", hint: "촬영하거나 수동 입력으로 치수를 넣으세요 (1-3)" };
   }
 
   /* ★ 해제 수단은 두 가지뿐이다 — 재촬영(1-3 재호출) 또는 수기 확정(1-4 MANUAL). §1-3 */
@@ -420,6 +500,25 @@ const IMAGE_SOURCE_LABEL: Record<ProductImagesResponse["source"], string> = {
 
 /** 촬영 전·새 스캔 직후의 취급속성. 1-3 이 오면 handlingDefaults 로 덮인다 */
 const EMPTY_HANDLING: Handling = { refrigerate: false, fragile: false, irregular: false };
+
+/**
+ * 치수 축 정렬 — D-18.
+ * 서버는 `widthCm < lengthCm` 이면 **가로·세로를 스왑해서 저장**한다(높이는 건드리지 않는다).
+ * 그런데 1-4 응답에는 dims 가 없어서(§1-4 는 productId/dimStatus/dimMethod 만 준다) 정렬
+ * 결과를 되받을 수단이 없다. 그래서 화면이 **같은 규칙을 저장 전에 직접** 돌린다 —
+ * 그래야 68px 칸·헤더 줄·모달 기본값·실제 DB 값이 전부 같은 숫자가 된다.
+ *
+ * ⚠️ 검증으로 막지 않는다. 자동 정렬이 결정이다 — 물리적으로 같은 값이라 작업자가 판단할
+ *    여지가 없고, 시연 중에 검증 실패 화면을 띄울 이유가 없다.
+ * ⚠️ 추론값(1-3)에는 돌리지 않는다. 서버가 이미 정렬해서 내려주므로(§1-3 불변식) 두 번
+ *    돌릴 필요가 없고, 두 번 돌려도 결과는 같지만 "어디서 정렬하는가"를 한 곳으로 묶어 둔다.
+ */
+function sortAxes(dims: Dimensions): Dimensions {
+  const { widthCm, lengthCm, heightCm } = dims;
+  return widthCm >= lengthCm
+    ? dims
+    : { widthCm: lengthCm, lengthCm: widthCm, heightCm };
+}
 
 /**
  * 1-4 실패 안내.
