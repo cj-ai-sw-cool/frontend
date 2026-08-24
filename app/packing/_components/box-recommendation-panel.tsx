@@ -130,6 +130,12 @@ export function BoxRecommendationPanel({
           </SelectContent>
         </Select>
 
+        {/* 3-3 실패만 표시한다. 평소에는 아무것도 그리지 않는다 — 여기 있던 상시 안내
+            ("추천과 다른 박스를 쓰면 그 사실이 기록됩니다…")는 삭제됐다(사용자 결정).
+            에러 표시는 남는다: 오버라이드가 실패하면 셀렉트 값만 되돌아갈 뿐 화면에는 아무
+            일도 일어나지 않아서, 작업자가 왜 안 바뀌는지 알 방법이 없다.
+            안내와 에러를 삼항 양쪽에 묶어 두면 안내를 지울 때 에러까지 함께 사라지므로,
+            **에러가 있을 때만 렌더**하는 형태로 분리해 뒀다. */}
         {error ? (
           <p role="alert" className="text-sm text-status-error">
             {error}

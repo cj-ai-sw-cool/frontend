@@ -21,6 +21,11 @@ import { cn } from "@/lib/utils";
  *
  * 컬럼 구성은 Stitch 샘플 P2(localWork/stitch-sample.html 501~506행)를 그대로 따랐다.
  *   제품 43% · 계획 수량 14% · 실수량 15% · 포장시 취급 주의 28%
+ * 제품 이름을 20px 로 키운 뒤에도 이 비율은 그대로 뒀다 — 표 폭 655 기준 제품 칸 281,
+ * 안쪽 여백을 뺀 글자 자리가 약 245px 라 mock 3건(가장 긴 "□□ 즉석밥 210g 3입" ≈ 190px)은
+ * 잘리지 않는다. 실제 데이터에서 이름이 자주 잘리면 **계획 수량 14%→10%** 를 먼저 줄인다
+ * (두 자리 숫자에 92px 는 과하다). 취급 주의 칸을 줄이면 배지가 두 줄로 접혀 행 높이가
+ * 늘어나므로 그쪽은 마지막 수단이다.
  * 샘플에는 없던 "확인"(일치/불일치) 컬럼은 없앴다 — 불일치는 행 배경과 실수량 칸 밑의
  * 증감 표시, 그리고 표 위의 경고 배너로 이미 세 번 드러난다.
  *
@@ -117,6 +122,12 @@ export function OrderDetailPanel({
                       키보드로는 아예 닿지 않는다. 진짜 버튼으로 두면 둘 다 해결된다.
                       선택됐을 때 붙는 하드 섀도우는 샘플 510행의 선택 행 표현을 옮긴 것으로,
                       색은 전경색 토큰을 그대로 참조한다(components/ui/button.tsx 와 같은 방식).
+
+                      제품 이름만 20px(text-xl)로 키웠다 — 표 기본값(14px)을 물려받던 자리다.
+                      이 행에서 가장 먼저 읽혀야 하는 값인데, 실수량 입력칸(18px)·계획 수량(24px)
+                      보다 작아 숫자가 먼저 눈에 들어왔다. 샘플도 제품 이름은 body-input(20px)이다
+                      (84~85행). 바코드(12px)는 대조용 보조값이라 그대로 뒀다 — 같이 키우면
+                      행 높이만 늘고 위계가 다시 흐려진다.
                     */}
                     <button
                       type="button"
@@ -125,7 +136,9 @@ export function OrderDetailPanel({
                       title={item.name}
                       className="flex w-full min-w-0 flex-col gap-0.5 border-2 border-transparent px-2 py-1 text-left transition-colors hover:bg-accent aria-pressed:border-border aria-pressed:bg-card aria-pressed:shadow-[4px_4px_0px_0px_var(--color-foreground)]"
                     >
-                      <span className="block truncate font-medium">{item.name}</span>
+                      <span className="block truncate text-xl font-medium">
+                        {item.name}
+                      </span>
                       <span className="block truncate font-mono text-xs text-muted-foreground">
                         {item.gtin}
                       </span>
