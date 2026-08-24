@@ -242,8 +242,8 @@ export default function InboundPage() {
       stockIn.mutate(
         { productId: product.productId, qty },
         {
-          onSuccess: (result) => {
-            toast.success(`입고 완료 — ${product.name} 현재 재고 ${result.stockQty}개`);
+          onSuccess: () => {
+            toast.success(`입고 완료`);
             // TODO(P1): 입고 후 화면을 어디까지 비울지 정한다. 출고 포장 화면은 완료 시
             //   전부 비우고 다음 토트를 받지만, 입고는 같은 상품을 나눠 넣는 경우가 있어
             //   비우면 오히려 방해가 될 수 있다. 지금은 아무것도 비우지 않고, 대신
@@ -465,7 +465,7 @@ function buildSubmitPlan({
 
   /* 여기부터 NEW — 촬영·확정을 거쳐야 한다 */
   if (measurement === undefined) {
-    return { kind: "BLOCKED", hint: "촬영하거나 수동 입력으로 치수를 넣으세요 (1-3)" };
+    return { kind: "BLOCKED", hint: "치수를 측정하세요 (1-3)" };
   }
 
   /* ★ 해제 수단은 두 가지뿐이다 — 재촬영(1-3 재호출) 또는 수기 확정(1-4 MANUAL). §1-3 */

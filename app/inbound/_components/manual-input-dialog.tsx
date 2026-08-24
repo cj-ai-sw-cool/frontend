@@ -194,8 +194,7 @@ function ManualForm({
              기본값에 그대로 뜬다). 그래서 문구도 "저장됩니다"에서 "표시·저장됩니다"로 고쳤다:
              작업자가 넣은 순서와 다르게 **보이는** 것이 버그가 아니라 규약임을 미리 알린다. */}
       <p className="text-label-sm bg-muted border-2 p-3 font-normal">
-        <span className="font-bold">가로·세로는 자동 정렬됩니다.</span> 긴 쪽이 가로, 짧은 쪽이
-        세로로 표시·저장되므로 순서를 바꿔 입력해도 됩니다. 높이는 그대로입니다.
+        <span className="font-bold">긴 쪽이 가로, 짧은 쪽이 세로로 저장</span>됩니다. (높이는 그대로)
       </p>
 
       {/* 촬영 전이면 — `DB 입력` 이 촬영을 한 번 돌린다는 사실을 미리 알린다.
@@ -220,11 +219,7 @@ function ManualForm({
           name="weightKg"
           label="무게"
           unit="kg"
-          note={
-            hasSessionWeight
-              ? "비우면 저울값을 그대로 씁니다"
-              : "저울값이 없습니다 — 입력해야 확정됩니다"
-          }
+          note={hasSessionWeight ? undefined : "저울값이 없습니다"}
         />
       </div>
 
