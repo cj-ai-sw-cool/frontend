@@ -5,7 +5,7 @@ import type { ScanJudgment, ScanResponse } from "@/lib/types";
 
 /**
  * 제품 정보 — docs/02-api-spec.md §1-1 응답의 "1단 표시 데이터" 그 자체다.
- * 디자인 확정본 우측 컬럼 두 번째 패널(body.html 190~197행). 높이는 flex-1(≈380px).
+ * 디자인 확정본 우측 컬럼 두 번째 패널(body.html 190~197행). 높이는 flex-1(≈284px).
  *
  * 순수 표시용(presentational): API 를 부르지 않는다.
  *
@@ -35,8 +35,8 @@ import type { ScanJudgment, ScanResponse } from "@/lib/types";
  *      (① 상품 마스터에 넣기 ② 1-4 ConfirmRequest 확장 ③ 화면 전용).
  *      계약이 정해지면 이 패널이나 취급 주의사항 패널에 자리를 만들어야 한다.
  *
- * ── 세로 예산 (flex-1, 우측 컬럼 나머지 ≈380px) ─────────────────────────
- *   패딩 32 + 헤더 h-8(32) + gap-3(12) + 본문 flex-1(≈304)
+ * ── 세로 예산 (flex-1, 우측 컬럼 나머지 ≈284px) ─────────────────────────
+ *   패딩 32 + 헤더 h-8(32) + gap-3(12) + 본문 flex-1(≈208)
  *   본문은 이미지 110px 칸과 텍스트 열이 나란히 서고, 텍스트 열은 세로 가운데 정렬이다.
  */
 export function ProductInfoPanel({

@@ -19,6 +19,7 @@ import { ManualInputDialog } from "./_components/manual-input-dialog";
 import { MeasurementPanel } from "./_components/measurement-panel";
 import { ProductInfoPanel } from "./_components/product-info-panel";
 import { ProductPhotoPanel } from "./_components/product-photo-panel";
+import { QuantityPanel } from "./_components/quantity-panel";
 import {
   useBarcodeScan,
   useConfirmMeasurement,
@@ -40,8 +41,8 @@ import {
  *   main 안쪽 = 1445 - 24 × 940 - 24 = 1421 × 916   (p-grid-gap 12px 은 layout.tsx 가 이미 준다)
  *   가로: 좌 920 + gap 12 + 우 flex-1(489) = 1421
  *   좌 920 세로: 283 + 12 + 366 + 12 + 243 = 916 ✓
- *   우 489 세로: 96 + 12 + [flex-1] + 12 + 188 + 12 + 216 = 916
- *                → flex-1(제품 정보) = 916 - 500 - 36 = 380 ✓
+ *   우 489 세로: 96 + 12 + [flex-1] + 12 + 188 + 12 + 84 + 12 + 216 = 916
+ *                → flex-1(제품 정보) = 916 - 608 - 48 = 284 ✓
  *   각 패널이 자기 높이를 스스로 들고 있고(h-[...] + shrink-0), 늘어나는 칸은 제품 정보
  *   하나뿐이다. 그래서 어떤 상태에서도 세로 합이 916 을 넘지 않는다.
  *
@@ -75,18 +76,8 @@ export default function InboundPage() {
   const [scannedBarcode, setScannedBarcode] = useState("");
   /** 수동 입력 모달이 열려 있는가. 측정 실패면 아래에서 자동으로 연다 (§1-3) */
   const [isManualOpen, setIsManualOpen] = useState(false);
-  /**
-   * 입고할 수량 — **임시로 0에 고정**했다. 원래 QuantityPanel(수량 조절 UI)이 이 값을 바꿨는데
-   * 그 UI를 지우면서 상태와 stock-in 호출만 남아 있었다 — 그 결과 UI 없이도 `DB 입력`을
-   * 누를 때마다 재고가 항상 1씩 늘어나는 부작용이 있었다(mock 의 `mockStockInResponse` 는
-   * `base + qty` 로 계산한다). 0을 보내면 `DB 입력`을 눌러도 재고가 늘지 않는다(의도적).
-   *
-   * ⚠️ 최종 결론이 아니다 — 수량 기능을 화면(UI)에서만 뺄지, API 계약(D-09: 촬영에 쓴 실물을
-   *    포함한 전체 수량)까지 뺄지 팀이 아직 정하는 중이다. D-09 자체는 아직 살아 있는데
-   *    화면에는 그 규정을 지킬 수단(수량 입력 UI)이 없어진 상태라, 그 사이 재고가 잘못
-   *    늘어나지 않도록 임시로 0을 박아 둔 것이다. 결정이 나면 이 주석과 초기값을 다시 고친다.
-   */
-  const [qty, setQty] = useState(0);
+  /** 입고할 수량 — 촬영에 쓴 실물을 포함한 전체 수량이다 (D-09) */
+  const [qty, setQty] = useState(1);
   /** 1-4 요청의 handling. 기본값은 1-3 응답의 handlingDefaults 에서 깔린다 */
   const [handling, setHandling] = useState<Handling>(EMPTY_HANDLING);
   /**
@@ -205,7 +196,7 @@ export default function InboundPage() {
         setIsManualOpen(false);
         setManual(null);
         setHandling(EMPTY_HANDLING);
-        setQty(0);
+        setQty(1);
       },
     });
   }, [barcode, scan, measure, confirm, stockIn]);
@@ -363,6 +354,9 @@ export default function InboundPage() {
           onChange={setHandling}
           disabled={product === null || isConfirmed || measurement === undefined}
         />
+
+        {/* 1-5 의 qty. ★ 상품이 잡히면 항상 활성이다 — 확정 여부를 보지 않는다(수량 게이트 제거) */}
+        <QuantityPanel qty={qty} onQtyChange={setQty} disabled={product === null} />
 
         {/* 촬영(1-3) / DB 입력(1-4 → 1-5 연쇄) */}
         <ActionButtons
