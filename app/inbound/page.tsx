@@ -544,6 +544,12 @@ function describeConfirmFailure(error: Error): { title: string; detail: string }
         detail: "다시 확정할 수 없습니다. 새로 촬영하거나 수량 입고로 넘어가세요.",
       };
     }
+    if (error.is("SESSION_NOT_FOUND")) {
+      return {
+        title: "측정 세션을 찾을 수 없습니다",
+        detail: "세션이 만료되었거나 잘못된 요청입니다. 다시 촬영하세요.",
+      };
+    }
     if (error.is("VALIDATION_ERROR")) {
       return {
         title: "입력값을 확정할 수 없습니다",
