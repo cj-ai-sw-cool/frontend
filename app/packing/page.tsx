@@ -3,7 +3,7 @@
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Placeholder } from "@/components/common/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { BoxType } from "@/lib/types";
 import { BoxRecommendationPanel } from "./_components/box-recommendation-panel";
@@ -278,8 +278,9 @@ export default function PackingPage() {
         {/* 우 718 — 제품 이미지 380(가변) / 박스 추천 356 / 액션 64(가변) (샘플 554~621행).
             샘플은 900px 캔버스를 374:279:180 비율로 잘랐지만, 우리 세 칸은 담는 내용이 달라
             비율 대신 **필요한 높이**로 잡았다.
-              이미지 380 : 사진 자리 274 + 상태 줄 20 + 간격 12 + 카드 여백 74. 셋 중 유일하게
-                           높이를 안 박은 칸이라, 액션이 줄어든 만큼을 그대로 **사진 자리**가 먹는다
+              이미지 380 : 사진 자리 306(예전 274 + 상태 줄 20·간격 12 — 상태 줄을 지우면서 흡수) +
+                           카드 여백 74. 셋 중 유일하게 높이를 안 박은 칸이라, 액션이 줄어든 만큼을
+                           그대로 **사진 자리**가 먹는다
               박스 356   : 박스 이름·내치수·재고 + 충전재 경고 + 박스 변경 셀렉트가 다 들어가는 최소치
               액션 64    : 버튼 행 하나. 예전에는 여기에 상시 안내 문구가 있어 144 를 썼는데
                            문구가 삭제되면서(사용자 요청) 버튼만 남았다. 그 80 이 사진 자리로 갔다.
@@ -289,6 +290,18 @@ export default function PackingPage() {
           <Card className="min-h-0 flex-1">
             <CardHeader>
               <CardTitle className="text-base">제품 이미지</CardTitle>
+              {/* 선택된 품목명을 제목과 같은 줄 우측에 (2026-08-25, 사용자 요청).
+                  패널 내부의 상태 요약 줄을 없애고 그 몫을 헤더로 올렸다 — 상세는
+                  product-image-panel.tsx 주석 참고. 긴 이름이 제목을 밀어내지 않도록
+                  truncate + max-w 로 묶는다. */}
+              <CardAction>
+                <span
+                  className="block max-w-[200px] truncate text-sm text-muted-foreground"
+                  title={selectedItem?.name ?? undefined}
+                >
+                  {selectedItem?.name ?? "선택된 품목 없음"}
+                </span>
+              </CardAction>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-hidden">
               {/* 1-6. 좌측에서 고른 품목의 사진을 **대표 한 장만** 띄운다(카메라 전환 삭제).

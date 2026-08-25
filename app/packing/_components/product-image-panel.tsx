@@ -59,27 +59,28 @@ export function ProductImagePanel({
   return (
     /* 부모(Card)가 높이를 정해 준다. 여기서는 남는 높이를 사진 자리가 전부 먹는다 */
     <div className="flex h-full flex-col gap-3">
-      {/* 상태 요약 줄 — 어떤 품목의, 어디서 온 사진인지 */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
-        <span className="truncate font-medium" title={productName ?? undefined}>
-          {productName ?? "선택된 품목 없음"}
-        </span>
-        {data !== undefined ? (
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {/* 마스터 = 코리안넷 스냅샷(docs/03-erd.md korean_net_master.image_url).
-                작업자가 쓰는 말 그대로 적는다 */}
-            {data.source === "MEASUREMENT" ? "입고 측정 원본" : "코리안넷 대표 이미지"}
-          </span>
-        ) : null}
-      </div>
+      {/* 상태 요약 줄은 삭제했다 (2026-08-25, 사용자 요청) — 상품명은 이제 부모의
+          "제품 이미지" CardHeader 우측(page.tsx)에서 보여주므로 패널 안에서 다시
+          그리면 중복이다. 소스 라벨("입고 측정 원본"/"코리안넷 대표 이미지")은
+          바코드 뱃지 아래 줄로 옮겼다 — 아래 뱃지 블록 참고. 그만큼 사진 자리(flex-1)가
+          더 넓어지는 건 의도된 결과다. */}
 
       {/* 사진 자리 — 샘플처럼 2px 테두리 안쪽에 한 장을 크게.
           `min-h-0` 이 없으면 flex 자식의 기본 min-height:auto 때문에 패널 높이를 밀어낸다 */}
       <div className="relative min-h-0 flex-1 overflow-hidden border-2 bg-muted">
         {productGtin !== null ? (
-          // 샘플 561행의 우상단 SKU 뱃지에 대응. 사진과 바코드를 함께 봐야 대조가 된다
-          <span className="absolute top-2 right-2 z-10 border bg-foreground px-2 py-1 font-mono text-xs text-background">
-            {productGtin}
+          // 샘플 561행의 우상단 SKU 뱃지에 대응. 사진과 바코드를 함께 봐야 대조가 된다.
+          // 2026-08-25: 아래 줄에 소스 라벨을 추가해 2줄 뱃지로 바꿨다 — 상태 요약 줄이
+          // 없어지면서 소스 정보("입고 측정 원본"/"코리안넷 대표 이미지")를 흡수한 자리다.
+          <span className="absolute top-2 right-2 z-10 flex flex-col items-end gap-0.5 border bg-foreground px-2 py-1 text-background">
+            <span className="font-mono text-xs">{productGtin}</span>
+            {data !== undefined ? (
+              <span className="text-[10px]">
+                {/* 마스터 = 코리안넷 스냅샷(docs/03-erd.md korean_net_master.image_url).
+                    작업자가 쓰는 말 그대로 적는다 */}
+                {data.source === "MEASUREMENT" ? "입고 측정 원본" : "코리안넷 대표 이미지"}
+              </span>
+            ) : null}
           </span>
         ) : null}
 
