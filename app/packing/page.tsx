@@ -36,11 +36,11 @@ import {
  *      페이지 자체는 절대 스크롤되지 않는다.
  *
  * 세로 916 = 토트 바 80 + 12 + 2단 824
- *   좌 691 : 라인별 배송 내역 240 + 12 + 품목 572                  = 824
+ *   좌 691 : 품목 572 + 12 + 라인별 배송 내역 240                  = 824
  *   우 718 : 제품 이미지 380 + 12 + 박스 추천 356 + 12 + 액션 64   = 824
  *     우측에서 늘어나는 칸은 **제품 이미지 하나뿐**이다(`flex-1`). 액션 칸은 버튼 높이(64)만
  *     쓰다가 3-8 이 실패하면 경고만큼(최대 120 + 12) 위로 자라고, 그만큼 이미지가 줄어든다.
- *     어느 상태에서도 합은 824 이고, **버튼 하단은 항상 좌측 `품목` 패널 하단과 같은 선**이다.
+ *     어느 상태에서도 합은 824 이고, **버튼 하단은 항상 좌측 `라인별 배송 내역` 패널 하단과 같은 선**이다.
  * 가로 1421 = 좌 691 + 12 + 우 718
  *   좌 691 은 Stitch 샘플 P2(localWork/stitch-sample.html 496행)의 고정 폭 그대로이고,
  *   우측은 남는 자리를 전부 쓴다. 샘플에선 710 이었는데 바깥 여백이 16→12 로 줄어
@@ -55,13 +55,14 @@ import {
  *
  * ── 레이아웃 구성 ─────────────────────────────────────────
  *   상단: 토트 바코드 — 전체 폭 전용 바 (샘플 486~494행). 화면의 진입 행동이라 독립시킨다
- *   좌: 라인별 배송 내역 (3-1, D-12) + 품목 리스트 (제품 / 계획 수량 / 실수량 / 취급 주의)
+ *   좌: 품목 리스트 (제품 / 계획 수량 / 실수량 / 취급 주의) + 라인별 배송 내역 (3-1, D-12)
  *   우: 제품 이미지 → 박스 추천 → 포장 완료
  *
- * 라인별 배송 내역을 전체 폭 최상단에서 **좌측 단 위쪽으로 옮겼다.**
+ * 라인별 배송 내역을 전체 폭 최상단에서 **좌측 단 안으로 옮겼다.**
  *   전체 폭으로 두면 그 높이가 좌우 두 단에서 동시에 빠져나가, 우측 3패널(이미지·박스·액션)이
  *   들어갈 자리가 없어진다. 좌측 단 안으로 넣으면 세로 예산을 좌측만 쓰고,
  *   3-1 리스트가 필요로 하는 가로 폭(배송단위·주문번호·상태·토트)도 691px 로 확보된다.
+ *   좌측 단 안에서는 품목을 위, 라인별 배송 내역을 **아래**에 둔다.
  *
  * 재고 현황은 이 화면에서 **제거됐다 (D-19)** — 제품 재고·박스 재고 목록 둘 다.
  *   판단에 실제로 쓰이는 추천 박스의 재고만 박스 추천 패널에 남는다(3-2 `recommendedBox.stockQty`).
@@ -224,26 +225,8 @@ export default function PackingPage() {
           작아진다. 즉 레이아웃이 바뀔 일이 없어서 브레이크포인트 자체가 의미를 잃었다.
           `min-w-0` 은 그대로 필요하다 — 긴 제품명이 좌측 단을 밀어내지 못하게 막는다. */}
       <div className="flex min-h-0 flex-1 gap-grid-gap">
-        {/* 좌 691 — 라인별 배송 내역 240 + 품목 572 */}
+        {/* 좌 691 — 품목 572 + 라인별 배송 내역 240 */}
         <div className="flex w-[691px] shrink-0 flex-col gap-grid-gap">
-          <Card className="h-[240px]">
-            <CardHeader>
-              <CardTitle className="text-base">라인별 배송 내역</CardTitle>
-            </CardHeader>
-            <CardContent className="min-h-0 flex-1 overflow-y-auto">
-              {/* TODO(P2): 3-1 GET /lines/{lineId}/shipments?status=
-                  배송단위 리스트를 대기중(TOTE_ASSIGNED)/진행중(PACKING)/완료(PACKED) 로 표시 (D-12).
-                  주문 단위 그룹 상세(A안)는 추후 확장이므로 지금은 리스트만.
-                  상태 탭은 components/ui/tabs.tsx 사용.
-                  ⚠️ lineId 출처(라우트 파라미터 vs 화면 셀렉터)가 정해져야 착수할 수 있다.
-                  ⚠️ 구현할 때도 **이 안(166px)에서 리스트가 스크롤**되게 유지할 것.
-                     리스트 길이만큼 패널이 늘어나면 아래 품목 패널이 잘린다. */}
-              <FillArea>
-                <Placeholder>라인 선택 · 상태별 배송단위 리스트 (3-1)</Placeholder>
-              </FillArea>
-            </CardContent>
-          </Card>
-
           {/* 품목 — 남는 높이 전부(572). 좌측 단에서 유일하게 늘어나는 칸이다 */}
           <Card className="min-h-0 flex-1">
             <CardHeader>
@@ -273,6 +256,24 @@ export default function PackingPage() {
               )}
             </CardContent>
           </Card>
+
+          <Card className="h-[240px]">
+            <CardHeader>
+              <CardTitle className="text-base">라인별 배송 내역</CardTitle>
+            </CardHeader>
+            <CardContent className="min-h-0 flex-1 overflow-y-auto">
+              {/* TODO(P2): 3-1 GET /lines/{lineId}/shipments?status=
+                  배송단위 리스트를 대기중(TOTE_ASSIGNED)/진행중(PACKING)/완료(PACKED) 로 표시 (D-12).
+                  주문 단위 그룹 상세(A안)는 추후 확장이므로 지금은 리스트만.
+                  상태 탭은 components/ui/tabs.tsx 사용.
+                  ⚠️ lineId 출처(라우트 파라미터 vs 화면 셀렉터)가 정해져야 착수할 수 있다.
+                  ⚠️ 구현할 때도 **이 안(166px)에서 리스트가 스크롤**되게 유지할 것.
+                     리스트 길이만큼 패널이 늘어나면 세로 예산(824)이 깨진다. */}
+              <FillArea>
+                <Placeholder>라인 선택 · 상태별 배송단위 리스트 (3-1)</Placeholder>
+              </FillArea>
+            </CardContent>
+          </Card>
         </div>
 
         {/* 우 718 — 제품 이미지 380(가변) / 박스 추천 356 / 액션 64(가변) (샘플 554~621행).
@@ -285,7 +286,7 @@ export default function PackingPage() {
               액션 64    : 버튼 행 하나. 예전에는 여기에 상시 안내 문구가 있어 144 를 썼는데
                            문구가 삭제되면서(사용자 요청) 버튼만 남았다. 그 80 이 사진 자리로 갔다.
             버튼 아래에 빈 자리를 남기지 않는 게 이번 배치의 핵심이다 — 액션이 마지막 칸이고
-            그 마지막 자식이 버튼 행이라, 버튼 하단이 좌측 `품목` 패널 하단(y=824)과 맞는다. */}
+            그 마지막 자식이 버튼 행이라, 버튼 하단이 좌측 `라인별 배송 내역` 패널 하단(y=824)과 맞는다. */}
         <div className="flex min-w-0 flex-1 flex-col gap-grid-gap">
           <Card className="min-h-0 flex-1">
             <CardHeader>
