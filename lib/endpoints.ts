@@ -6,14 +6,11 @@ import { api } from "./api";
 import type {
   BoxOverrideResponse,
   BoxType,
-  Category,
   CompleteResponse,
   ConfirmRequest,
   ConfirmResponse,
-  CreateProductRequest,
   DashboardSummary,
   MeasurementResponse,
-  Product,
   ProductImagesResponse,
   ScanResponse,
   ShipmentDetail,
@@ -27,9 +24,7 @@ export const inbound = {
   /** 1-1 바코드 스캔 — 3분기 판정 */
   scan: (barcode: string) => api.post<ScanResponse>("/inbound/scans", { barcode }),
 
-  /** 1-2 임시 마스터 생성 — 미등록 바코드 */
-  createProduct: (body: CreateProductRequest) =>
-    api.post<Product>("/inbound/products", body),
+  /* 1-2 `POST /inbound/products` 는 v0.5 에서 삭제됐다 (D-21) — 백엔드에 엔드포인트가 없다 */
 
   /** 1-3 촬영·추론 — 동기, 최대 8초. 실패도 200 + status 로 온다 */
   measure: (productId: number) =>
@@ -47,8 +42,7 @@ export const inbound = {
   productImages: (productId: number) =>
     api.get<ProductImagesResponse>(`/products/${productId}/images`),
 
-  /** 1-7 분류 목록 — 수기 등록 드롭다운 (D-13) */
-  categories: () => api.get<Category[]>("/categories"),
+  /* 1-7 `GET /categories` 는 v0.5 에서 삭제됐다 (D-21) — 분류는 1-1 응답의 표시 전용이다 */
 };
 
 /* ── P2 출고 포장 ────────────────────────────────────────── */
@@ -91,7 +85,6 @@ export const dashboard = {
 
 /** TanStack Query 키 — 무효화 대상을 한곳에서 관리한다 */
 export const queryKeys = {
-  categories: ["categories"] as const,
   productImages: (id: number) => ["products", id, "images"] as const,
   dashboardSummary: ["dashboard", "summary"] as const,
   boxTypes: ["box-types"] as const,

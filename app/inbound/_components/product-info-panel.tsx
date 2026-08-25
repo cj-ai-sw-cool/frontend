@@ -1,6 +1,7 @@
 "use client";
 
 import { CircleAlert } from "lucide-react";
+import { useState } from "react";
 import type { ScanJudgment, ScanResponse } from "@/lib/types";
 
 /**
@@ -60,12 +61,9 @@ export function ProductInfoPanel({
         <EmptyBody judgment={result?.judgment} isPending={isPending} />
       ) : (
         <div className="flex min-h-0 flex-1 gap-4">
-          {/* 마스터 이미지 자리 — 확정본 191~193행.
-              ⚠️ mock 의 `imageUrl` 은 전부 null 이고 외부 URL 은 금지라 img 를 걸지 않는다.
-                 실제 이미지가 붙으면 여기만 img 로 바꾸면 된다(product-photo-panel.tsx 와 동일). */}
-          <div className="bg-card text-muted-foreground flex w-[110px] shrink-0 items-center justify-center overflow-hidden border-2 p-2 text-center text-xs">
-            {product.imageUrl === null ? "마스터 이미지 없음" : product.imageUrl}
-          </div>
+          {/* 마스터 이미지 — 확정본 191~193행 */}
+          <MasterImage url={product.imageUrl} />
+
 
           <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
             {/* 상품 이름 — 확정본은 48px 이지만 40px 로 내렸다.
@@ -90,6 +88,37 @@ export function ProductInfoPanel({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * 코리안넷 마스터 이미지. 주소는 1-1 응답의 `imageUrl` 로, 스캔 시 마스터에서 복사한 값이다.
+ *
+ * `next/image` 가 아니라 평범한 `img` 를 쓴다 — 마스터 이미지는 코리안넷이 주는 임의의
+ * 외부 호스트라 `remotePatterns` 로 미리 허용 목록을 짤 수 없다.
+ *
+ * 주소가 있어도 그 이미지가 뜬다는 보장은 없다(오프라인, 죽은 링크). 그때 깨진 아이콘을
+ * 남기지 않도록 실패를 잡아 안내 문구로 되돌린다.
+ */
+function MasterImage({ url }: { url: string | null }) {
+  const [failed, setFailed] = useState(false);
+
+  const showImage = url !== null && !failed;
+
+  return (
+    <div className="bg-card text-muted-foreground flex w-[110px] shrink-0 items-center justify-center overflow-hidden border-2 p-2 text-center text-xs">
+      {showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element -- 위 주석: 외부 호스트가 임의라 next/image 불가
+        <img
+          src={url}
+          alt=""
+          className="max-h-full max-w-full object-contain"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span>{url === null ? "마스터 이미지 없음" : "이미지를 불러오지 못했습니다"}</span>
+      )}
+    </div>
   );
 }
 
