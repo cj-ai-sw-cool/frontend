@@ -7,9 +7,30 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  /* 폰트 ─────────────────────────────────────────────────────────────────
+     디자인 확정본(design.html)의 스택을 그대로 옮겼다:
+       "IBM Plex Sans","IBM Plex Sans KR",-apple-system,BlinkMacSystemFont,"Malgun Gothic",sans-serif
+     앞의 두 개는 app/layout.tsx 가 next/font 로 self-host 하면서 심는 CSS 변수다.
+     한글은 IBM Plex Sans(라틴 전용)에 글리프가 없어 자동으로 다음 순서인
+     IBM Plex Sans KR 로 넘어간다 — 그래서 두 폰트를 한 스택에 나란히 둔다.
+
+     ⚠️ --font-mono 는 더 이상 Geist Mono 가 아니다.
+        Geist/Geist Mono 는 디자인 확정본에 없어서 layout.tsx 에서 걷어냈다.
+        그런데 `font-mono` 는 바코드·GTIN·이미지 URL 표시에 7곳에서 실제로 쓰이고 있고
+        (barcode-scan-input / measurement-panel / product-photo-panel / packing 계열),
+        숫자 자릿수가 흔들리면 안 되는 자리라 등폭 자체는 유지해야 한다.
+        디자인에는 등폭 서체가 아예 없으므로 "새 폰트를 임의로 추가"하는 대신
+        시스템 등폭 스택으로 내린다. IBM Plex Mono 를 붙일지는 디자인 결정 사항이라
+        여기서 정하지 않는다. */
+  --font-sans:
+    var(--font-ibm-plex-sans), var(--font-ibm-plex-sans-kr), -apple-system, BlinkMacSystemFont,
+    "Malgun Gothic", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
   --font-heading: var(--font-sans);
+
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,6 +60,13 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  /* 프로젝트 추가 토큰 — shadcn 기본 슬롯에 대응이 없는 것만 등록한다.
+     여기 등록해야 `text-status-error` `bg-status-success/10` 같은 Tailwind 클래스가 생긴다. */
+  --color-status-success: var(--status-success);
+  --color-status-error: var(--status-error);
+  --color-outline-variant: var(--outline-variant);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -46,76 +74,421 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* 타이포 스케일 ────────────────────────────────────────────────────────
+     디자인 확정본이 쓰는 4종. 값은 원본에서 컴파일된 Tailwind CSS 실측이다
+     (tw.css 191~194행). 원본은 Tailwind v3 의 fontSize 설정으로 만들었고,
+     v4 에서는 `--text-{이름}` + `--text-{이름}--{속성}` 네임스페이스가 같은 역할을 한다.
+     한 클래스(text-action-lg)가 크기·행간·굵기·자간을 한꺼번에 들고 가므로
+     화면 쪽에서 `text-[32px] leading-[40px] font-semibold` 를 매번 쓰지 않아도 된다.
+
+     이름은 디자인 원본의 이름을 그대로 쓴다 — 역할 기반이라 값이 바뀌어도 이름은 산다.
+       action-lg       주요 행동 버튼·헤더 타이틀 (DB 입력, LOGISTICS TERMINAL SYSTEM)
+       sub-action-md   보조 행동·패널 제목 (냉장 필요, 자동 측정 데이터)
+       label-sm        라벨·캡션. 자간 0.02em 은 대문자 라벨이 뭉치지 않게 하려는 것
+       measurement-xl  측정 수치 표시. action-lg 와 크기는 같지만 굵기가 700 이라
+                       숫자가 더 단단하게 보인다 — 그래서 별도 이름으로 분리한다 */
+  --text-action-lg: 32px;
+  --text-action-lg--line-height: 40px;
+  --text-action-lg--font-weight: 600;
+
+  --text-sub-action-md: 24px;
+  --text-sub-action-md--line-height: 32px;
+  --text-sub-action-md--font-weight: 500;
+
+  --text-label-sm: 16px;
+  --text-label-sm--line-height: 20px;
+  --text-label-sm--font-weight: 600;
+  --text-label-sm--letter-spacing: 0.02em;
+
+  --text-measurement-xl: 32px;
+  --text-measurement-xl--line-height: 40px;
+  --text-measurement-xl--font-weight: 700;
+
+  /* 간격 토큰 ────────────────────────────────────────────────────────────
+     디자인 확정본이 레이아웃 전체에서 이 두 값만 쓴다(tw.css 141·169·170·175행).
+     `--spacing-*` 네임스페이스라 p-/px-/gap-/m-/w- 계열 유틸리티가 전부 생긴다.
+       panel-padding  패널 안쪽 여백 (p-panel-padding, px-panel-padding)
+       grid-gap       패널 사이 간격 (p-grid-gap, gap-grid-gap)
+     숫자 유틸리티(p-4 = 16px)로도 같은 값이 나오지만, 이름을 붙여 두면
+     "패널 여백을 18px 로 바꾸자" 같은 결정이 한 줄 수정으로 끝난다. */
+  --spacing-panel-padding: 16px;
+  --spacing-grid-gap: 12px;
 }
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+/* ════════════════════════════════════════════════════════════════════════════
+   색 팔레트
+   ════════════════════════════════════════════════════════════════════════════
+
+   왜 [data-palette] 로 감쌌나 ─────────────────────────────────────────────
+   디자인을 진행하면서 팔레트 후보를 여러 개 붙여 놓고 비교할 예정이다.
+   토큰 "이름"은 그대로 두고 "값 세트"만 통째로 갈아끼울 수 있어야 한다.
+     · 전환은 document.documentElement.dataset.palette = "이름" 한 줄.
+     · 속성이 아예 없으면 기본 팔레트(terminal)가 그대로 먹는다 — 즉 지금과 100% 동일.
+   토큰 이름과 @theme inline 매핑은 한 글자도 바뀌지 않았으므로 컴포넌트는 무수정이다.
+
+   지금 정의된 팔레트는 2개다.
+     terminal  기본값. 속성이 없을 때 적용되는 현재 디자인(회색+네이비+앰버).
+     debug     **디자인 후보가 아니라 배선 검증용**이다. 자세한 건 해당 블록 상단 주석 참고.
+   디자인 후보는 아직 없다.
+
+   ★ 블록 배치 규칙 — **모든 라이트 블록이 먼저, 모든 다크 블록이 나중.** ★
+   ─────────────────────────────────────────────────────────────────────────
+   파일에 구역이 두 개 있다. 새 팔레트를 추가할 때는 **블록 2개를 서로 다른 구역에**
+   넣어야 한다 — 한 자리에 나란히 붙이면 안 된다.
+       라이트 블록  ->  "라이트 구역" 맨 끝
+       다크  블록  ->  "다크 구역" 맨 끝
+   이 배치가 왜 필요한지는 바로 아래에 있다. 지키지 않으면 다크 모드가 조용히 깨진다.
+
+   셀렉터 우선순위 설계 ─────────────────────────────────────────────────────
+   `팔레트`와 `라이트/다크`는 서로 직교하는 두 축이고, 둘 다 같은 요소(html)에 걸린다.
+   그래서 모든 블록이 두 축을 셀렉터에 명시한다. 팔레트 X 에 대해 네 가지 모양이 나온다:
+
+     :root                                (0,1,0)  기본 팔레트 · 라이트
+     :root[data-palette="X"]              (0,2,0)  X · 라이트
+     :root.dark                           (0,2,0)  기본 팔레트 · 다크
+     :root[data-palette="X"].dark         (0,3,0)  X · 다크
+
+   특정성만으로 갈리지 않는 자리가 **딱 한 군데** 있다 — (0,2,0) 동점인
+   `X · 라이트` 와 `기본 · 다크`. 이 둘은 "다크 모드 + 팔레트 X" 에서 **동시에 매치된다.**
+   동점이므로 소스 순서로 갈리고, **뒤에 쓴 쪽이 자기가 선언한 토큰에 한해 이긴다.**
+
+   여기서 배치가 결과를 바꾼다:
+     ✗ 팔레트 블록 2개를 파일 끝에 나란히 붙이면
+       -> `X · 라이트` 가 `기본 · 다크` 보다 뒤 -> **다크 모드에서 X 의 라이트 값이 이긴다.**
+          (0,3,0) 인 `X · 다크` 는 자기가 명시한 토큰만 되돌리므로, X 의 다크 블록이
+          빠뜨린 토큰은 전부 라이트 값으로 새어 나온다. 눈으로는 색이 바뀌긴 해서
+          배선이 멀쩡해 보이고, 다크 모드에서만 틀린다.
+     ✓ 라이트 구역 -> 다크 구역 순서면
+       -> `기본 · 다크` 가 `X · 라이트` 보다 뒤 -> 기본 다크 값이 이긴다. 이게 우리가
+          원하는 폴백이다.
+
+   그래서 "다크 모드 + 팔레트 X" 에서 토큰 하나가 결정되는 순서는 이렇게 된다:
+     1. :root[data-palette="X"].dark   (0,3,0)  X 가 다크에서 정의한 값
+     2. :root.dark                     (0,2,0)  X 가 다크에서 생략한 토큰은 여기로 떨어진다
+     3. :root[data-palette="X"]        (0,2,0)  동점이지만 앞(라이트 구역)이라 짐
+     4. :root                          (0,1,0)  위 어디에도 없는 토큰만
+
+   ⚠️ 이전 개정의 주석은 "라이트/다크 블록을 짝으로만 만들면 부분 팔레트도 안전하다"고
+      적었는데 **틀렸다.** 안전 조건은 블록 단위가 아니라 **토큰 단위**였다 —
+      다크 블록이 있어도 그 안에서 토큰 하나를 빠뜨리면 그 토큰이 깨졌다.
+      같은 주석의 "정의하지 않은 토큰은 (0,1,0) 기본 블록에서 상속된다" 도 상속 경로가
+      틀렸다. 다크 모드에서는 (0,1,0) 이 아니라 :root.dark (0,2,0) 에서 온다.
+      위 배치 규칙을 세우면서 그 두 서술을 정정했고, 이제 부분 팔레트가 실제로 안전하다.
+
+   ⚠️ --radius 는 색이 아니지만 팔레트 블록 안에 둔다. "각진 모서리"는 이 디자인의
+      브루탈리즘 정체성 자체라, 팔레트를 갈아끼울 때 같이 따라가는 게 맞다고 봤다.
+      terminal 다크 블록에는 --radius 가 없는데, 이건 누락이 아니라 의도다 —
+      다크로 바꾼다고 모서리 각도가 바뀔 이유가 없어서 라이트 값을 그대로 쓴다.
+      선언하는 규칙이 라이트 쪽 하나뿐이라 배치와 무관하게 항상 그 값이 적용된다.
+
+   ⚠️ 대안으로 검토했다가 버린 것 두 가지:
+      ① @media (prefers-color-scheme) 로 다크를 감싸는 방식 — 이 앱은 next-themes 의
+         class 전략(.dark)을 전제로 하고 @custom-variant 도 거기 맞춰져 있어 축이 어긋난다.
+      ② :where() 로 특정성을 0 으로 눌러 순서로만 결정하는 방식 — 코드는 짧아지지만
+         모든 블록이 순서 의존이 되어 지금보다 더 깨지기 쉽다.
+      위 배치 규칙은 이 둘 중 어느 것도 되살리지 않고, 순서 의존을 (0,2,0) 동점
+      한 군데로 가둔 뒤 그 한 군데를 구역 분리로 고정하는 방식이다.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ┌──────────────────────────────────────────────────────────────────────────┐
+   │ 라이트 구역 — 팔레트의 **라이트 블록만** 여기에 모은다.                  │
+   │ 새 팔레트의 라이트 블록은 이 구역 맨 끝(다크 구역 배너 바로 위)에 넣는다.│
+   │ 여기에 다크 블록을 넣으면 위 배치 규칙이 깨진다.                         │
+   └──────────────────────────────────────────────────────────────────────────┘ */
+
+/* ⚠️ 잠정 토큰 — localWork/stitch-sample.html (팀원 제공 Stitch 샘플) 기준.
+   디자인 확정본 수령 시 이 블록의 값만 교체하면 된다. 컴포넌트는 수정 불필요.
+
+   원칙
+   - Stitch(MD3) 팔레트의 "값"만 가져온다. 슬롯 이름은 shadcn 것을 그대로 쓰고,
+     각 슬롯의 "역할"에 맞는 Stitch 색을 고른다. 이름이 같다고 기계적으로 옮기면 안 되는
+     자리는 아래 주석에 이유를 적어 뒀다.
+   - 주석의 "Stitch: xxx" 는 stitch-sample.html 의 tailwind.config 색 이름이고,
+     "(NNN행)" 은 샘플의 P2 Packing Terminal 화면(273~643행) 안의 줄 번호다.
+   - 폰트는 이 블록 범위 밖이다(위 @theme inline 참고 — 확정본에 맞춰 IBM Plex 로 교체됨).
+
+   ── 2차 개정: "산업용 터미널 / 윈도우98풍 브루탈리즘" 룩 반영 ──────────────
+   1차 개정에서는 "Stitch 의 각진 모서리·두꺼운 테두리는 생김새라서 재현하지 않는다"고
+   판단했지만 그게 틀렸다. 샘플이 스스로 "Industrial Reset", "brutalist aesthetic" 이라
+   적어 뒀고 border-2 border-on-background 를 72회 쓴다 — 그 자체가 의도된 디자인이다.
+   이번 개정에서 바꾼 것은 네 가지다.
+     ① 바탕을 거의 흰색(#fbf9f8)에서 회색조(#dcd9d9)로 내려 흰 카드가 떠 보이게 했다.
+     ② --border / --input 을 연회색(#c4c6d4)에서 on-background(#1b1c1c) 검정으로 바꿨다.
+     ③ --radius 를 샘플의 borderRadius.DEFAULT(0.125rem)로 낮춰 모서리를 각지게 했다.
+     ④ --secondary / --muted / --accent 를 회색 위계에 맞춰 다시 배치했다.
+   --sidebar* 8개는 라이트·다크 모두 손대지 않았다 — 샘플 5개 화면 전부가
+   "회색 바탕 위 남색 내비게이션"(bg-sidebar-bg #003087)을 쓰는 의도된 구성이다.
+
+   ── 3차 확인: 디자인 확정본(design.html) 대조 ─────────────────────────────
+   확정본이 실제로 쓰는 색을 이 블록과 하나씩 대조했고 **값 변경은 없었다.**
+     surface-dim #dcd9d9 = --background        surface-container-lowest #ffffff = --card
+     surface-variant #e4e2e1 = --accent        on-background #1b1c1c = --foreground/--border
+     primary #001d59 = --primary               sidebar-bg #003087 = --sidebar
+     outline-variant #c4c6d4 = --outline-variant
+   확정본의 사이드바 활성 탭은 bg-surface-variant(#e4e2e1 회색)라서 --sidebar-primary 를
+   회색으로 내리는 안이 있었으나, **앰버(#fcb40d) 유지로 결정**되어 원래 값을 그대로 둔다.
+   그 차이는 components/app-nav.tsx 주석에 남겨 뒀다.
+
+   ── 회색 위계 (샘플 P2 화면 실사용값) ────────────────────────────────────
+     어두움 ─────────────────────────────────────────────────────► 밝음
+     #dcd9d9        #e0e0e0         #e4e2e1          #eae8e7          #ffffff
+     surface-dim    surface-panel   surface-variant  surface-cont-high  ...-lowest
+     --background   --secondary     --accent         --muted          --card/--popover
+     body(431행)    상단 토트 바      hover 상태        목록 행           카드 안쪽 흰 영역
+     좌측 품목      (486행)          (524행            (524·589행)      (489·560·576행)
+     패널(498행)    우측 패널         hover:bg-
+                    (558·566행)      surface-variant)
+   카드(#ffffff)가 바탕(#dcd9d9)보다 밝아야, 2px 검정 테두리와 함께 패널이 떠 보인다. */
+
+/* 팔레트 `terminal` · 라이트 ───────────────────────────────────────────── */
+:root,
+:root[data-palette="terminal"] {
+  /* 바탕 — 샘플 P2 의 body class="bg-surface-dim"(431행)이 그대로 이 값이고,
+     같은 화면의 인라인 스타일도 #D9D9D9("surface-content fallback", 427행)로 거의 같다.
+     위계의 맨 아래(가장 어두운 회색)라서 그 위에 놓이는 모든 표면이 밝아진다. */
+  --background: #dcd9d9; /* Stitch: surface-dim */
+  --foreground: #1b1c1c; /* Stitch: on-surface / on-background */
+
+  /* 카드는 위계의 맨 위(흰색). 샘플에서 제품 이미지 칸(560행)·박스 추천 칸(576행)·
+     입력창(489행)이 전부 bg-surface-container-lowest 다. */
+  --card: #ffffff; /* Stitch: surface-container-lowest */
+  --card-foreground: #1b1c1c; /* Stitch: on-surface */
+  --popover: #ffffff; /* Stitch: surface-container-lowest */
+  --popover-foreground: #1b1c1c; /* Stitch: on-surface */
+
+  --primary: #001d59; /* Stitch: primary — 브랜드 네이비. 주요 액션 버튼 배경 */
+  --primary-foreground: #ffffff; /* Stitch: on-primary */
+
+  /* ⚠️ 시맨틱 충돌 지점.
+     Stitch 의 secondary(#7e5700)는 MD3 의 "진한 갈색 강조색"이라 텍스트/아이콘용이다.
+     shadcn 의 --secondary 는 Button variant="secondary" 의 "연한 보조 버튼 배경"이라
+     역할이 정반대다. 그대로 옮기면 보조 버튼이 갈색 덩어리가 된다.
+     → 역할에 맞는 중성색을 넣는다. 샘플에서 패널 크롬(상단 토트 바 486행,
+       우측 패널 558·566행)이 쓰는 surface-panel 이 딱 그 자리다. */
+  --secondary: #e0e0e0; /* Stitch: surface-panel */
+  --secondary-foreground: #1b1c1c; /* Stitch: on-surface */
+
+  /* 목록 행·옅은 블록 배경. 샘플의 비선택 품목 행(524·538행)과
+     박스 재고 칸(589행)이 bg-surface-container-high 다. */
+  --muted: #eae8e7; /* Stitch: surface-container-high */
+  --muted-foreground: #444652; /* Stitch: on-surface-variant */
+
+  /* --accent 는 hover/선택 상태 배경(SelectItem focus 등)이다.
+     1차 개정에서는 옅은 파랑(primary-fixed)을 썼지만, 샘플이 hover 에 실제로 쓰는 값은
+     surface-variant 다(524행 hover:bg-surface-variant, 439행 상단 아이콘 hover).
+     "선택됨"의 강조색(amber #fcb40d)은 사이드바 활성 항목(--sidebar-primary)에만 남긴다 —
+     본문의 모든 hover 가 amber 로 번지면 회색조 위계가 무너진다. */
+  --accent: #e4e2e1; /* Stitch: surface-variant / surface-container-highest */
+  --accent-foreground: #1b1c1c; /* Stitch: on-surface */
+
+  --destructive: #ba1a1a; /* Stitch: error */
+
+  /* ★ 브루탈리즘의 핵심.
+     샘플의 .hc-border 는 2px solid #000000 이고, 실사용 클래스는
+     border-2 border-on-background(#1b1c1c)로 파일 전체 72회 등장한다.
+     테두리 "색"을 여기서 검정으로 잡아 두면 components/ui 쪽은 "두께"(border-2)만
+     지정하면 되고, 디자인 확정본이 오면 이 두 줄만 바꾸면 된다.
+     ⚠️ --input 은 shadcn 이 테두리색뿐 아니라 disabled:bg-input/50 처럼 "배경"으로도
+        겸용하는 자리가 있다. 검정이 된 지금 그대로 두면 비활성 입력이 짙은 회색 덩어리가
+        되므로, 그 자리들은 components/ui 에서 bg-muted 로 바꿔 뒀다(input.tsx 주석 참고). */
+  --border: #1b1c1c; /* Stitch: on-background */
+  --input: #1b1c1c; /* Stitch: on-background */
+  --ring: #003087; /* Stitch: primary-container — 포커스 링 */
+
+  /* 차트는 이 화면에서 쓰지 않지만 기존 슬롯이라 브랜드 계열로 채워 둔다(P3 대시보드용) */
+  --chart-1: #003087; /* Stitch: primary-container */
+  --chart-2: #fcb40d; /* Stitch: secondary-container */
+  --chart-3: #1b5e20; /* Stitch: status-success */
+  --chart-4: #f1815c; /* Stitch: on-tertiary-container */
+  --chart-5: #747683; /* Stitch: outline */
+
+  /* 샘플 tailwind.config 의 borderRadius.DEFAULT 그대로(347행).
+     @theme inline 의 --radius-sm ~ --radius-4xl 이 전부 이 값에서 파생되므로,
+     컴포넌트 안의 rounded-lg / rounded-xl 같은 클래스는 손대지 않아도 같이 각져진다. */
+  --radius: 0.125rem; /* Stitch: borderRadius.DEFAULT */
+
+  /* 사이드바 슬롯: Stitch 샘플·디자인 확정본 모두 좌측 남색 세로 네비를 쓴다.
+     확정본 대조 결과 --sidebar(#003087)는 그대로 일치했고,
+     --sidebar-primary(활성 탭 배경)만 확정본과 다르다 — 바로 아래 주석 참고. */
+  --sidebar: #003087; /* Stitch: sidebar-bg */
+  --sidebar-foreground: #ffffff; /* Stitch: text-on-dark */
+  /* 활성 메뉴 배경. 디자인 확정본은 여기를 회색(bg-surface-variant #e4e2e1)으로 쓰지만
+     앰버 유지로 결정됐다 — 남색 바탕에서 "지금 이 화면"이 훨씬 멀리서도 잡힌다. */
+  --sidebar-primary: #fcb40d; /* Stitch: secondary-container — 샘플의 활성 메뉴 배경 */
+  --sidebar-primary-foreground: #1b1c1c; /* Stitch: on-surface */
+  --sidebar-accent: #ffffff1a; /* Stitch 샘플의 hover:bg-white/10 */
+  --sidebar-accent-foreground: #ffffff; /* Stitch: text-on-dark */
+  --sidebar-border: #ffffff33; /* 샘플의 border-outline-variant/30 */
+  --sidebar-ring: #b4c5ff; /* Stitch: inverse-primary */
+
+  /* shadcn 에 대응 슬롯이 없어 새로 만든 것 — 이 화면에서 실제로 쓰는 3개만 옮겼다.
+     status-error 는 destructive 와 값이 같지만 역할이 다르다:
+       destructive = "삭제 같은 파괴적 액션", status-error = "수량 불일치·품절 같은 상태 표시".
+     디자인 확정본에서 둘이 갈라질 수 있으므로 지금부터 분리해 둔다. */
+  --status-success: #1b5e20; /* Stitch: status-success */
+  --status-error: #ba1a1a; /* Stitch: status-error */
+  --outline-variant: #c4c6d4; /* Stitch: outline-variant — 구분선 전용 */
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+/* ════════════════════════════════════════════════════════════════════════════
+   팔레트 `debug` — **디자인 후보가 아니다. 배선 검증용이다.**
+   ════════════════════════════════════════════════════════════════════════════
+   ⚠️ 지우지 말 것. 예쁘게 고치지도 말 것. 이 블록의 유일한 목적은
+      "data-palette 를 바꾸면 화면이 실제로 통째로 갈아끼워진다"를 **눈으로** 확인하는 것이다.
+        document.documentElement.dataset.palette = "debug";   // 켜기
+        delete document.documentElement.dataset.palette;      // 끄기(기본 terminal 로 복귀)
+
+      · 색조를 기본 팔레트(회색+네이비+앰버)와 최대한 멀리 떼어 놨다. 한 번에 안 바뀌고
+        일부만 바뀌면 그 자리가 바로 배선이 빠진 토큰이다.
+      · --radius 까지 일부러 둥글게(0.75rem) 바꿔 놨다. 색이 아닌 토큰도 팔레트를 따라
+        움직인다는 걸 같은 화면에서 확인하기 위해서다.
+      · 기본 팔레트가 정의하는 토큰을 **하나도 빠뜨리지 않고** 라이트/다크 양쪽 다 채웠다.
+        위 배치 규칙(라이트 구역 -> 다크 구역) 덕분에 이제 빠뜨려도 기본 팔레트의 같은
+        모드 값으로 안전하게 떨어지지만, 그래도 다 채워 둔다: 대조군은 "안 바뀐 자리 =
+        배선 누락" 이 성립해야 쓸모가 있는데, 일부만 채워 두면 "안 바뀐 게 의도인지
+        누락인지"를 눈으로 구분할 수 없게 된다.
+      · 대비는 "글자가 읽히는 수준"까지만 맞췄다. 그 이상 다듬을 필요 없다.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* 팔레트 `debug` · 라이트 */
+:root[data-palette="debug"] {
+  --background: #ffe600; /* 형광 노랑 — 기본 팔레트의 회색 바탕과 절대 헷갈리지 않는다 */
+  --foreground: #14004d; /* 진보라 — 노랑 위에서 대비 충분 */
+  --card: #ff4fd8; /* 형광 분홍 */
+  --card-foreground: #14004d;
+  --popover: #ff4fd8;
+  --popover-foreground: #14004d;
+  --primary: #7c00ff; /* 보라 */
+  --primary-foreground: #ffffff;
+  --secondary: #00e5ff; /* 시안 */
+  --secondary-foreground: #14004d;
+  --muted: #b9ff66; /* 연두 */
+  --muted-foreground: #14004d;
+  --accent: #ff8a00; /* 주황 — hover 가 확실히 눈에 띈다 */
+  --accent-foreground: #14004d;
+  --destructive: #d10000;
+  --border: #7c00ff; /* 테두리가 검정이 아니라 보라로 바뀌는지 확인용 */
+  --input: #7c00ff;
+  --ring: #00e5ff;
+  --chart-1: #7c00ff;
+  --chart-2: #00e5ff;
+  --chart-3: #b9ff66;
+  --chart-4: #ff8a00;
+  --chart-5: #ff4fd8;
+  --radius: 0.75rem; /* 색이 아닌 토큰도 팔레트를 따라오는지 확인용(기본은 0.125rem) */
+  --sidebar: #7c00ff; /* 남색 → 보라 */
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #b9ff66; /* 활성 탭이 앰버 → 연두 */
+  --sidebar-primary-foreground: #14004d;
+  --sidebar-accent: #ffffff33;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #ffffff66;
+  --sidebar-ring: #00e5ff;
+  --status-success: #007a33;
+  --status-error: #d10000;
+  --outline-variant: #7c00ff;
 }
+
+/* ┌──────────────────────────────────────────────────────────────────────────┐
+   │ 다크 구역 — 팔레트의 **다크 블록만** 여기에 모은다.                      │
+   │ 새 팔레트의 다크 블록은 이 구역 맨 끝에 넣는다.                          │
+   │ 이 구역이 라이트 구역보다 뒤에 있다는 사실이 (0,2,0) 동점을 다크 쪽으로  │
+   │ 갈라 주는 유일한 장치다 — 두 구역의 순서를 바꾸면 다크 모드가 깨진다.    │
+   └──────────────────────────────────────────────────────────────────────────┘ */
+
+/* 팔레트 `terminal` · 다크 ─────────────────────────────────────────────────
+   ⚠️ 다크 팔레트는 Stitch 샘플에 없다(darkMode: "class" 선언만 있고 색 정의가 없음).
+   아래 값은 라이트 토큰의 명도를 뒤집어 MD3 규칙대로 구성한 **파생값**이다.
+   브루탈리즘 개정분도 마찬가지로 파생이다 — 샘플에 근거가 없으므로 규칙만 맞췄다:
+     · 라이트에서 "가장 어두운 회색이 바탕, 흰색이 카드" 였으니 다크는 그 반대로
+       "가장 어두운 색이 바탕, 한 단계 밝은 색이 카드" 를 유지한다.
+     · 라이트의 검정 테두리(#1b1c1c)에 대응하는 다크 테두리는 밝은 회색(#e4e2e1)이다.
+       어두운 배경 위에서 검정 2px 테두리는 아예 안 보이므로 명도를 뒤집어야 브루탈리즘이 산다.
+     · --secondary 와 --accent 가 같은 값인 것은 shadcn 기본 다크 테마와 같은 관례다
+       (라이트에서 한 칸 차이였던 두 회색이 다크에서는 구분 실익이 없다).
+   - primary / primary-foreground 는 MD3 규칙 그대로 inverse-primary / on-primary-fixed 를 썼다.
+   - 팔레트에 대응이 아예 없는 것(destructive, status-success)은 "파생"이라고 표시했다.
+   디자인 확정본에 다크가 포함되면 이 블록 전체를 교체한다. */
+:root.dark,
+:root[data-palette="terminal"].dark {
+  --background: #131313; /* 파생 — 라이트 background(#dcd9d9)의 명도 반전 */
+  --foreground: #e4e2e1; /* Stitch: surface-container-highest 를 다크 본문색으로 */
+  --card: #1b1c1c; /* 라이트 on-surface 값을 다크 표면으로 뒤집어 사용 */
+  --card-foreground: #e4e2e1;
+  --popover: #1b1c1c;
+  --popover-foreground: #e4e2e1;
+  --primary: #b4c5ff; /* Stitch: inverse-primary — MD3 다크 primary 규칙 */
+  --primary-foreground: #00174b; /* Stitch: on-primary-fixed */
+  --secondary: #303030; /* Stitch: inverse-surface — 라이트 surface-panel 대응 */
+  --secondary-foreground: #f2f0f0; /* Stitch: inverse-on-surface */
+  --muted: #262626; /* 파생 — background 와 card 사이 명도 */
+  --muted-foreground: #c4c6d4; /* Stitch: outline-variant */
+  --accent: #303030; /* 파생 — 라이트 surface-variant(hover) 대응. secondary 와 같은 값 */
+  --accent-foreground: #f2f0f0; /* Stitch: inverse-on-surface */
+  --destructive: #ffb4ab; /* 파생 — 어두운 배경에서 #ba1a1a 는 대비가 안 나온다 */
+  /* 라이트의 검정 2px 테두리를 명도 반전한 값. 라이트와 마찬가지로 두 슬롯이 같다 */
+  --border: #e4e2e1; /* Stitch: surface-container-highest */
+  --input: #e4e2e1; /* Stitch: surface-container-highest */
+  --ring: #7f9df8; /* Stitch: on-primary-container */
+  --chart-1: #7f9df8; /* Stitch: on-primary-container */
+  --chart-2: #ffba31; /* Stitch: secondary-fixed-dim */
+  --chart-3: #8fd99a; /* 파생 — status-success 명도 반전 */
+  --chart-4: #ffb59d; /* Stitch: tertiary-fixed-dim */
+  --chart-5: #c4c6d4; /* Stitch: outline-variant */
+  --sidebar: #00174b; /* Stitch: on-primary-fixed — 라이트 sidebar-bg 보다 한 단계 어둡게 */
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffba31; /* Stitch: secondary-fixed-dim — 라이트 앰버의 다크 대응 */
+  --sidebar-primary-foreground: #271900; /* Stitch: on-secondary-fixed */
+  --sidebar-accent: #ffffff1a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #ffffff26;
+  --sidebar-ring: #b4c5ff; /* Stitch: inverse-primary */
+  --status-success: #8fd99a; /* 파생 — #1b5e20 명도 반전 */
+  --status-error: #ffb4ab; /* 파생 — #ba1a1a 명도 반전 */
+  --outline-variant: #444652; /* Stitch: on-surface-variant — 다크에서 구분선 역할 */
+}
+
+/* 팔레트 `debug` · 다크 — 라이트와 명도를 뒤집되 색조는 그대로 유지한다.
+   (다크 축이 팔레트 축과 독립적으로 먹는지 확인하는 게 이 블록의 목적이다) */
+:root[data-palette="debug"].dark {
+  --background: #14004d;
+  --foreground: #ffe600;
+  --card: #2b0080;
+  --card-foreground: #ffe600;
+  --popover: #2b0080;
+  --popover-foreground: #ffe600;
+  --primary: #00e5ff;
+  --primary-foreground: #14004d;
+  --secondary: #3d0099;
+  --secondary-foreground: #ffe600;
+  --muted: #24006b;
+  --muted-foreground: #b9ff66;
+  --accent: #ff4fd8;
+  --accent-foreground: #14004d;
+  --destructive: #ff6b6b;
+  --border: #00e5ff;
+  --input: #00e5ff;
+  --ring: #ff4fd8;
+  --chart-1: #00e5ff;
+  --chart-2: #ff4fd8;
+  --chart-3: #b9ff66;
+  --chart-4: #ff8a00;
+  --chart-5: #ffe600;
+  --radius: 0.75rem;
+  --sidebar: #2b0080;
+  --sidebar-foreground: #ffe600;
+  --sidebar-primary: #ff4fd8;
+  --sidebar-primary-foreground: #14004d;
+  --sidebar-accent: #ffffff33;
+  --sidebar-accent-foreground: #ffe600;
+  --sidebar-border: #ffffff4d;
+  --sidebar-ring: #00e5ff;
+  --status-success: #8fd99a;
+  --status-error: #ff6b6b;
+  --outline-variant: #00e5ff;
+}
+/* ⚠️ 잠정 토큰 블록 끝 */
 
 @layer base {
   * {
@@ -127,4 +500,89 @@
   html {
     @apply font-sans;
   }
+
+  /* 커스텀 스크롤바 ──────────────────────────────────────────────────────
+     샘플의 "Custom scrollbar for brutalist aesthetic" 블록(626~639행) 이식.
+     기본 스크롤바는 둥글고 얇아서 2px 각진 테두리 옆에 있으면 혼자 튄다.
+
+     값은 전부 토큰 참조다(하드코딩 없음). 라이트 기준으로 샘플과 정확히 일치한다:
+       track  var(--secondary)  = #e0e0e0  (샘플 surface-panel)
+       thumb  var(--background) = #dcd9d9  (샘플 surface-dim)
+       hover  var(--accent)     = #e4e2e1  (샘플 surface-variant)
+       테두리 var(--border)     = #1b1c1c  (샘플 on-background)
+     다크에서는 같은 토큰이 반전값을 내주므로 규칙을 따로 쓸 필요가 없다.
+
+     적용 범위 — 전역 ::-webkit-scrollbar 대신 .custom-scrollbar 클래스로 간 이유:
+       고정 스테이지 안에는 남색 사이드바가 같이 들어 있어서, 전역으로 걸면
+       남색 배경 위에 회색 스크롤바가 얹혀 튄다. 클래스를 app/layout.tsx 의 main 에만
+       붙이면 사이드바는 자연히 제외된다.
+       자손 선택자(.custom-scrollbar *)를 같이 둔 것은 본문 안쪽에 따로 생기는
+       스크롤 영역(Table 컨테이너의 가로 스크롤 등)까지 한 번에 덮기 위해서다.
+       main 자체는 고정 스테이지 도입 후 overflow-hidden 이라 스크롤바가 생기지 않지만,
+       자손 규칙이 살아 있어야 하므로 클래스는 계속 main 에 붙여 둔다.
+       Portal 로 body 직속에 붙는 팝오버(Select 드롭다운)는 이 범위 밖이라
+       기본 스크롤바로 남는다 — 짧은 목록이라 실사용상 문제 없다고 봤다. */
+  .custom-scrollbar,
+  .custom-scrollbar * {
+    /* Firefox 는 ::-webkit-* 계열을 전부 무시한다 → 표준 속성으로 폴백을 같이 준다.
+       scrollbar-color 는 "thumb track" 순서다. 테두리는 표준 속성에 없어 재현 불가. */
+    scrollbar-width: auto;
+    scrollbar-color: var(--background) var(--secondary);
+  }
+  .custom-scrollbar::-webkit-scrollbar,
+  .custom-scrollbar *::-webkit-scrollbar {
+    width: 16px;
+    height: 16px; /* 가로 스크롤도 같은 두께로 — 샘플은 세로만 정의했다 */
+  }
+  .custom-scrollbar::-webkit-scrollbar-track,
+  .custom-scrollbar *::-webkit-scrollbar-track {
+    background: var(--secondary);
+    border-left: 2px solid var(--border);
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb,
+  .custom-scrollbar *::-webkit-scrollbar-thumb {
+    background: var(--background);
+    border: 2px solid var(--border);
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+  .custom-scrollbar *::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+  }
+
+}
+
+/* 토스트를 **스테이지 중앙**에 맞춘다 ──────────────────────────────────────
+   Toaster 는 스테이지 밖에 있다(축소되면 안 되므로 — app/layout.tsx 주석 참고).
+   그래서 sonner 가 기본으로 잡는 "화면 중앙"은 **뷰포트 중앙**이고, 작업자가 보는
+   스테이지의 중앙과 레터박스만큼 어긋난다. 데스크톱에서 좌우 여백이 400px 넘게
+   나오므로 무시할 수 없다.
+   components/fixed-stage.tsx 가 매 fit() 마다 스테이지의 실제 사각형을
+   --stage-left/top/width/height 로 <html> 에 내보내므로, 여기서는 그걸로 중앙을 계산한다.
+   토스트 자체에는 scale 이 걸리지 않으므로 원본 크기 그대로다.
+
+   세로 중앙 계산에 --front-toast-height 를 쓰는 이유:
+     sonner 의 루트 <ol> 은 높이가 0인 **기준점**일 뿐이고(토스트는 그 안에서
+     position:absolute 로 뜬다), 그래서 ol 을 중앙에 놓으면 토스트의 *윗변*이 중앙에
+     걸리고 아래로 흘러내린다. sonner 는 맨 앞 토스트의 실측 높이를 ol 자신의 인라인
+     스타일 --front-toast-height 로 노출하므로, 그 절반만 위로 올리면 토스트가 정확히
+     중앙에 온다. 매직넘버를 쓰지 않고 맞출 수 있는 유일한 지점이다.
+
+   ⚠️ 특정성 — sonner 자신의 규칙이 [data-sonner-toaster][data-x-position=center] 로
+      (0,2,0) 이고, 모바일 폭에서는 미디어 쿼리로 --mobile-offset-* 을 또 건다.
+      같은 (0,2,0) 으로 맞서면 sonner 스타일이 <style> 로 런타임 주입되는 탓에
+      소스 순서 싸움이 되어 결과가 불안정하다. 그래서 클래스를 하나 더 얹어
+      (0,3,0) 으로 확실히 이기게 했다. 클래스는 app/layout.tsx 에서 붙인다.
+
+   ⚠️ 이 규칙이 @layer base **밖**에 있는 것도 의도다. 처음에 base 안에 넣었다가
+      되돌렸다 — 레이어에 든 규칙은 **특정성과 무관하게** 레이어에 들지 않은 규칙에
+      전부 진다. sonner 는 스타일을 런타임에 <style> 로 주입하고 그건 언레이어드라,
+      base 안에서는 (0,3,0) 이든 뭐든 이길 수 없다. 레이어 바깥에 둬야 위 특정성 계산이
+      비로소 의미를 갖는다. */
+[data-sonner-toaster].stage-toaster[data-x-position="center"] {
+  left: calc(var(--stage-left, 0px) + var(--stage-width, 100vw) / 2);
+  top: calc(
+    var(--stage-top, 0px) + var(--stage-height, 100vh) / 2 - var(--front-toast-height, 0px) / 2
+  );
+  bottom: auto;
+  transform: translateX(-50%);
 }

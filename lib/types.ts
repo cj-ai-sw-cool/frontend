@@ -1,5 +1,5 @@
 /**
- * API 계약 타입 — docs/02-api-spec.md v0.3 기준.
+ * API 계약 타입 — docs/02-api-spec.md v0.6 기준.
  *
  * 문서가 정본이다. 계약이 바뀌면 02 를 먼저 고치고 이 파일을 맞춘다.
  * 단위: 길이 cm(소수 1자리), 무게 kg(소수 3자리) — D-03.
@@ -9,9 +9,12 @@
 
 export type ApiErrorCode =
   | "PRODUCT_NOT_FOUND"
+  | "SESSION_NOT_FOUND"
   | "GATE_NOT_PASSED"
   | "SESSION_ALREADY_CONFIRMED"
   | "TOTE_NOT_ASSIGNED"
+  | "SHIPMENT_NOT_FOUND"
+  | "BOX_TYPE_NOT_FOUND"
   | "INVALID_STATE"
   | "OUT_OF_STOCK"
   | "VALIDATION_ERROR";
@@ -57,12 +60,11 @@ export interface ScanResponse {
   product: Product | null;
 }
 
-/** 1-2 `POST /inbound/products` — 분류는 코드로 보낸다 (D-13) */
-export interface CreateProductRequest {
-  gtin: string;
-  name: string;
-  mediumCategoryCode: string;
-}
+/**
+ * ~~1-2 `POST /inbound/products`~~ — v0.5 에서 삭제 (D-21).
+ * 마스터에 없는 바코드는 1-1 에서 안내하고 흐름을 종료하므로 임시 마스터를 만들지 않는다.
+ * 백엔드에도 엔드포인트가 없다 — 타입만 남기면 되살아날 수 있어 함께 지운다.
+ */
 
 export interface MeasurementImage {
   cameraNo: number | null;
@@ -116,13 +118,11 @@ export interface ProductImagesResponse {
   images: MeasurementImage[];
 }
 
-/** 1-7 `GET /categories` — 프론트가 parentCode 로 트리 구성 (D-13) */
-export interface Category {
-  code: string;
-  name: string;
-  level: "LARGE" | "MEDIUM";
-  parentCode: string | null;
-}
+/**
+ * ~~1-7 `GET /categories`~~ — v0.5 에서 삭제 (D-21, D-13 무효).
+ * 유일한 소비처가 1-2 의 분류 드롭다운이었다. 화면에 보이는 대분류·중분류는
+ * 1-1 응답의 `categoryL`/`categoryM` 이 그대로 채우므로 목록 조회가 필요 없다.
+ */
 
 /* ── 2. 대시보드 ─────────────────────────────────────────── */
 
