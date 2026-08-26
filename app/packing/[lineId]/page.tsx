@@ -1,12 +1,13 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { notFound, useParams } from "next/navigation";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Placeholder } from "@/components/common/page-header";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { queryKeys } from "@/lib/endpoints";
 import type { BoxType, ShipmentStatus } from "@/lib/types";
 import { BoxRecommendationPanel } from "../_components/box-recommendation-panel";
 import { LineShipmentsPanel } from "../_components/line-shipments-panel";
@@ -72,8 +73,8 @@ import {
  * `lineId` 출처는 라우트 파라미터로 확정했다 — 화면 안 셀렉터가 아니라 `/packing/[lineId]`
  * 로 라우팅한다. 이 파일이 그 라우트의 페이지이고, `/packing`(인덱스)은 임시 기본 라인으로
  * 리다이렉트만 한다(`app/packing/page.tsx` 참고). `useParams` 로 문자열을 읽어 숫자로 파싱하고,
- * 숫자가 아니면 `notFound()` 로 404 처리한다 — 잘못된 라인으로 계속 진행하면 3-1 리스트가
- * 조용히 빈 화면이 되어 원인을 알기 어렵다.
+ * **양의 정수가 아니면**(`NaN`, 소수, 0, 음수 전부) `notFound()` 로 404 처리한다 — 잘못된
+ * 라인으로 계속 진행하면 3-1 리스트가 조용히 빈 화면이 되어 원인을 알기 어렵다.
  *
  * ── 이 파일의 역할: 컨테이너 ──────────────────────────────
  * 데이터를 받는 곳과 화면을 그리는 곳을 나눠 놨다.
@@ -87,7 +88,8 @@ export default function PackingPage() {
   /* ── 라우트 파라미터 ─────────────────────────────────────── */
   const params = useParams<{ lineId: string }>();
   const lineId = Number(params.lineId);
-  if (Number.isNaN(lineId)) notFound();
+  // `-1`/`0`/`1.5` 처럼 숫자로는 파싱되지만 실제 라인 id 일 수 없는 값도 함께 막는다.
+  if (!Number.isInteger(lineId) || lineId <= 0) notFound();
 
   /* ── 화면 상태 (서버 데이터가 아닌 것만 여기서 관리) ────── */
   /** 스캔 입력창에 찍힌 문자열 */
@@ -154,11 +156,14 @@ export default function PackingPage() {
         setSelectedProductId(null);
         overrideBox.reset();
         completePacking.reset();
-        // 토트 스캔은 배송단위를 TOTE_ASSIGNED → PACKING 으로 옮긴다 — 3-1 리스트도 갱신
-        void queryClient.invalidateQueries({ queryKey: ["lines", lineId, "shipments"] });
+        // 토트 스캔은 배송단위를 TOTE_ASSIGNED → PACKING 으로 옮긴다 — 3-1 리스트도 갱신.
+        // 스캔된 토트가 지금 보고 있는 라인(route lineId)이 아니라 **응답이 알려주는 실제
+        // 소속 라인**(detail.line.lineId)의 리스트를 무효화한다 — 원칙적으로 다른 라인의
+        // 토트가 스캔될 수도 있다.
+        invalidateLineShipments(queryClient, detail.line.lineId);
       },
     });
-  }, [barcode, scan, overrideBox, completePacking, queryClient, lineId]);
+  }, [barcode, scan, overrideBox, completePacking, queryClient]);
 
   const handleActualQtyChange = useCallback((productId: number, qty: number) => {
     setActualQty((prev) => ({ ...prev, [productId]: qty }));
@@ -187,11 +192,13 @@ export default function PackingPage() {
         setSelectedBoxTypeId(null);
         setSelectedProductId(null);
         scan.reset();
-        // 포장 완료는 배송단위를 PACKING → PACKED 로 옮긴다 — 3-1 리스트도 갱신
-        void queryClient.invalidateQueries({ queryKey: ["lines", lineId, "shipments"] });
+        // 포장 완료는 배송단위를 PACKING → PACKED 로 옮긴다 — 3-1 리스트도 갱신.
+        // route lineId 가 아니라 방금 완료된 배송단위의 실제 소속 라인
+        // (shipment.line.lineId)을 쓴다 — 지금 보고 있는 라인과 항상 같다는 보장이 없다.
+        invalidateLineShipments(queryClient, shipment.line.lineId);
       },
     });
-  }, [shipment, completePacking, scan, queryClient, lineId]);
+  }, [shipment, completePacking, scan, queryClient]);
 
   /* ── 표시 ──────────────────────────────────────────────── */
   const isScanning = scan.isPending || shipmentQuery.isLoading;
@@ -277,12 +284,23 @@ export default function PackingPage() {
                   진행중(PACKING)/완료(PACKED) 상태 탭으로 표시 (D-12). 주문 단위 그룹
                   상세(A안)는 추후 확장이라 지금은 리스트만, 행은 클릭할 수 없다.
                   스크롤은 LineShipmentsPanel 안(탭 내용)에서만 한다 — 여기는 overflow-hidden
-                  으로 이중 스크롤을 막는다(품목 카드와 같은 패턴). */}
+                  으로 이중 스크롤을 막는다(품목 카드와 같은 패턴).
+                  isError 를 따로 가른다 — 안 가르면 data 가 undefined 라 `?? []`로 빈 배열이
+                  되고, 그 결과 LineShipmentsPanel 이 "표시할 배송단위가 없습니다"를 그려서
+                  진짜로 빈 라인과 조회 실패를 구분할 수 없게 된다(`box-recommendation-panel.tsx`
+                  의 role="alert" + text-status-error 관례를 그대로 따른다). */}
               {lineShipmentsQuery.isLoading ? (
                 <div className="space-y-2">
                   <Skeleton className="h-8 w-full" />
                   <Skeleton className="h-8 w-full" />
                   <Skeleton className="h-8 w-full" />
+                </div>
+              ) : lineShipmentsQuery.isError ? (
+                <div
+                  role="alert"
+                  className="flex h-full items-center justify-center text-center text-sm text-status-error"
+                >
+                  배송 내역을 불러오지 못했습니다
                 </div>
               ) : (
                 <LineShipmentsPanel
@@ -382,6 +400,20 @@ export default function PackingPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * 3-1 라인별 배송 내역 캐시를 무효화한다.
+ *
+ * `queryKeys.lineShipments(lineId)` 는 `["lines", lineId, "shipments", "ALL"]` 을 돌려주는데
+ * (status 생략 시 4번째 칸이 `"ALL"`), status 로 갈라진 그 4번째 칸까지 그대로 넘기면
+ * `invalidateQueries` 의 기본 prefix 매칭이 `status="ALL"` 쿼리만 지우고 완료/진행중/준비중
+ * 탭의 캐시는 남겨 둔다. 그래서 앞 3칸(`slice(0, 3)`)만 prefix 로 써서 네 탭을 한 번에
+ * 무효화한다 — `["lines", lineId, "shipments"]` 를 손으로 다시 적지 않고 `queryKeys` 가
+ * 만드는 키 모양에서 그대로 파생시킨다(키 모양이 바뀌면 여기도 같이 컴파일 에러가 나야 한다).
+ */
+function invalidateLineShipments(queryClient: QueryClient, lineId: number): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.lineShipments(lineId).slice(0, 3) });
 }
 
 /**
