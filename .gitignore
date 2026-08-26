@@ -40,3 +40,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 로컬 작업본 — 팀 저장소에는 win98 화면 세 개만 올린다
+#
+# box-lab: 3D 상자를 화면 가득 띄워 날개·테이프를 눈으로 확인하는 개발용 검사대다.
+#          앞으로도 상자를 다듬을 때 쓰므로 로컬에는 남기고, 저장소에만 넣지 않는다.
+# 나머지 셋: win98 화면으로 대체된 중간 산출본. 지우지 않고 두되 올리지는 않는다.
+/app/box-lab/
+/app/inbound-v2/
+/app/_inbound-v3-dark-backup/
+/app/_win98-shared-old/
