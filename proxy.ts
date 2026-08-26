@@ -7,6 +7,7 @@
  * 유지된다.
  *
  * `DEMO_PASSWORD` 가 비어 있으면 아무것도 막지 않는다 — 로컬 개발이 지금처럼 그대로 돌아간다.
+ * 아이디는 `DEMO_USER` 로 정하며, 비워 두면 아이디는 검사하지 않고 비밀번호만 본다.
  *
  * ⚠️ Basic 인증은 자격증명을 요청마다 보낸다. 지금 시연 서버는 HTTPS 가 아니라 같은 망을
  * 엿볼 수 있는 사람에게는 비밀번호가 노출된다. 시연 전용 비밀번호를 쓰고 끝나면 버린다.
@@ -51,10 +52,17 @@ export function proxy(request: NextRequest): NextResponse {
     return unauthorized();
   }
 
-  // 사용자명은 검사하지 않는다. 팀원이 각자 아무 이름이나 넣어도 되고, 막는 건 비밀번호다.
+  // 아이디에 콜론이 들어갈 수 없으므로 첫 콜론에서 자른다. 비밀번호에는 콜론이 있어도 된다.
   const separator = decoded.indexOf(":");
-  const supplied = separator === -1 ? "" : decoded.slice(separator + 1);
-  return matches(supplied, password) ? NextResponse.next() : unauthorized();
+  const suppliedUser = separator === -1 ? decoded : decoded.slice(0, separator);
+  const suppliedPassword = separator === -1 ? "" : decoded.slice(separator + 1);
+
+  const expectedUser = process.env.DEMO_USER;
+  // 아이디가 틀려도 비밀번호 비교를 건너뛰지 않는다 — 어느 쪽이 틀렸는지 응답 시간으로
+  // 알아내지 못하게 한다.
+  const userOk = !expectedUser || matches(suppliedUser, expectedUser);
+  const passwordOk = matches(suppliedPassword, password);
+  return userOk && passwordOk ? NextResponse.next() : unauthorized();
 }
 
 export const config = {

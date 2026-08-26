@@ -11,6 +11,7 @@ services:
       # 호스트를 거쳐 부른다. host.docker.internal 은 리눅스에서 아래 extra_hosts 가 만든다.
       BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://host.docker.internal:8000}
       # 비어 있으면 아무도 못 막는다 — 시연 서버에서는 반드시 채운다
+      DEMO_USER: ${DEMO_USER:-}
       DEMO_PASSWORD: ${DEMO_PASSWORD:?DEMO_PASSWORD 를 .env 에 넣으세요}
     extra_hosts:
       - "host.docker.internal:host-gateway"

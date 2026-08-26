@@ -99,8 +99,9 @@ cp .env.example .env
 sudo docker compose up -d --build
 ```
 
-접속은 `http://<서버주소>:3000` 이고 브라우저가 아이디·비밀번호를 묻는다. 아이디는 검사하지
-않으니 아무거나 넣고 비밀번호만 맞추면 된다.
+접속은 `http://<서버주소>:3000` 이고 브라우저가 아이디·비밀번호를 묻는다. `.env` 의
+`DEMO_USER` / `DEMO_PASSWORD` 와 맞아야 들어온다 — `DEMO_USER` 를 비워 두면 아이디는
+검사하지 않는다.
 
 `DEMO_PASSWORD` 를 비우면 게이트가 꺼진다 — 로컬 개발은 지금까지처럼 그대로 돌아간다.
 
