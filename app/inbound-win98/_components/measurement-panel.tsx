@@ -250,9 +250,11 @@ function describeStatus(
   if (isManualWinning) return { tone: "ok", label: "MANUAL" };
   if (data === undefined) return { tone: "idle", label: "STANDBY" };
   if (data.status === "MEASURE_FAILED") return { tone: "error", label: "FAILED" };
-  const percent = `${(data.confidence * 100).toFixed(0)}%`;
-  if (!data.gatePassed) return { tone: "error", label: `GATE ${percent}` };
-  return { tone: "ok", label: `MEASURED ${percent}` };
+  // 신뢰도는 모델이 줄 때만 배지에 붙인다. 없을 때 0 으로 접으면 게이트를 통과한 측정이
+  // `MEASURED 0%` 로 보여 반대로 읽힌다 (D-24).
+  const percent = data.confidence === null ? "" : ` ${(data.confidence * 100).toFixed(0)}%`;
+  if (!data.gatePassed) return { tone: "error", label: `GATE${percent || " 미통과"}` };
+  return { tone: "ok", label: `MEASURED${percent}` };
 }
 
 /* ── 숫자 ───────────────────────────────────────────────── */
