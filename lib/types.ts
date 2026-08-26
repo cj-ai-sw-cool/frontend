@@ -78,7 +78,11 @@ export interface MeasurementInferred {
   inferred: Dimensions;
   /** 저울 연동 실측값. 추론 아님 → 게이트 무관. 미수신 시 null */
   weightKg: number | null;
-  confidence: number;
+  /**
+   * 모델이 신뢰도를 주면 0~1. 현재 배포된 모델은 표본 부족으로 제외해 null 이다 (D-24).
+   * null 이면 서버도 신뢰도 게이트 판정을 건너뛰므로 `gateFailReasons` 에 LOW_CONFIDENCE 가 없다.
+   */
+  confidence: number | null;
   gatePassed: boolean;
   gateFailReasons: string[];
   images: MeasurementImage[];
