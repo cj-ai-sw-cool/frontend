@@ -1,0 +1,265 @@
+"use client";
+
+import { Fragment } from "react";
+import { ImagePlus } from "lucide-react";
+import type { Product, ScanResponse } from "@/lib/types";
+import { Panel, Sunken, w98 } from "./win98-ui";
+
+/**
+ * 1-1 응답 표시 — 목업의 `Product Manifest` 패널.
+ *
+ * 목업은 읽기 전용 textarea 에 `ITEM ID / DESC / DEST / ROUTING / PRIORITY` 를 찍고
+ * 마지막 줄에 `> WAITING FOR CONFIRMATION...` 을 둔다. 그 **텍스트 단말 표현**을 그대로
+ * 쓰되, 항목은 우리 계약이 실제로 주는 값으로 바꿨다.
+ *
+ * ⚠️ 목업의 DEST / ROUTING / PRIORITY 는 우리 계약에 없다(§1-1 은 상품 마스터만 준다).
+ *    있는 척 채우면 시연 중에 "저 값은 뭐냐"는 질문에 답할 수 없어서, 실제로 있는
+ *    GTIN·분류·재고·치수 상태로 갈아 끼웠다.
+ *
+ * ★ 이 칸이 우측 열에서 **유일하게 늘어나는 칸**이다 (사용자 결정) — 목업의 고정 140px 대신
+ *   남는 세로를 전부 먹는다. 곧 제품 정보에 **사진 업로드**가 붙을 예정이고, 그때 자리를
+ *   새로 만드는 게 아니라 이미 확보된 이 칸을 나눠 쓰면 되도록 미리 키워 둔 것이다.
+ *   ⚠️ 그래서 내용이 짧아도 칸은 크다. 지금은 빈 아래쪽이 남는 게 정상이다.
+ *
+ * ★ 분류는 **읽기 전용**이다 (D-21). 1-2 `POST /inbound/products` 와 1-7 `GET /categories` 가
+ *   v0.5 에서 삭제되어 작업자가 분류를 고르는 UI 도 수기 등록 폼도 없다.
+ *   UNKNOWN 은 안내 후 흐름 종료다.
+ */
+export function ManifestPanel({
+  result,
+  isPending,
+  right,
+}: {
+  result?: ScanResponse;
+  isPending: boolean;
+  /** 제목 줄 오른쪽에 놓을 것 — 지금은 취급 주의사항 창을 여는 버튼이 들어온다 */
+  right?: React.ReactNode;
+}) {
+  /* ★ **바코드를 찍기 전에는 품목명 한 줄만 둔다** (사용자 결정 — 대기 화면을 깨끗하게).
+       전에는 `ITEM ID --` 부터 `> WAITING FOR SCAN...` 까지 여섯 줄이 전부 `--` 로 차 있었다.
+       빈 값을 줄 수만큼 늘어놓으면 "아직 아무것도 없다"가 아니라 "무언가 잘못됐다"로 읽힌다.
+       칸의 높이는 어차피 flex-1 이라 줄을 지워도 레이아웃이 흔들리지 않는다.
+     ⚠️ 기준은 `isPending` 이 아니라 **응답이 왔는가**다. 조회 중에도 표를 띄우면 `--` 여섯
+        줄이 잠깐 지나가고, 그 깜빡임이 대기 화면을 지저분하게 만든 원인이었다. */
+  const hasResult = result !== undefined;
+  const status = hasResult ? buildStatus(result) : null;
+
+  return (
+    <Panel title="Product Manifest" right={right} className="min-h-0 flex-1" bodyClassName="min-h-0 gap-2">
+      {/* 위 — 텍스트 명세. 남는 세로를 여기가 먹는다 */}
+      <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto p-2`}>
+        {/* ★ **품목명만 따로 뽑아 맨 위에 크게 둔다** (사용자 결정 — "우선순위가 필요해").
+            여섯 줄이 전부 같은 크기·굵기·색이라 눈이 값을 골라내지 못했다. 그중 작업자가
+            실제로 확인하는 건 "지금 든 게 무슨 물건인가" 하나인데, 그게 ITEM ID 와 동급으로
+            묻혀 있었다. 전부 키우는 대신 **한 줄만 올려** 나머지를 배경으로 내린다.
+            ⚠️ 모노를 쓰지 않는다. Courier Prime 에는 한글이 없어 값이 맑은 고딕으로 떨어지고,
+               그러면 공백으로 맞춘 `:` 세로줄이 한글 줄에서만 어긋나 오히려 지저분해진다.
+               품목명은 거의 항상 한글이라 처음부터 본문 폰트로 두는 편이 깔끔하다.
+            ⚠️ `break-keep` — 한글은 단어 중간에서 끊기면 읽기 나쁘다. 어절 단위로만 넘긴다. */}
+        <ProductName product={result?.product ?? null} isPending={isPending} />
+        {hasResult ? (
+          <>
+          <div className={`${w98.etched} my-2`} />
+
+          {/* ★ **공백으로 맞추던 정렬을 진짜 2단 표로 바꿨다** (사용자 결정 —
+                "글씨끼리 여백을 붙이고 글씨 크기를 키우는 게 가독성 좋을 듯").
+
+              전에는 `GTIN   : 8801234567893` 처럼 라벨 뒤에 공백을 채워 `:` 를 세로로 맞췄다.
+              그 공백이 실제로 **화면 폭을 먹는다** — 가장 긴 라벨(ITEM ID)에 맞춰 모든 줄이
+              7칸을 잡고 있었고, `:` 앞뒤 여백까지 더하면 한 줄에서 9칸이 빈칸이었다.
+              글자를 키우면 그 빈칸도 같이 커져서 20px 이 폭의 한계였다(22px 에서 DIM 줄이
+              두 줄로 접혔다).
+
+              표로 바꾸면 라벨 칸이 **가장 긴 라벨 딱 그만큼**만 차지하고(`auto`), 남는 폭은
+              전부 값으로 간다. 그 덕에 같은 칸에서 20 → **22px** 로 올라갔다.
+              ⚠️ 라벨과 값 사이는 `gap-x-3`(12px). 공백 두 칸(약 26px)보다 좁으면서도 두 열이
+                 붙어 보이지 않는 최소치다.
+              ⚠️ 모노는 그대로 둔다. GTIN·재고가 숫자라 자릿수가 세로로 맞아야 한다.
+              ⚠️ 라벨 색을 낮춘다. 크기를 키울수록 라벨이 값만큼 강해져서, 색까지 같으면
+                 어느 쪽이 값인지 눈이 매번 다시 찾는다. */}
+          {/* ★ **모노를 뺐다** (사용자 요청 — 이 화면 글씨를 다 같은 고딕으로).
+              Roboto Mono 에는 한글이 없어서 `음료 / 과채주스` 같은 값만 맑은 고딕으로
+              떨어졌다. 한 줄 안에서 서체가 갈리니 글자 굵기도 자간도 어긋나 보였다.
+              본문 서체로 통일하면 라벨·값·한글이 전부 같은 글꼴이 된다.
+              ⚠️ 대신 `tabular-nums` 를 건다. 모노를 포기하면 숫자 폭이 글자마다 달라져
+                 GTIN·재고의 자릿수가 세로로 안 맞는데, 이 설정이 숫자만 고정폭으로 만든다.
+                 모노가 이 칸에서 실제로 하던 일이 그것 하나였다. */}
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[22px] leading-8 font-bold tabular-nums">
+            {buildRows(result, isPending).map((row) => (
+              <Fragment key={row.label}>
+                <dt className="text-[color:var(--muted-foreground)]">{row.label}</dt>
+                <dd className="break-keep">
+                  {/* 값은 검정, **뜻을 덧붙이는 부분만 파랑** (사용자 결정).
+                      분류와 치수 확정 여부는 "이 상품이 어떤 상태인가"를 말하는 값이라,
+                      번호·수량과 같은 검정으로 두면 눈에 안 걸린다. */}
+                  {row.accent === true ? (
+                    <span className="text-[color:var(--primary)]">{row.value}</span>
+                  ) : (
+                    row.value
+                  )}
+                  {row.note === undefined ? null : (
+                    <span className="ml-2 text-[color:var(--primary)]">{row.note}</span>
+                  )}
+                </dd>
+              </Fragment>
+            ))}
+          </dl>
+
+          {/* 상태 줄 — 값이 아니라 **지금 무슨 상태인가**를 말한다.
+              표 안에 넣지 않는 이유: 라벨-값 짝이 아니라서 2단에 넣으면 한쪽 칸이 비고,
+              빈 칸이 생기면 표가 무너져 보인다. */}
+          {status === null ? null : (
+            <p
+              className="mt-4 text-[18px] leading-6 font-bold break-keep whitespace-pre-line"
+            >
+              {status}
+            </p>
+          )}
+          </>
+        ) : null}
+      </Sunken>
+
+      {/* 아래 — 제품 사진 자리 */}
+      <ProductPhotoSlot product={result?.product ?? null} isPending={isPending} />
+    </Panel>
+  );
+}
+
+/** 맨 위 큰 줄 — 이 화면에서 가장 먼저 읽혀야 하는 값 하나 */
+function ProductName({ product, isPending }: { product: Product | null; isPending: boolean }) {
+  const name = isPending ? "SCANNING…" : (product?.name ?? "--");
+  const isPlaceholder = !isPending && product === null;
+
+  return (
+    <div className="shrink-0">
+      {/* ★ 라벨을 흐린 회색 13px → **본문색 14px 굵게** (사용자 지적 — 안 보였다).
+          라벨이 흐리면 값과의 짝이 안 읽혀서, 큰 글자만 덩그러니 떠 있는 것처럼 보인다. */}
+      <span className="block text-[15px] font-bold text-[color:var(--foreground)]">품목명</span>
+      <span
+        /* ★ 21 → 23 → **27px**, 거기에 `-webkit-text-stroke` 로 획을 한 번 더 두껍게 한다
+             (사용자 지적 — 더 굵게).
+           ⚠️ `font-weight` 를 더 올릴 수는 없다. 이 이름은 거의 항상 한글이라 맑은 고딕으로
+              폴백되는데, 맑은 고딕은 Regular/Bold 두 종뿐이라 800·900 을 줘도 Bold 에서
+              멈춘다. 획 자체를 굵히는 text-stroke 만이 여기서 더 굵어지는 유일한 방법이다.
+           ⚠️ 0.4px 을 넘기지 않는다. 그 이상이면 한글 자모 사이가 메워져 뭉개진다 —
+              취급 주의사항의 빨간 글씨(`checkedNeon`)에서 이미 찾아 둔 값이다. */
+        style={{ WebkitTextStroke: "0.4px currentColor" }}
+        className={`block text-[27px] leading-9 font-bold break-keep ${
+          isPlaceholder ? "text-[color:var(--muted-foreground)]" : ""
+        }`}
+        title={product?.name}
+      >
+        {name}
+      </span>
+    </div>
+  );
+}
+
+/* ── 제품 사진 자리 ──────────────────────────────────────────────────────────
+   Manifest 패널 **아래쪽**에 붙는 작은 사진 칸이다 (사용자 요청).
+
+   ★ 지금은 대부분 빈 자리다. 1-1 응답의 `product.imageUrl`(코리안넷 마스터 이미지)이
+     들어오면 그걸 그리지만, mock 은 네 상품 모두 `imageUrl: null` 이라 자리표시만 보인다.
+     실제 서버가 붙으면 그때부터 사진이 뜬다 — 코드는 이미 그 경로를 타고 있다.
+
+   ⚠️ **업로드 버튼을 만들지 않았다.** 사진 업로드는 아직 계약에도 화면 명세에도 없다
+      (§1-1 은 마스터 이미지 URL 만 준다). 누르면 아무 일도 없는 버튼을 두면 "되는 기능"으로
+      오해되므로, 자리와 예정만 적어 둔다. 업로드 API 가 정해지면 이 칸 안에 넣으면 된다.
+   ⚠️ `img` 를 next/image 로 바꾸지 않았다. 이미지 출처가 백엔드 도메인이라
+      next.config 의 remotePatterns 를 먼저 합의해야 한다(출고 화면과 같은 판단). */
+function ProductPhotoSlot({
+  product,
+  isPending,
+}: {
+  product: Product | null;
+  isPending: boolean;
+}) {
+  const imageUrl = product?.imageUrl ?? null;
+
+  /* ★ 가로:세로 = **16:9** 다 (사용자 결정). 정사각형 → 4:3 → 16:9 로 두 번 낮췄고,
+     이유는 매번 같다 — 위 텍스트 칸(제품 상세)이 더 커야 한다. 우측 열 폭 408px 기준으로
+     4:3 이 292px, 16:9 가 219px 이라 이번에 **73px** 이 텍스트 칸으로 넘어갔다.
+     높이를 픽셀로 박지 않고 비율로 둔 이유: 우측 열 폭이 바뀌면 사진 칸도 같이 움직여야 한다.
+     ⚠️ 위 텍스트 칸이 flex-1 이라 이 칸이 커진 만큼 그쪽이 줄어든다. 취급 주의사항을
+        창으로 뺀 덕에 그만한 여유가 생겼다. */
+  return (
+    <div
+      className={`${w98.sunken} flex aspect-[16/9] w-full shrink-0 flex-col bg-[color:var(--surface-bright)] p-1`}
+    >
+      {/* 네이비 캡션 줄 — 이 화면의 다른 사진 칸(Visual Inspection)과 같은 표현이다 */}
+      <span
+        className={`${w98.small} mb-1 flex shrink-0 items-center justify-between gap-2 bg-[color:var(--primary)] px-1 text-[color:var(--primary-foreground)]`}
+      >
+        <span>Product Photo</span>
+        <span className="shrink-0 opacity-80">마스터 이미지</span>
+      </span>
+
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[color:var(--surface-dim)]">
+        {isPending ? (
+          <span className={`${w98.mono} ${w98.small} text-white`}>LOADING…</span>
+        ) : imageUrl === null ? (
+          <div className="flex flex-col items-center gap-1 opacity-40">
+            <ImagePlus className="size-6" aria-hidden />
+            <span className={`${w98.mono} ${w98.small} uppercase`}>
+              {product === null ? "no product" : "업로드 예정"}
+            </span>
+          </div>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageUrl}
+            alt={`${product?.name ?? "제품"} 마스터 이미지`}
+            className="h-full w-full object-contain"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 표에 찍을 라벨-값 짝. 상태 줄(`> …`)은 따로 만든다 — 짝이 아니라 문장이라서다 */
+function buildRows(
+  result: ScanResponse | undefined,
+  isPending: boolean,
+): { label: string; value: string; accent?: boolean; note?: string }[] {
+  const product = isPending ? null : (result?.product ?? null);
+
+  if (product === null) {
+    /* 값이 없을 때도 **줄 수는 그대로** 둔다. 스캔할 때마다 칸 높이가 들썩이면 아래
+       사진 자리까지 같이 움직여서 화면이 불안해 보인다. */
+    return ["ITEM ID", "GTIN", "CLASS", "STOCK", "DIM"].map((label) => ({ label, value: "--" }));
+  }
+
+  const isRegistered = result?.judgment === "REGISTERED";
+
+  return [
+    { label: "ITEM ID", value: String(product.productId) },
+    { label: "GTIN", value: product.gtin },
+    {
+      label: "CLASS",
+      value: `${product.categoryL} / ${product.categoryM}`,
+      accent: true,
+    },
+    { label: "STOCK", value: String(product.stockQty) },
+    {
+      label: "DIM",
+      value: product.dimStatus,
+      note: isRegistered ? "(치수 확정)" : "(치수 미확정)",
+    },
+  ];
+}
+
+/** 표 아래 문장. **응답이 온 뒤에만** 부른다 — 대기 중에는 이 칸 자체가 없다 */
+function buildStatus(result: ScanResponse): string | null {
+  if (result.product === null) {
+    /* UNKNOWN — 코리안넷 마스터에 없는 상품. 입고 대상이 아니라 여기서 흐름이 끝난다 (D-21) */
+    return [
+      "> UNKNOWN — 코리안넷 마스터에 없는 상품",
+      "> 입고 대상이 아닙니다. 바코드를 다시 확인하세요.",
+    ].join("\n");
+  }
+  return null;
+  /* ⚠️ `> REGISTERED — 촬영 없이…` 같은 **행동 안내는 여기서 뺐다** (사용자 결정).
+     이 칸은 상품이 무엇인지 적는 자리이고, 지금 무엇을 해야 하는지는 측정 패널 위의
+     한 줄이 말한다(measurement-panel.tsx). 두 곳이 나눠 맡으니 각자 짧아진다. */
+}
