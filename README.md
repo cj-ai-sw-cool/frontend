@@ -99,6 +99,10 @@ cp .env.example .env
 sudo docker compose up -d --build
 ```
 
+프론트 컨테이너는 백엔드 compose 가 만든 네트워크(`backend_default`)에 얹혀 `backend:8000` 으로
+부른다. 그래서 **백엔드 포트를 인터넷에 열지 않아도** 화면이 동작한다. 백엔드가 먼저 떠 있어야
+하고, 네트워크 이름이 다르면 `.env` 의 `BACKEND_NETWORK` 로 바꾼다.
+
 접속은 `http://<서버주소>:3000` 이고 브라우저가 아이디·비밀번호를 묻는다. `.env` 의
 `DEMO_USER` / `DEMO_PASSWORD` 와 맞아야 들어온다 — `DEMO_USER` 를 비워 두면 아이디는
 검사하지 않는다.
