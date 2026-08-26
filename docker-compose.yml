@@ -1,0 +1,24 @@
+# 시연 서버(EC2)에서 프론트만 띄운다. 백엔드는 backend 레포의 compose 가 따로 올린다.
+#
+# 밖에 열리는 포트는 3000 하나뿐이고 proxy.ts 의 계정이 그걸 지킨다.
+# 백엔드는 같은 docker 네트워크 안에서 `backend:8000` 으로 부르므로 8000 을 인터넷에
+# 열 필요가 없다 — 보안 그룹에서 8000 을 닫아도 화면은 그대로 동작한다.
+services:
+  frontend:
+    build: .
+    restart: unless-stopped
+    environment:
+      BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8000}
+      DEMO_USER: ${DEMO_USER:-}
+      # 비어 있으면 아무도 못 막는다 — 시연 서버에서는 반드시 채운다
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?DEMO_PASSWORD 를 .env 에 넣으세요}
+    networks:
+      - backend
+    ports:
+      - "3000:3000"
+
+networks:
+  # backend 레포의 compose 가 만든 네트워크에 얹힌다. 먼저 백엔드가 떠 있어야 한다.
+  backend:
+    external: true
+    name: ${BACKEND_NETWORK:-backend_default}

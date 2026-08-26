@@ -84,3 +84,30 @@ npx tsc --noEmit   # 타입
 npm run lint       # ESLint
 npm run build      # 프로덕션 빌드 (standalone 산출)
 ```
+
+## 시연 서버에 띄우기 (팀원 전용)
+
+화면은 EC2 에서 돌고 **비밀번호를 아는 사람만** 들어온다. 팀원이 각자 다른 망에서
+접속하므로 IP 로는 거를 수 없어 `proxy.ts` 가 Basic 인증으로 전체 경로를 막는다
+(`/api/v1/*` 포함 — 화면을 거치지 않고 API 만 부르는 것도 막힌다).
+
+```bash
+# EC2 에서
+git clone https://github.com/cj-ai-sw/frontend.git ~/frontend && cd ~/frontend
+cp .env.example .env
+# .env 에 DEMO_PASSWORD 를 채운다. BACKEND_ORIGIN 은 기본값(host.docker.internal:8000)이면 된다.
+sudo docker compose up -d --build
+```
+
+프론트 컨테이너는 백엔드 compose 가 만든 네트워크(`backend_default`)에 얹혀 `backend:8000` 으로
+부른다. 그래서 **백엔드 포트를 인터넷에 열지 않아도** 화면이 동작한다. 백엔드가 먼저 떠 있어야
+하고, 네트워크 이름이 다르면 `.env` 의 `BACKEND_NETWORK` 로 바꾼다.
+
+접속은 `http://<서버주소>:3000` 이고 브라우저가 아이디·비밀번호를 묻는다. `.env` 의
+`DEMO_USER` / `DEMO_PASSWORD` 와 맞아야 들어온다 — `DEMO_USER` 를 비워 두면 아이디는
+검사하지 않는다.
+
+`DEMO_PASSWORD` 를 비우면 게이트가 꺼진다 — 로컬 개발은 지금까지처럼 그대로 돌아간다.
+
+> Basic 인증은 자격증명을 요청마다 보낸다. 시연 서버에 HTTPS 가 없으므로 같은 망을 엿볼 수
+> 있는 사람에게는 비밀번호가 노출된다. 시연 전용 비밀번호를 쓰고 끝나면 버린다.
