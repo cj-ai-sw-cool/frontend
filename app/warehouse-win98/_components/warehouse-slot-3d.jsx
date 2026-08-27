@@ -805,7 +805,11 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
           깔리므로, 치수가 정해지기 전에 부르면 크기가 어긋난다.
        ⚠️ 야적장 판은 y = -0.03 이다. 창고 바닥(y = 0)보다 낮게 두어야 겹치는 자리에서
           두 판이 서로 깜빡이지(z-fighting) 않는다. */
-    const exterior = createExterior(THREE, { floorW, floorD, floorCz });
+    /* ⚠️ 상차 장면의 작업자는 **창고 안 작업자와 같은 함수**로 만든다. 바깥에서 따로
+       만들면 같은 창고에서 다른 사람이 일하게 된다 (`warehouse-exterior` 주석 참고). */
+    const exterior = createExterior(THREE, { floorW, floorD, floorCz }, {
+      makePiglin: () => buildPiglin({ cart: false }),
+    });
     scene.add(exterior.group);
 
     /* 벽 (카메라 방향에 따라 자동 페이드) · 트러스 · 조명기구 */
@@ -824,6 +828,45 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     addWall("left", new THREE.BoxGeometry(0.34, 1.3, floorD), 0x232b35, -floorW / 2, 0.65, floorCz);
     addWall("right", new THREE.BoxGeometry(0.3, 5.4, floorD), 0x1a2028, floorW / 2, 4.0, floorCz);
     addWall("right", new THREE.BoxGeometry(0.34, 1.3, floorD), 0x232b35, floorW / 2, 0.65, floorCz);
+
+    /* ── 팀 로고 (왼쪽 벽 위쪽) ────────────────────────────────────────
+       ★ 벽에 페인트로 쓴 사인이다 (사용자 요청 — 심플하게). 창고 벽의 사인은 회사 로고를
+         크게 하나 박는 것이지 장식이 아니므로, 글자 하나와 밑줄 한 줄로 끝낸다.
+       ⚠️ 재질은 `MeshBasicMaterial` 이다. 이 벽은 빛이 거의 안 닿는 어두운 면(0x1a2028)이라
+          램버트로 두면 글자가 벽과 같이 묻혀 안 보인다. 대신 흰색이 아니라 **회청색**으로
+          낮춰 칠해서, 스스로 빛나는 간판이 아니라 칠해 둔 글자로 보이게 한다.
+       ⚠️ `wallSets.left` 에 함께 넣는다. 카메라가 그 벽 너머로 돌면 벽이 투명해지는데,
+          로고만 남으면 허공에 글자가 떠 있게 된다. */
+    const logoCv = document.createElement("canvas");
+    logoCv.width = 1024; logoCv.height = 256;
+    {
+      const c = logoCv.getContext("2d");
+      c.clearRect(0, 0, 1024, 256);
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      c.font = "700 132px 'Arial', 'Helvetica', sans-serif";
+      /* 자간을 벌린다 — 다섯 글자짜리 짧은 말은 붙여 쓰면 도장처럼 보이고, 벌려 쓰면
+         벽에 자리를 잡은 사인으로 보인다. `letterSpacing` 은 캔버스 2D 의 최신 속성이라
+         없는 브라우저도 있어서, 없으면 그냥 붙여 쓴다 */
+      try { c.letterSpacing = "18px"; } catch { /* 지원 안 하면 자간 없이 */ }
+      c.fillStyle = "#AEBDD0";
+      c.fillText("A.LTS", 512, 112);
+      c.fillStyle = "#FF8A2A";              // 가운데 점만 강조색 — 창고 화면의 강조와 같은 주황
+      c.fillRect(300, 190, 424, 7);
+    }
+    const logoTex = new THREE.CanvasTexture(logoCv);
+    logoTex.colorSpace = THREE.SRGBColorSpace;
+    logoTex.anisotropy = 8;
+    const logo = new THREE.Mesh(
+      new THREE.PlaneGeometry(7.2, 1.8),
+      new THREE.MeshBasicMaterial({ map: logoTex, transparent: true, opacity: 1, depthWrite: false }),
+    );
+    /* 벽 안쪽 면에 붙인다. 벽 두께가 0.3 이라 중심에서 0.15 가 표면이고, 거기서 1cm 띄운다 —
+       딱 붙이면 두 면이 같은 깊이라 z-파이팅으로 글자가 지글거린다 */
+    logo.position.set(-floorW / 2 + 0.16, 5.35, floorCz);
+    logo.rotation.y = Math.PI / 2;   // 판의 앞면(+z)을 창고 안쪽(+x)으로
+    scene.add(logo);
+    wallSets.left.push(logo);
 
     /* 랙 구조 (인스턴싱) */
     const posts = [], decks = [], bars = [];
@@ -1108,6 +1151,14 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         line: 3 + i,
         packed: 128 + i * 37,
         seed: i,
+        /* ★ 작업자는 **앞쪽 한 대에만** 세운다 (사용자 지적 — 뒤쪽엔 빼 달라).
+             둘 다 세우면 좁은 자리에 같은 동작이 나란히 돌아 눈에 거슬리고, 어느 쪽을
+             보라는 화면인지가 흐려진다. 한 명이 일하고 한 대는 비어 있는 편이 실제
+             현장에도 가깝다.
+           ⚠️ 앞쪽은 **i = 1** 이다(z = +4.5). 배열이 [-4.5, +4.5] 라 뒤쪽이 먼저다 —
+              Enter 로 훑는 순서를 뒤집어 쓰는 것과 같은 이유다.
+           창고 안 작업자와 같은 함수로 만든다 (`packing-station` 주석 참고) */
+        makePiglin: i === 1 ? () => buildPiglin({ cart: false }) : undefined,
       });
       scene.add(st.group);
       return st;
@@ -1945,7 +1996,14 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         };
         fadeWall(wallSets.back, camP.z < zMin + 2.5);
         fadeWall(wallSets.left, camP.x < -floorW / 2 + 2.5);
-        fadeWall(wallSets.right, camP.x > floorW / 2 - 2.5);
+        /* ★ 오른쪽 벽만 **확대해도** 사라진다 (사용자 요청). 그 너머 도크에서 상차가
+             돌아가고 있는데, 벽이 정확히 그 사이를 막고 있다 — 창고 안에서 당겨 보면
+             트럭 짐칸이 보여야 한다.
+           ⚠️ 기준은 카메라 **거리**(`cur.r`)다. 화면에 꽉 차게 당겼는지를 재는 값이라,
+              어디를 보고 있든 "확대했다"와 뜻이 같다.
+           ⚠️ 나머지 두 벽은 그대로 둔다. 셋 다 이렇게 하면 조금만 당겨도 창고가 지붕 없는
+              평면도가 되어, 안에 있다는 느낌이 사라진다. */
+        fadeWall(wallSets.right, camP.x > floorW / 2 - 2.5 || cur.r < 15);
       }
 
       /* ── 갱신 순서 ───────────────────────────────────────────────────
@@ -1953,6 +2011,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
             늘 **한 프레임 전의 자리**를 보고 있었다 — 초당 60프레임이면 6.2m/s 로 달리는
             로봇이 매 프레임 10cm 씩 앞서 나간다. 화면이 못 따라오는 것처럼 보이던 원인이다. */
       portal.update(dt, portalHovered);   // dt 는 위에서 이미 0.05 로 잘려 있다
+      exterior.update(dt);   // 도크 상차 장면 (뒷문·롤러·피글린)
       for (const st of stations) st.update(dt, st === hoveredStation, st === focusedStation);
       inboundSim?.update(dt);
 
