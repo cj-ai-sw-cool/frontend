@@ -1,10 +1,16 @@
 "use client";
 
+import { useCallback, useState } from "react";
+import { ChestBurst } from "./chest-burst";
 import { w98 } from "./win98-ui";
 
 /**
  * 바탕화면 이스터에그 — 청록 바탕 한가운데의 **마인크래프트 동굴 구덩이**.
  * 그 어둠 속에서 **워든이 눈을 깜빡이며 천천히 올라온다.**
+ *
+ * ★ 워든은 **상자를 하나 들고 있다.** 그 상자를 누르면 화면 가운데에 진짜 3D 상자가 떠오르고
+ *   뚜껑이 열리며 돼지가 튀어나온다(`chest-burst.tsx`). 배경에서 **클릭을 받는 것은 그 상자
+ *   하나뿐**이고, 나머지는 창을 끌 때 방해되지 않도록 전부 통과시킨다.
  *
  * 평소에는 창이 바탕을 통째로 덮고 있어서 보이지 않는다. 창 타이틀바를 잡고 아래로 끌어
  * 내리면 그제서야 드러난다 — 그게 이 그림의 전부이자 의도다(사용자 요청).
@@ -49,6 +55,17 @@ const LEAF = { base: "#4f7c2a", dark: "#3e6220" };
 const MOSS = { base: "#5c7a3a", dark: "#48602c" };
 
 export function CaveEntrance() {
+  /* 상자를 눌렀는가. 누르는 동안에는 3D 상자가 화면 가운데에 떠 있다 */
+  const [isBursting, setIsBursting] = useState(false);
+  const finish = useCallback(() => setIsBursting(false), []);
+
+  const openChest = useCallback(() => {
+    /* ⚠️ "동작 줄이기" 를 켠 사용자에게는 열지 않는다. 여러 개가 갑자기 튀어나오는 움직임은
+          그 설정이 막으려는 바로 그것이다. */
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    setIsBursting(true);
+  }, []);
+
   const width = COLS * TILE;
   const height = ROWS * TILE;
   const centerX = (COLS - 1) / 2;
@@ -115,8 +132,15 @@ export function CaveEntrance() {
           </g>
         ))}
 
-        <Warden centerX={width / 2} bottomY={height / 2 + RADIUS_Y * TILE * 0.42} />
+        <Warden
+          centerX={width / 2}
+          bottomY={height / 2 + RADIUS_Y * TILE * 0.42}
+          onChestClick={openChest}
+        />
       </svg>
+
+      {/* 3D 상자는 **누른 순간에만** 불러온다 — 모델이 10.4MB 라 배경에 늘 띄워 둘 수 없다 */}
+      <ChestBurst active={isBursting} onDone={finish} />
     </div>
   );
 }
@@ -127,6 +151,27 @@ export function CaveEntrance() {
    ⚠️ 형태는 실루엣이다. 원작 워든의 특징 세 가지만 남겼다 —
       새까만 몸, 청록으로 빛나는 가슴의 결, 그리고 **가로로 길게 빛나는 눈**.
       작게 그려도 그 셋이면 워든으로 읽힌다. */
+/* ── 워든이 든 상자 ──────────────────────────────────────────────────────────
+   워든 몸통 앞에 놓는 작은 마인크래프트 상자. 원작의 특징 셋만 남겼다 —
+   **짙은 테두리 · 결이 보이는 나무 · 가운데 쇠 걸쇠.** 작게 그려도 그 셋이면 상자로 읽힌다.
+     #  테두리   w  나무   d  나무의 짙은 결   l  걸쇠(쇠) */
+const CHEST_MAP = [
+  "##########",
+  "#wwwwwwww#",
+  "#wdwwwwdw#",
+  "####ll####",
+  "#wwwllwww#",
+  "#wdwwwwdw#",
+  "##########",
+];
+const CHEST_UNIT = 6;
+const CHEST_COLOR: Record<string, string> = {
+  "#": "#5a3a1c",
+  w: "#a9743c",
+  d: "#8c5c2c",
+  l: "#b9bec4",
+};
+
 const WARDEN_UNIT = 9;
 const WARDEN_MAP = [
   "   #####   ",
@@ -144,7 +189,15 @@ const WARDEN_MAP = [
   " ##     ## ",
 ];
 
-function Warden({ centerX, bottomY }: { centerX: number; bottomY: number }) {
+function Warden({
+  centerX,
+  bottomY,
+  onChestClick,
+}: {
+  centerX: number;
+  bottomY: number;
+  onChestClick: () => void;
+}) {
   const width = WARDEN_MAP[0].length * WARDEN_UNIT;
   const height = WARDEN_MAP.length * WARDEN_UNIT;
   const originX = centerX - width / 2;
@@ -182,6 +235,34 @@ function Warden({ centerX, bottomY }: { centerX: number; bottomY: number }) {
         {glow.map((cell, index) => (
           <rect key={`c${index}`} {...place(cell)} fill="#2f9e94" />
         ))}
+      </g>
+
+      {/* 들고 있는 상자 — **배경에서 유일하게 클릭을 받는 것**이다.
+          몸통 앞 가슴 높이에 놓아야 "들고 있다"로 읽힌다. 발치에 두면 그냥 떨어뜨린 물건이다.
+          ⚠️ 워든과 함께 오르내려야 하므로 이 그룹 **안에** 둔다. 밖에 두면 워든만 움직이고
+             상자는 제자리에 남아 둘이 따로 논다. */}
+      <g
+        style={{ pointerEvents: "auto", cursor: "pointer" }}
+        onClick={onChestClick}
+        role="button"
+        tabIndex={-1}
+      >
+        {CHEST_MAP.flatMap((row, rowIndex) =>
+          row.split("").map((cell, colIndex) => {
+            const fill = CHEST_COLOR[cell];
+            if (fill === undefined) return null;
+            return (
+              <rect
+                key={`chest-${rowIndex}-${colIndex}`}
+                x={centerX - (CHEST_MAP[0].length * CHEST_UNIT) / 2 + colIndex * CHEST_UNIT}
+                y={originY + 5.4 * WARDEN_UNIT + rowIndex * CHEST_UNIT}
+                width={CHEST_UNIT}
+                height={CHEST_UNIT}
+                fill={fill}
+              />
+            );
+          }),
+        )}
       </g>
 
       {/* 눈 — 깜빡인다. 빛무리를 한 겹 깔아 어둠 속에서 빛나는 것처럼 보이게 한다 */}
