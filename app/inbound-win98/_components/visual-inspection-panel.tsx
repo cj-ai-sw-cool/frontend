@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { Camera } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Camera, ImagePlus } from "lucide-react";
 import type { MeasurementImage } from "@/lib/types";
 import { Panel, w98 } from "./win98-ui";
 
@@ -18,20 +18,41 @@ import { Panel, w98 } from "./win98-ui";
  *    만들지 않기 위해) — 그래서 img 를 걸지 않고 경로만 자리표시로 적는다. 실제 이미지가
  *    붙으면 Slot 의 마지막 분기만 img 로 바꾸면 된다.
  *
- * ⚠️ 목업 오른쪽 아래 칸은 `Special Notes / NO ANOMALIES DETECTED` 라는 **고정 문구**다.
- *    이상 판정을 주는 API 가 없어서(§1-3 은 신뢰도·게이트만 준다) 그 문구를 지어내지 않고,
- *    계약이 실제로 주는 세 번째 카메라 사진 자리로 썼다. 캡션만 목업 표기를 살렸다.
+ * ★ **오른쪽 아래 칸은 이제 마스터 이미지다** (사용자 결정). 원래 `Special Notes` 자리였고
+ *   그 뒤 세 번째 카메라 사진을 넣어 뒀었는데, 오른쪽 열의 `Product Photo` 칸을 취급
+ *   주의사항 창에 내주면서 마스터 이미지가 이리로 왔다.
+ *   ⚠️ 그러면 세 번째 카메라 사진이 갈 곳이 없어진다. 그래서 **`Side / Label` 칸을 눌러
+ *      2번째 ↔ 3번째 사진을 바꿔 보게** 했다. 사진을 지우지 않고 한 칸에 겹쳐 둔 것이다.
+ *
+ * ⚠️ 마스터 이미지는 §1-1 의 `product.imageUrl` 이고, 카메라 사진(`images`)은 §1-3/§1-6 이다.
+ *    **출처가 다른 두 값**이라 한 배열로 합치지 않는다 — 합치면 "몇 번째가 촬영본인가"가
+ *    화면 사정에 따라 달라져서, 나중에 촬영본만 다뤄야 할 때 되돌리기 어렵다.
  */
 export function VisualInspectionPanel({
   images,
   isLoading,
   sourceLabel,
+  masterImageUrl = null,
+  productName = null,
+  isProductPending = false,
 }: {
   images: MeasurementImage[];
   isLoading: boolean;
   sourceLabel?: string | null;
+  /** §1-1 의 `product.imageUrl` — 코리안넷 마스터 이미지. 없으면 자리표시만 뜬다 */
+  masterImageUrl?: string | null;
+  productName?: string | null;
+  isProductPending?: boolean;
 }) {
   const [main, ...subs] = images;
+  /* `Side / Label` 칸이 지금 몇 번째 사진을 보고 있나 (0 = 2번째, 1 = 3번째).
+     ⚠️ 사진이 바뀌면(재촬영·확정) 되돌린다 — 3번째를 보던 중에 새 촬영이 들어오면
+        엉뚱한 장을 보고 있게 된다. `images` 배열 자체를 키로 삼지 않고 길이만 보는 이유는,
+        같은 길이의 새 배열이 와도 보던 자리를 유지하는 편이 덜 튀기 때문이다. */
+  const [sideShot, setSideShot] = useState(0);
+  const sideChoices = [subs[0], subs[1]].filter((im) => im !== undefined);
+  const canFlip = sideChoices.length > 1;
+  const shown = sideChoices[canFlip ? sideShot : 0];
 
   return (
     <Panel
@@ -58,55 +79,99 @@ export function VisualInspectionPanel({
         </div>
       </Slot>
 
-      {/* 서브 — 35% 열에 위아래 반반. 카메라가 3대를 넘어도 화면이 비지 않게 늘어나게 둔다
-          (칸이 세로로 좁아질 뿐 넘치지 않는다) */}
+      {/* 서브 — 35% 열에 위아래 반반 */}
       <div className="flex min-h-0 flex-1 flex-col gap-2" style={{ flex: "0 0 calc(35% - 8px)" }}>
-        {[subs[0], subs[1], ...subs.slice(2)].map((image, index) => (
-          <Slot
-            key={image?.url ?? `empty-${index}`}
-            caption={SUB_CAPTION[index] ?? `CAM 0${index + 2}`}
-            className="min-h-0 flex-1"
-          >
-            <div className="flex h-full w-full items-center justify-center overflow-hidden bg-[color:var(--surface-dim)]">
-              <SlotBody
-                image={image}
-                isLoading={isLoading}
-                placeholder={SUB_PLACEHOLDER[index] ?? "촬영 대기 중"}
-                tone="light"
+        {/* 위 — 측면/라벨. 3번째 사진이 있으면 눌러서 바꿔 볼 수 있다 */}
+        <Slot
+          caption="Side / Label"
+          className="min-h-0 flex-1"
+          right={
+            canFlip ? (
+              <span className={`${w98.mono} shrink-0 opacity-80`}>{sideShot + 2}/3 ▸</span>
+            ) : null
+          }
+          onActivate={canFlip ? () => setSideShot((prev) => (prev === 0 ? 1 : 0)) : undefined}
+          hint={canFlip ? "눌러서 다음 사진" : undefined}
+        >
+          <div className="flex h-full w-full items-center justify-center overflow-hidden bg-[color:var(--surface-dim)]">
+            <SlotBody image={shown} isLoading={isLoading} placeholder="촬영 대기 중" tone="light" />
+          </div>
+        </Slot>
+
+        {/* 아래 — 마스터 이미지 (위 주석 참고) */}
+        <Slot caption="Product Photo" right={<span className="shrink-0 opacity-80">마스터 이미지</span>} className="min-h-0 flex-1">
+          <div className="flex h-full w-full items-center justify-center overflow-hidden bg-[color:var(--surface-dim)]">
+            {isProductPending ? (
+              <span className={`${w98.mono} ${w98.small} uppercase opacity-70`}>loading…</span>
+            ) : masterImageUrl === null ? (
+              <div className="flex flex-col items-center gap-2 opacity-30">
+                <ImagePlus className="size-8" aria-hidden />
+                <span className={`${w98.mono} ${w98.small} uppercase`}>
+                  {productName === null ? "no product" : "이미지 없음"}
+                </span>
+              </div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={masterImageUrl}
+                alt={`${productName ?? "제품"} 마스터 이미지`}
+                className="h-full w-full object-contain"
               />
-            </div>
-          </Slot>
-        ))}
+            )}
+          </div>
+        </Slot>
       </div>
     </Panel>
   );
 }
 
-/** 목업 캡션 그대로 */
-const SUB_CAPTION = ["Side / Label", "Special Notes"];
-const SUB_PLACEHOLDER = ["촬영 대기 중", "촬영 대기 중"];
-
-/** 파인 상자 + 네이비 캡션 줄 — 목업의 각 카메라 칸 */
+/** 파인 상자 + 네이비 캡션 줄 — 목업의 각 카메라 칸.
+ *  `onActivate` 를 주면 눌러서 쓰는 칸이 된다(키보드로도 닿게 `role`·`tabIndex` 를 붙인다). */
 function Slot({
   caption,
   children,
   className = "",
   style,
+  right,
+  onActivate,
+  hint,
 }: {
   caption: string;
   children: ReactNode;
   className?: string;
   style?: React.CSSProperties;
+  /** 캡션 줄 오른쪽에 놓을 것 — 사진 번호나 출처 표기 */
+  right?: ReactNode;
+  /** 누르면 할 일. 없으면 그냥 보는 칸이다 */
+  onActivate?: () => void;
+  hint?: string;
 }) {
   return (
     <div
       style={style}
-      className={`${w98.sunken} flex flex-col bg-[color:var(--surface-bright)] p-1 ${className}`}
+      className={`${w98.sunken} flex flex-col bg-[color:var(--surface-bright)] p-1 ${className} ${
+        onActivate ? "cursor-pointer" : ""
+      }`}
+      role={onActivate ? "button" : undefined}
+      tabIndex={onActivate ? 0 : undefined}
+      title={hint}
+      onClick={onActivate}
+      onKeyDown={
+        onActivate
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onActivate();
+              }
+            }
+          : undefined
+      }
     >
       <span
-        className={`${w98.small} mb-1 shrink-0 bg-[color:var(--primary)] px-1 text-[color:var(--primary-foreground)]`}
+        className={`${w98.small} mb-1 flex shrink-0 items-center justify-between gap-2 bg-[color:var(--primary)] px-1 text-[color:var(--primary-foreground)]`}
       >
-        {caption}
+        <span className="truncate">{caption}</span>
+        {right}
       </span>
       <div className="min-h-0 flex-1">{children}</div>
     </div>

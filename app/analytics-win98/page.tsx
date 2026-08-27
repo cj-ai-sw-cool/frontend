@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
-import { BarChart3, Clock3, TriangleAlert } from "lucide-react";
 import { Panel, Sunken, w98 } from "./_components/win98-ui";
 
 /* 창고 맵은 캔버스와 `ResizeObserver` 를 쓰므로 서버에서 그릴 수 없다.
@@ -95,9 +94,7 @@ export default function AnalyticsPage() {
       {/* ── 왼쪽 (3/4) — 위 좁게, 아래 넓게 ── */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
         <Panel title="Throughput — 시간대별 처리량" className="h-[228px] shrink-0">
-          <Placeholder icon={<BarChart3 className="size-8 opacity-30" aria-hidden />}>
-            그래프 자리
-          </Placeholder>
+          <Placeholder />
         </Panel>
 
         {/* ★ 원래 처리량 그래프가 이 칸을 다 쓰고 있었다. 그 수치는 아직 계약이 없지만
@@ -113,14 +110,19 @@ export default function AnalyticsPage() {
         </Panel>
       </div>
 
-      {/* ── 오른쪽 (1/4) — 세로로 긴 목록 한 칸 ──
+      {/* ── 오른쪽 — 세로로 긴 목록 한 칸 ──
           ⚠️ 원래 여기에 "Line Status — 라인별 현황" 도 같이 있었다. 세 칸으로 나누라는
              요청이라 한 칸을 비워야 했고, 경고 목록을 남겼다 — 대시보드에서 먼저 찾게 되는
-             것은 "무엇이 잘못됐나"이고, 좁고 긴 칸은 그 목록에 맞는 모양이다. */}
-      <Panel title="Alerts — 이상 항목" className="min-h-0 w-[344px] shrink-0">
-        <Placeholder icon={<TriangleAlert className="size-10 opacity-30" aria-hidden />}>
-          경고 목록 자리
-        </Placeholder>
+             것은 "무엇이 잘못됐나"이고, 좁고 긴 칸은 그 목록에 맞는 모양이다.
+          ★ 344 → **500px**. 넓힌 이유가 뜻밖인데, **지도 쪽 여백을 없애기 위해서**다.
+            지도는 가로:세로가 32.6 : 19.2 (약 1.70) 로 고정인데, 왼쪽 칸이 그보다 납작하면
+            (더 가로로 길면) 남는 폭이 좌우 띠로 남는다. 오른쪽을 넓혀 왼쪽 칸을 지도 비율에
+            가깝게 만들면 그 띠가 사라진다 — 좁히는 것이 아니라 **비율을 맞추는** 것이다.
+            460px 이 이 화면에서 딱 맞는 값이다 — 왼쪽 칸(위 처리량 228px 을 뺀 나머지)의
+            안쪽 비율이 지도 비율과 같아져 좌우 여백이 0 이 된다. 위 처리량 칸 높이를 바꾸면
+            이 값도 다시 맞춰야 한다. */}
+      <Panel title="Alerts — 이상 항목" className="min-h-0 w-[460px] shrink-0">
+        <Placeholder />
       </Panel>
 
       {/* ── 3D 전체 화면 ────────────────────────────────────────────────
@@ -146,27 +148,14 @@ export default function AnalyticsPage() {
 }
 
 /**
- * 빈 칸 — 무엇이 들어올 자리인지 말하고, **아직 없다는 것도 같이 말한다.**
- * win98 의 마퀴 막대를 같이 두는 이유: 진행률을 모를 때 쓰던 표현이라 "준비 중"과 맞는다.
+ * 빈 칸 — **아무것도 그리지 않는다** (사용자 결정).
+ *
+ * ★ 예전에는 아이콘 + "그래프 자리" + 마퀴 막대 + "준비 중 — 담당 P3" 를 띄웠다. 자리를
+ *   설명하려던 것인데, 두 칸이 같은 문구로 깜빡이고 있으니 화면이 **공사 중 안내판**처럼
+ *   보였다. 채울 내용이 정해지면 그때 넣기로 하고, 지금은 빈 칸으로 둔다.
+ * ⚠️ 그래도 `Sunken` 은 남긴다. 테두리까지 없애면 칸이 몇 개인지, 어디부터 어디까지가
+ *    한 칸인지가 사라진다 — 비어 있는 것과 없는 것은 다르다.
  */
-function Placeholder({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <Sunken className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6">
-      {icon}
-      <span className={`${w98.mono} ${w98.small} text-[color:var(--muted-foreground)] uppercase`}>
-        {children}
-      </span>
-      <div className={`${w98.marquee} w-1/2`}>
-        <div className={w98.marqueeInner}>
-          {[0, 1, 2, 3, 4].map((index) => (
-            <span key={index} className={w98.marqueeBlock} />
-          ))}
-        </div>
-      </div>
-      <span className={`${w98.small} flex items-center gap-1 text-[color:var(--muted-foreground)]`}>
-        <Clock3 className="size-3.5" aria-hidden />
-        준비 중 — 담당 P3
-      </span>
-    </Sunken>
-  );
+function Placeholder() {
+  return <Sunken className="min-h-0 flex-1 bg-[color:var(--surface-bright)]" />;
 }

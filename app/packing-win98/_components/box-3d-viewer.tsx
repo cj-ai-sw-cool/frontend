@@ -7,6 +7,7 @@ import {
   buildLowPolyChest,
   type LowPolyBox,
 } from "./low-poly-boxes";
+import { createPiglin } from "./piglin";
 import { w98 } from "./win98-ui";
 
 /**
@@ -40,6 +41,7 @@ export function Box3DViewer({
   innerCm,
   name,
   lidOpen,
+  shipAway = false,
   pixelScale = 3,
   decalUrl,
   pigs = false,
@@ -70,6 +72,15 @@ export function Box3DViewer({
    * 값이 **바뀔 때만** 움직인다.
    */
   lidOpen: boolean;
+  /**
+   * 포장이 끝나 **상자를 실어 보낼 때** 참이 된다.
+   *
+   * 뚜껑이 닫히고 테이프가 붙은 뒤, 좀비화 피글린이 오른쪽에서 걸어와 상자를 왼쪽으로
+   * 밀고 함께 화면 밖으로 나간다.
+   * ⚠️ 이 동작이 끝날 때까지 이 컴포넌트가 살아 있어야 한다. `page.tsx` 가 배송단위를
+   *    비우면 상자가 통째로 언마운트되므로, 그쪽 `LID_CLOSE_MS` 가 이 시간보다 길어야 한다.
+   */
+  shipAway?: boolean;
   /**
    * 몇 배로 축소해 그릴 것인가 = **도트의 굵기**. 1 이면 도트 없이 또렷하게 그린다.
    * 마크 상자는 굵게(3), 택배 상자는 1 — 골판지가 도트로 보이면 택배 상자가 아니다.
@@ -102,6 +113,8 @@ export function Box3DViewer({
   const spill = pigs ? PIG_SPILL : SPILL;
   /** 뚜껑을 여닫는 손잡이. 3D 쪽이 채워 주고, lidOpen 과 더블클릭이 같이 쓴다 */
   const setLidRef = useRef<((open: boolean) => void) | null>(null);
+  /* 상자를 실어 보내는 장면을 시작하는 손잡이. 3D 쪽이 채운다 */
+  const shipRef = useRef<(() => void) | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "failed">(
     "loading",
   );
@@ -610,27 +623,35 @@ export function Box3DViewer({
             }
           }
 
-          /* ── ★ 회색으로 나오는 면의 **텍스처를 반대편에서 복사한다** ────────
-             새로 받은 모델은 날개의 **한쪽 면만** 골판지 갈색 [203,154,112] 이고 반대쪽은
+          /* ── ★ 회색으로 나오는 날개 뒷면을 **재질을 갈라서** 골판지색으로 만든다 ──────
+             새로 받은 모델은 날개의 한쪽 면만 골판지 갈색 [203,154,112] 이고 반대쪽은
              회색 [117,111,103] 이다. 텍스처의 엉뚱한 자리를 읽고 있다.
 
-             ★ 한때 판을 뒤집어 갈색이 위로 오게 했다가 되돌렸다. 뒤집으면 닫았을 때는
-               멀쩡하지만 **열면 안쪽이 회색**이 된다 — 문제가 반대편으로 옮겨 갈 뿐이다.
-               실제 골판지는 양면이 다 골판지색이므로, 고칠 것은 방향이 아니라 **텍스처**다.
-             ★ 그래서 회색 면의 정점에 **같은 자리 갈색 면의 UV** 를 준다. 판은 얇은 널빤지라
-               두 면이 같은 (길이, 폭) 자리에 서로 마주 보고 있어서, 그 자리의 갈색 UV 를
-               쓰면 무늬까지 자연스럽게 이어진다. 단색으로 칠하는 것보다 낫다.
-             ⚠️ 정점을 하나하나 짝지으면 느리고, 두 면의 정점 수도 다르다. **격자로 나눠**
-                칸마다 갈색 UV 의 평균을 구해 두고 거기서 가져온다. 48×48 이면 이 판에서
-                칸마다 수십 개가 들어가 평균이 안정적이다.
+             ★ 앞서 두 번 다르게 시도했다가 **둘 다 크랙을 냈다.**
+               ① 칸마다 UV 평균 → 칸 경계를 지나는 삼각형이 텍스처의 딴 자리로 건너뛴다.
+               ② 가장 가까운 갈색 정점의 UV 복사 → 면 안쪽은 이어지지만, 두 면이 만나는
+                  **판의 옆면(테두리)** 에서 삼각형 하나의 세 정점이 서로 다른 면에 걸린다.
+                  그 삼각형만 UV 가 한쪽만 바뀌어 텍스처가 찢어진다 — 날개 가장자리를 따라
+                  금이 가 보이던 것이 이것이다.
+
+             ★ 그래서 **UV 를 아예 건드리지 않는다.** 대신 삼각형을 두 무리로 갈라
+               (갈색면 / 회색면) 인덱스를 그 순서로 다시 쓰고, 뒤 무리에만 단색 골판지
+               재질을 물린다. UV 가 그대로이므로 찢어질 것이 없고, 가르는 단위가 **삼각형**
+               이라 한 삼각형이 두 재질에 걸리는 일도 없다.
+             ★ 단색의 색은 **텍스처에서 뽑는다.** 눈대중으로 고른 갈색은 조명 아래에서
+               본체와 미묘하게 어긋나는데, 갈색 면이 실제로 읽고 있는 픽셀의 평균을 쓰면
+               같은 재질로 보인다.
+
+             ⚠️ 삼각형이 어느 면인지는 **세 정점의 평균 높이**로 정한다. 정점 하나만 보면
+                테두리에 걸친 삼각형이 무리를 오간다.
              ⚠️ 텍스처를 못 읽으면(캔버스 차단·미로드) 아무것도 하지 않는다. 보정이라
                 확신이 없으면 원본을 그대로 두는 편이 안전하다. */
-          const repairFlapTexture = (): void => {
+          const recolourFlapUnderside = (): void => {
             const skin = (found[0]?.node as THREE_NS.Mesh | undefined)?.material as
               | THREE_NS.MeshStandardMaterial
               | undefined;
             const source = skin?.map?.image as CanvasImageSource | undefined;
-            if (source === undefined) return;
+            if (skin === undefined || source === undefined) return;
 
             const size = 64;
             const canvas = document.createElement("canvas");
@@ -647,14 +668,15 @@ export function Box3DViewer({
               return; // 다른 출처의 그림이면 읽을 수 없다
             }
 
-            /** UV 자리의 색이 얼마나 알록달록한가 — 골판지는 크고 회색은 0 에 가깝다 */
-            const colourfulnessAt = (u: number, v: number) => {
+            const rgbAt = (u: number, v: number): [number, number, number] => {
               const px = Math.min(size - 1, Math.floor((u - Math.floor(u)) * size));
               const py = Math.min(size - 1, Math.floor((v - Math.floor(v)) * size));
               const at = (py * size + px) * 4;
-              const r = pixels[at] ?? 0;
-              const g = pixels[at + 1] ?? 0;
-              const b = pixels[at + 2] ?? 0;
+              return [pixels[at] ?? 0, pixels[at + 1] ?? 0, pixels[at + 2] ?? 0];
+            };
+            /** UV 자리의 색이 얼마나 알록달록한가 — 골판지는 크고 회색은 0 에 가깝다 */
+            const colourfulnessAt = (u: number, v: number) => {
+              const [r, g, b] = rgbAt(u, v);
               return Math.max(r, g, b) - Math.min(r, g, b);
             };
 
@@ -662,40 +684,28 @@ export function Box3DViewer({
 
             for (const flap of found) {
               const mesh = flap.node as THREE_NS.Mesh;
-              const position = mesh.geometry.getAttribute("position");
-              const uv = mesh.geometry.getAttribute("uv") as
+              const geometry = mesh.geometry;
+              const position = geometry.getAttribute("position") as
                 | THREE_NS.BufferAttribute
                 | undefined;
-              if (position === undefined || uv === undefined) continue;
+              const uv = geometry.getAttribute("uv") as THREE_NS.BufferAttribute | undefined;
+              const index = geometry.getIndex();
+              /* ⚠️ 인덱스가 없으면 넘긴다. 인덱스를 다시 쓰는 방식이라 없으면 쓸 수 없고,
+                 없는 채로 정점 배열을 재배열하면 다른 속성까지 전부 따라 옮겨야 한다 */
+              if (position === undefined || uv === undefined || index === null) continue;
 
               const cos = Math.cos(flap.closedAngle);
               const sin = Math.sin(flap.closedAngle);
               const heightOf = (p: THREE_NS.Vector3) =>
                 flap.axis === "z" ? p.x * sin + p.y * cos : p.y * cos - p.z * sin;
-              const lengthOf = (p: THREE_NS.Vector3) =>
-                flap.axis === "z" ? p.x * cos - p.y * sin : p.y * sin + p.z * cos;
-              const sideOf = (p: THREE_NS.Vector3) => (flap.axis === "z" ? p.z : p.x);
 
-              /* 판의 가운데 높이와 (길이, 폭) 범위를 한 번에 훑는다 */
+              /* 판의 가운데 높이 — 이 값을 기준으로 위/아래 면을 가른다 */
               let sum = 0;
-              let count = 0;
-              let minLength = Infinity;
-              let maxLength = -Infinity;
-              let minSide = Infinity;
-              let maxSide = -Infinity;
               for (let i = 0; i < position.count; i += 4) {
-                vertex.fromBufferAttribute(position as THREE_NS.BufferAttribute, i);
+                vertex.fromBufferAttribute(position, i);
                 sum += heightOf(vertex);
-                count += 1;
-                const along = lengthOf(vertex);
-                const across = sideOf(vertex);
-                if (along < minLength) minLength = along;
-                if (along > maxLength) maxLength = along;
-                if (across < minSide) minSide = across;
-                if (across > maxSide) maxSide = across;
               }
-              if (count === 0) continue;
-              const mid = sum / count;
+              const mid = sum / Math.ceil(position.count / 4);
 
               /* 두 면의 알록달록함을 재서 어느 쪽이 골판지인지 정한다 */
               let brightAbove = 0;
@@ -703,7 +713,7 @@ export function Box3DViewer({
               let brightBelow = 0;
               let countBelow = 0;
               for (let i = 0; i < position.count; i += 4) {
-                vertex.fromBufferAttribute(position as THREE_NS.BufferAttribute, i);
+                vertex.fromBufferAttribute(position, i);
                 const tone = colourfulnessAt(uv.getX(i), uv.getY(i));
                 if (heightOf(vertex) >= mid) {
                   brightAbove += tone;
@@ -714,97 +724,66 @@ export function Box3DViewer({
                 }
               }
               if (countAbove === 0 || countBelow === 0) continue;
-              const aboveIsCardboard =
-                brightAbove / countAbove > brightBelow / countBelow;
+              const aboveAvg = brightAbove / countAbove;
+              const belowAvg = brightBelow / countBelow;
               // 차이가 작으면 둘 다 멀쩡한 것이다 — 건드리지 않는다
-              if (Math.abs(brightAbove / countAbove - brightBelow / countBelow) < 8) {
-                continue;
-              }
+              if (Math.abs(aboveAvg - belowAvg) < 8) continue;
+              const cardboardIsAbove = aboveAvg > belowAvg;
 
-              /* ── 골판지 면의 정점을 격자에 담아 둔다 ───────────────────────
-                 ★ 한때 **칸마다 UV 를 평균 내서** 회색 면에 나눠 줬다가 되돌렸다. 그러면
-                   칸 경계를 지나는 삼각형이 텍스처의 전혀 다른 자리로 건너뛰어, 그 경계가
-                   전부 이음매로 보인다 — 화면에 상자 표면이 갈라진 것처럼 금이 갔던 게
-                   이것이다. 평균은 값을 뭉개는 연산이라 **연속이어야 하는 UV 에 쓰면 안 된다.**
-                 ★ 대신 **가장 가까운 정점의 UV 를 그대로 복사**한다. 이웃한 회색 정점은
-                   이웃한 갈색 정점을 찾아가므로 UV 도 이웃끼리 붙어 있고, 무늬가 끊기지 않는다.
-                 ⚠️ 격자는 "가까운 것부터 보기" 위한 장치일 뿐 값을 섞지 않는다. 칸마다 정점
-                    번호만 이어 두고(연결 리스트), 실제로는 거리를 재서 하나를 고른다. */
-              const grid = 96;
-              const head = new Int32Array(grid * grid).fill(-1);
-              const next = new Int32Array(position.count).fill(-1);
+              /* ── 삼각형을 두 무리로 가른다 ── */
+              const triangles = index.count / 3;
+              const keep: number[] = [];   // 골판지 면 — 원래 재질 그대로
+              const paintOver: number[] = []; // 회색 면 — 단색으로 덮는다
+              let red = 0;
+              let green = 0;
+              let blue = 0;
+              let sampled = 0;
 
-              const gridLength = Math.max(1e-9, maxLength - minLength) / grid;
-              const gridSide = Math.max(1e-9, maxSide - minSide) / grid;
-              const cellOf = (along: number, across: number) => {
-                const gx = Math.min(
-                  grid - 1,
-                  Math.max(0, Math.floor((along - minLength) / gridLength)),
-                );
-                const gy = Math.min(
-                  grid - 1,
-                  Math.max(0, Math.floor((across - minSide) / gridSide)),
-                );
-                return gx * grid + gy;
-              };
-
-              for (let i = 0; i < position.count; i += 1) {
-                vertex.fromBufferAttribute(position as THREE_NS.BufferAttribute, i);
-                if (heightOf(vertex) >= mid !== aboveIsCardboard) continue;
-                const cell = cellOf(lengthOf(vertex), sideOf(vertex));
-                next[i] = head[cell]!;
-                head[cell] = i;
-              }
-
-              /* ── 회색 면의 정점에 가장 가까운 갈색 정점의 UV 를 준다 ──────── */
-              const probe = new THREE.Vector3();
-              let repaired = 0;
-
-              for (let i = 0; i < position.count; i += 1) {
-                vertex.fromBufferAttribute(position as THREE_NS.BufferAttribute, i);
-                if (heightOf(vertex) >= mid === aboveIsCardboard) continue;
-
-                const along = lengthOf(vertex);
-                const across = sideOf(vertex);
-                const cell = cellOf(along, across);
-                const cx = Math.floor(cell / grid);
-                const cy = cell % grid;
-
-                let bestIndex = -1;
-                let bestDistance = Infinity;
-                // 가까운 칸부터 넓혀 가며 본다. 찾은 뒤에도 한 겹 더 봐야 진짜 최단이 나온다
-                for (let ring = 0; ring < 6; ring += 1) {
-                  for (let dx = -ring; dx <= ring; dx += 1) {
-                    for (let dy = -ring; dy <= ring; dy += 1) {
-                      if (ring > 0 && Math.abs(dx) !== ring && Math.abs(dy) !== ring) continue;
-                      const x = cx + dx;
-                      const y = cy + dy;
-                      if (x < 0 || y < 0 || x >= grid || y >= grid) continue;
-
-                      for (let j = head[x * grid + y]!; j >= 0; j = next[j]!) {
-                        probe.fromBufferAttribute(position as THREE_NS.BufferAttribute, j);
-                        const da = lengthOf(probe) - along;
-                        const db = sideOf(probe) - across;
-                        const distance = da * da + db * db;
-                        if (distance < bestDistance) {
-                          bestDistance = distance;
-                          bestIndex = j;
-                        }
-                      }
-                    }
-                  }
-                  if (bestIndex >= 0 && ring >= 1) break;
+              for (let t = 0; t < triangles; t += 1) {
+                const a = index.getX(3 * t);
+                const b = index.getX(3 * t + 1);
+                const c = index.getX(3 * t + 2);
+                let height = 0;
+                for (const vi of [a, b, c]) {
+                  vertex.fromBufferAttribute(position, vi);
+                  height += heightOf(vertex);
                 }
-                if (bestIndex < 0) continue;
-
-                uv.setXY(i, uv.getX(bestIndex), uv.getY(bestIndex));
-                repaired += 1;
+                const isCardboard = height / 3 >= mid === cardboardIsAbove;
+                if (isCardboard) {
+                  keep.push(a, b, c);
+                  // 골판지 면이 실제로 읽는 색을 모아 평균을 낸다 (아래 단색의 재료)
+                  if (sampled < 4000) {
+                    const [r, g, bl] = rgbAt(uv.getX(a), uv.getY(a));
+                    red += r;
+                    green += g;
+                    blue += bl;
+                    sampled += 1;
+                  }
+                } else {
+                  paintOver.push(a, b, c);
+                }
               }
+              if (keep.length === 0 || paintOver.length === 0 || sampled === 0) continue;
 
-              if (repaired > 0) uv.needsUpdate = true;
+              /* ⚠️ 인덱스 배열은 정점 수에 맞춰 폭을 고른다. 정점이 65,536 을 넘는데
+                 `Uint16Array` 로 쓰면 번호가 잘려 메시가 엉킨다 */
+              const Indices = position.count > 65535 ? Uint32Array : Uint16Array;
+              geometry.setIndex(new THREE.BufferAttribute(Indices.from([...keep, ...paintOver]), 1));
+              geometry.clearGroups();
+              geometry.addGroup(0, keep.length, 0);
+              geometry.addGroup(keep.length, paintOver.length, 1);
+
+              const plain = skin.clone();
+              plain.map = null;              // 단색이므로 텍스처를 떼어 낸다
+              plain.color = new THREE.Color(
+                red / sampled / 255,
+                green / sampled / 255,
+                blue / sampled / 255,
+              );
+              mesh.material = [skin, plain];
             }
           };
-          repairFlapTexture();
+          recolourFlapUnderside();
 
           /* ── ★ 마주 보는 쌍이 **가운데서 만나도록 늘린다** (사용자 요청 — 이음새 없게) ──
              모델의 날개는 경첩에서 0.46 인데, 마주 보는 경첩 사이가 1.12 라 한 장이 0.56 은
@@ -1922,7 +1901,6 @@ type Tape = {
            불러오면 번들만 커진다. pointer 이벤트 세 개면 같은 일을 한다. */
         let dragging: { x: number; y: number } | null = null;
         /** 누른 뒤 손가락이 움직인 총 거리. **클릭과 드래그를 가르는 기준**이다 */
-        let dragDistance = 0;
         pivot.rotation.set(-0.12, -0.6, 0);
 
         /* 마우스를 받는 판. 캔버스는 칸보다 커서 옆 패널을 덮으므로 쓸 수 없다.
@@ -1934,7 +1912,6 @@ type Tape = {
         const onDown = (event: PointerEvent) => {
           surface.setPointerCapture(event.pointerId);
           dragging = { x: event.clientX, y: event.clientY };
-          dragDistance = 0;
           touched = true;
           setWasTouched(true);
         };
@@ -1943,7 +1920,6 @@ type Tape = {
           const dx = event.clientX - dragging.x;
           const dy = event.clientY - dragging.y;
           dragging = { x: event.clientX, y: event.clientY };
-          dragDistance += Math.abs(dx) + Math.abs(dy);
           pivot.rotation.y += dx * 0.01;
           // 위아래는 뒤집히면 어지럽고 상자 안이 안 보이므로 묶어 둔다
           pivot.rotation.x = Math.min(
@@ -1952,15 +1928,10 @@ type Tape = {
           );
         };
         const onUp = () => {
-          /* ★ 움직이지 않고 뗐으면 **클릭**이다 — 뚜껑을 여닫는다 (사용자 결정).
-             한 번 누르면 열리고 **열린 채로 멈춘다**, 다시 누르면 닫힌다.
-             ⚠️ 임계값이 필요한 이유: 상자를 돌리려고 끈 것도 브라우저에게는 클릭이다.
-                그냥 onClick 을 달면 돌릴 때마다 뚜껑이 같이 여닫힌다.
-             ⚠️ 6px 은 "손이 떨린 것"과 "돌리려던 것"의 경계다. 터치에서는 완전히 가만히
-                누르기가 어려워서 0 으로 두면 클릭이 거의 인식되지 않는다. */
-          if (dragging !== null && dragDistance < 6) {
-            setLidRef.current?.(isClosed);
-          }
+          /* ⚠️ 예전에는 여기서 **클릭으로 뚜껑을 여닫았다.** 뺐다 (사용자 결정) — 뚜껑을
+             닫고 테이프를 붙이는 것은 이제 `포장 완료` 버튼이 하는 일이다. 같은 동작을 두
+             군데서 시작할 수 있으면, 화면이 왜 그렇게 됐는지가 흐려진다.
+             ⚠️ 상자를 돌리는 드래그는 그대로다. 여기서는 끝난 표시만 한다. */
           dragging = null;
         };
 
@@ -1975,15 +1946,157 @@ type Tape = {
         const reduceMotion = window.matchMedia(
           "(prefers-reduced-motion: reduce)",
         ).matches;
+        /* ── 상자를 실어 보내는 장면 ────────────────────────────────────
+           오른쪽 밖에서 피글린이 걸어와 상자에 닿으면, 둘이 함께 왼쪽으로 밀려 나간다.
+           ★ 사람 실제 비율(상자의 네 배)로 두면 이 작은 칸을 통째로 먹는다. 상자보다
+             조금 큰 정도로 줄여, 미는 사람인 것만 읽히게 한다.
+           ⚠️ 미는 동안 상자의 자동 회전을 멈춘다. 밀려 나가면서 제자리 회전까지 하면
+              밀리는 것이 아니라 굴러가는 것으로 보인다. */
+        const hauler = createPiglin(THREE, 1.25);
+        hauler.grp.visible = false;
+        hauler.grp.rotation.y = -Math.PI / 2;   // 왼쪽(-x)을 보고 선다
+        hauler.lArm.rotation.x = -1.35;         // 두 팔로 민다
+        hauler.rArm.rotation.x = -1.35;
+        scene.add(hauler.grp);
+
+        /* ⚠️ 이 값들이 `page.tsx` 의 `LID_CLOSE_MS`(5600) 안에 들어가야 한다. 지금은
+           대기 1.20 + 걸어오기 1.35 + 밀어내기 1.74 = 4.29초로 1.3초 남는다.
+           미는 속도를 늦추면 그만큼 저쪽도 늘려야 장면이 중간에 끊기지 않는다. */
+        const SHIP = { start: 2.1, reach: 0.62, exit: -2.0, walk: 1.1, push: 1.15 };
+        let shipPhase: "idle" | "walk" | "push" | "done" = "idle";
+        let shipStep = 0;   // 걸음 위상
+
+        /* ── 발자국 ─────────────────────────────────────────
+           ★ 밀고 나가는 동안 발자국이 찍힌다 (사용자 요청). 흰 화면에 피글린만 미끄러지듯
+             지나가면 걷는 것이 아니라 떠서 가는 것으로 보인다 — 발이 땅에 닿는 박자를
+             남겨 주는 것만으로 무게가 생긴다.
+           ⚠️ 피글린은 `rotation.y = -π/2` 로 서 있다. 두 발의 좌우 간격은 월드에서 **z 축**
+              으로 벌어진다 — x 로 벌리면 앞뒤로 겹쳐 한 줄로 찍힌다.
+           ⚠️ 미리 만들어 두고 **돌려 쓴다.** 한 번 지나갈 때 열 개 남짓이라 큰 차이는
+              아니지만, 재질을 프레임마다 만들면 그때마다 셰이더가 새로 컴파일된다. */
+        const stepTexture = (() => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 64;
+          canvas.height = 64;
+          const c = canvas.getContext("2d")!;
+          c.fillStyle = "#6b4b2e";
+          /* 고양이 발바닥 — 발가락 젤리 네 개가 부채꼴로 앞에, 그 뒤에 큰 발바닥 하나.
+             ⚠️ 발가락은 바깥쪽 둘을 **기울여** 심는다. 넷을 나란히 두면 발이 아니라
+                단추 네 개로 보인다 — 부채꼴로 벌어져야 발가락으로 읽힌다. */
+          const beans: [number, number, number, number, number][] = [
+            [15, 24, 6.0, 7.4, -0.55],   // 새끼발가락
+            [27, 15, 6.4, 8.0, -0.18],
+            [40, 15, 6.4, 8.0, 0.18],
+            [52, 24, 6.0, 7.4, 0.55],
+            [33, 45, 15.5, 13.0, 0],     // 발바닥
+          ];
+          for (const [cx, cy, rx, ry, tilt] of beans) {
+            c.beginPath();
+            c.ellipse(cx, cy, rx, ry, tilt, 0, Math.PI * 2);
+            c.fill();
+          }
+          const t = new THREE.CanvasTexture(canvas);
+          t.colorSpace = THREE.SRGBColorSpace;
+          return t;
+        })();
+        const STEP_LIFE = 1.1;   // 발자국이 남아 있는 시간(초)
+        const stepGeo = new THREE.PlaneGeometry(0.19, 0.22);
+        const steps = Array.from({ length: 14 }, () => {
+          const mat = new THREE.MeshBasicMaterial({
+            map: stepTexture, transparent: true, opacity: 0, depthWrite: false,
+          });
+          const mesh = new THREE.Mesh(stepGeo, mat);
+          mesh.rotation.x = -Math.PI / 2;   // 바닥에 눕는다
+          mesh.visible = false;
+          scene.add(mesh);
+          return { mesh, mat, life: 0 };
+        });
+        let stepNext = 0;    // 다음에 쓸 자리 (가장 오래된 것부터 덮어쓴다)
+        let stepBeat = -1;   // 마지막으로 찍은 걸음 번호 (shipStep = 0 에서의 값이 -1 이다)
+        const dropStep = (x: number, side: number) => {
+          const s = steps[stepNext % steps.length]!;
+          stepNext += 1;
+          s.mesh.position.set(x, -0.499, side * 0.08);
+          /* ⚠️ 발가락이 **걸어가는 쪽**을 봐야 한다. 판을 눕히면(`rotation.x = -π/2`)
+             그림의 위쪽이 월드 -z 를 향하는데, 피글린은 -x 로 걷는다. 판 안에서 90°
+             더 돌려야 발가락이 진행 방향으로 선다 — 안 돌리면 발자국이 옆을 보고 찍힌다. */
+          s.mesh.rotation.z = Math.PI / 2 + side * 0.12;   // 발끝을 살짝 바깥으로
+          s.mesh.visible = true;
+          s.life = STEP_LIFE;
+        };
+        const advanceSteps = (delta: number) => {
+          for (const s of steps) {
+            if (s.life <= 0) continue;
+            s.life -= delta;
+            if (s.life <= 0) { s.mesh.visible = false; s.mat.opacity = 0; continue; }
+            const k = s.life / STEP_LIFE;
+            s.mat.opacity = k * 0.55;
+            /* 찍힐 때 살짝 퍼졌다가 가라앉는다 — "샥" 하는 박자는 크기 변화에서 나온다 */
+            s.mesh.scale.setScalar(1.18 - 0.18 * k);
+          }
+        };
+
+        const startShip = () => {
+          if (shipPhase !== "idle") return;
+          hauler.grp.position.set(SHIP.start, -0.5, 0);
+          hauler.grp.visible = true;
+          /* ⚠️ 상자를 제자리로 되돌린다. 한 화면에서 두 번 포장하면(다음 배송단위를 스캔)
+             지난번에 밀려 나간 자리에서 시작해, 시작하자마자 사라진 것처럼 보인다 */
+          pivot.position.x = 0;
+          pivot.visible = true;
+          /* ⚠️ 지난번 발자국을 지운다. 안 지우면 두 번째 포장에서 아무도 걷지 않은
+               자리에 먼저 발자국이 남아 있다 */
+          for (const st of steps) { st.life = 0; st.mesh.visible = false; st.mat.opacity = 0; }
+          stepBeat = Math.floor((shipStep - Math.PI / 2) / Math.PI);
+          shipPhase = "walk";
+        };
+        shipRef.current = startShip;
+
+        const advanceShip = (delta: number) => {
+          if (shipPhase === "idle" || shipPhase === "done") return;
+          const speed = shipPhase === "walk" ? SHIP.walk : SHIP.push;
+          hauler.grp.position.x -= speed * delta;
+          /* 걸음 — 다리는 서로 반대로, 속도에 맞춰 흔든다. 미는 동안에는 보폭을 줄인다 */
+          shipStep += delta * (shipPhase === "walk" ? 9 : 6);
+          const swing = Math.sin(shipStep) * (shipPhase === "walk" ? 0.7 : 0.45);
+          /* 발이 땅에 닿는 순간에만 찍는다 — 다리가 가장 앞으로 나간 때(위상 π/2)가
+             발뒤꿈치가 닿는 자리다. 매 프레임 찍으면 발자국이 아니라 줄이 된다.
+             ⚠️ 위상을 반바퀴(π)로 나눠 **칸이 바뀔 때**를 잡는다. `sin` 값을 직접 보면
+                그 근처에서 여러 프레임 연속으로 걸려 같은 자리에 겹쳐 찍힌다. */
+          const beat = Math.floor((shipStep - Math.PI / 2) / Math.PI);
+          if (beat > stepBeat) {
+            stepBeat = beat;
+            /* 땅에 닿는 발은 몸보다 앞에 있다. 피글린은 -x 로 걸으므로 앞은 작은 x 다 */
+            dropStep(hauler.grp.position.x - 0.26, beat % 2 === 0 ? -1 : 1);
+          }
+          hauler.lLeg.rotation.x = swing;
+          hauler.rLeg.rotation.x = -swing;
+          if (shipPhase === "walk") {
+            if (hauler.grp.position.x <= SHIP.reach) shipPhase = "push";
+            return;
+          }
+          pivot.position.x -= speed * delta;   // 상자가 함께 밀려 나간다
+          /* ⚠️ 둘을 **같은 순간에** 감춘다. 상자는 피글린보다 한 걸음 앞서 가므로, 각자
+             자기 자리에서 사라지게 두면 하나가 먼저 없어지고 다른 하나만 남아 어색하다.
+             기준은 **앞서 가는 상자**다 — 상자가 왼쪽 끝을 넘는 순간이 장면의 끝이다. */
+          if (pivot.position.x <= SHIP.exit) {
+            shipPhase = "done";
+            hauler.grp.visible = false;
+            pivot.visible = false;
+          }
+        };
+
         const clock = new THREE.Clock();
         let frame = 0;
 
         const tick = () => {
           frame = requestAnimationFrame(tick);
           const delta = clock.getDelta();
-          if (!touched && !reduceMotion) pivot.rotation.y += delta * 0.35;
+          if (!touched && !reduceMotion && shipPhase === "idle") pivot.rotation.y += delta * 0.35;
           advanceLid(delta);
           advancePigs(delta);
+          advanceShip(delta);
+          advanceSteps(delta);
           renderer.render(scene, camera);
         };
         tick();
@@ -1995,6 +2108,9 @@ type Tape = {
           surface.removeEventListener("pointermove", onMove);
           surface.removeEventListener("pointerup", onUp);
           surface.removeEventListener("pointercancel", onUp);
+          shipRef.current = null;
+          hauler.dispose();
+          stepTexture.dispose();   // 캔버스 텍스처라 씬 정리에 안 걸린다 (테이프와 같은 이유)
           mixer.stopAllAction();
           lowPoly?.dispose();
           // 테이프 결은 캔버스로 만든 텍스처라 씬 정리에 안 걸린다 — 따로 버린다
@@ -2059,6 +2175,17 @@ type Tape = {
   useEffect(() => {
     setLidRef.current?.(lidOpen);
   }, [lidOpen, status]);
+
+  /* 포장 완료 → 뚜껑이 닫히고 테이프가 붙은 **뒤에** 실어 보내는 장면을 시작한다.
+     ⚠️ 곧바로 시작하면 안 된다. 뚜껑이 닫히는 데 시간이 걸리는데, 그 사이에 피글린이
+        들어오면 열린 상자를 밀고 나가는 그림이 된다. 닫히는 시간만큼 기다렸다 부른다.
+     ⚠️ 3D 가 준비되기 전에 `shipAway` 가 참이 되면 손잡이가 비어 있다 — `status` 를
+        의존성에 넣어 준비된 뒤에도 한 번 더 확인한다 (위 뚜껑 동기화와 같은 이유). */
+  useEffect(() => {
+    if (!shipAway || status !== "ready") return;
+    const t = window.setTimeout(() => shipRef.current?.(), 1200);
+    return () => window.clearTimeout(t);
+  }, [shipAway, status]);
 
   return (
     /* ★ 크기를 스스로 정하지 않고 부모를 꽉 채운다 — 상자를 크게 보고 싶다는 요구로
