@@ -1761,6 +1761,8 @@ export default function InspectionRoom({ onExit }) {
       des.r = Math.min(14, Math.max(2.6, des.r * (1 + e.deltaY * 0.0011)));
     };
     const onDbl = () => { Object.assign(des, HOME); stop = -1; };
+    /* 우클릭 드래그로 카메라를 돌리므로, 네이티브 컨텍스트 메뉴는 방해만 된다 */
+    const onContextMenu = (e) => e.preventDefault();
 
     /* Enter — 이 방에서 볼 것을 차례로 확대한다: 측정기 → 모니터 → 전체.
        ★ 순서가 곧 작업 순서다. 물건을 재고(측정기), 결과를 읽는다(모니터). 한 번 더 누르면
@@ -1823,6 +1825,7 @@ export default function InspectionRoom({ onExit }) {
     el.addEventListener("pointercancel", onUp);
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("dblclick", onDbl);
+    el.addEventListener("contextmenu", onContextMenu);
 
     /* ⚠️ 폭이 4px 이하면 손대지 않는다. 판이 숨겨져 있을 때 0 으로 리사이즈하면
        렌더러가 깨진다(창고 쪽과 같은 이유). */
@@ -1935,6 +1938,7 @@ export default function InspectionRoom({ onExit }) {
       el.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("dblclick", onDbl);
+      el.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("keydown", onKey);
       back.dispose();
       for (const d of dispose) d?.dispose?.();

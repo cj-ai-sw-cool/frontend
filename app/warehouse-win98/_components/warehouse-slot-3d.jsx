@@ -1510,6 +1510,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       if (ptrs.size < 2) pinchD = 0;
     };
     const onDbl = () => { Object.assign(des, OVERVIEW); focusedStation = null; };
+    /* 우클릭 드래그로 카메라를 돌리므로, 네이티브 컨텍스트 메뉴는 방해만 된다 */
+    const onContextMenu = (e) => e.preventDefault();
 
     /* Enter — 출고 포스기를 차례로 확대한다.
        ★ 순서는 **앞쪽(카메라에 가까운 쪽)부터**다. 기본 시점에서 눈에 먼저 들어오는 것이
@@ -1552,6 +1554,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     el.addEventListener("pointercancel", onUp);
     el.addEventListener("dblclick", onDbl);
     el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("contextmenu", onContextMenu);
 
     /* ── API ── */
     const applyDay = (d) => {
@@ -1819,6 +1822,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       el.removeEventListener("dblclick", onDbl);
       window.removeEventListener("keydown", onKey);
       el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("contextmenu", onContextMenu);
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
