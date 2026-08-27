@@ -83,8 +83,22 @@ export const outbound = {
 /* ── 시연 조작 ───────────────────────────────────────────── */
 
 export const demo = {
-  /** 시연을 처음 상태로 되돌린다. 주문·측정·재고 원장을 비우고 상품과 대기열을 다시 만든다. */
-  reset: () => api.post<DemoResetSummary>("/admin/demo/reset"),
+  /**
+   * 시연을 처음 상태로 되돌린다. 주문·측정·재고 원장을 비우고 상품과 대기열을 다시 만든다.
+   *
+   * 다른 호출과 달리 `/api/v1` 이 아니라 `/api/demo/reset` 으로 간다 — 비밀번호를 확인하는
+   * 자리가 필요해서다. 확인은 서버에서만 하고 화면은 입력값을 넘기기만 한다.
+   */
+  reset: async (password: string): Promise<DemoResetSummary> => {
+    const response = await fetch("/api/demo/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    const body = (await response.json()) as DemoResetSummary & { message?: string };
+    if (!response.ok) throw new Error(body.message ?? "초기화에 실패했습니다.");
+    return body;
+  },
 
   /**
    * 다음 시연 바코드 하나. 다 쓰면 서버가 204 라 본문이 없다 — 그때 `null` 을 돌려준다.
