@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 import { createNetherPortal } from "./nether-portal";
+import { createPackingStation } from "./packing-station";
 import { createExterior, HAZE } from "./warehouse-exterior";
 import InspectionRoom from "./inspection-room";
 
@@ -164,7 +166,10 @@ function computeLayout() {
   return { zones, rowWidths, backLen, frontLen };
 }
 
-/* ── 텍스트 스프라이트 ── */
+/* ── 텍스트 스프라이트 ──
+   ★ win98 창 모양으로 바꿔 봤다가 되돌렸다 (팀 의견). 3D 안의 표찰까지 98 스킨을 입히면
+     화면이 무거워지고, 랙 사이에 회색 창이 여섯 개 떠 있으니 정작 봐야 할 랙보다 표찰이
+     먼저 눈에 들어왔다. 어두운 반투명 판은 배경에서 물러나 있어 그 문제가 없다. */
 function makeLabel(title, sub, hex) {
   const cv = document.createElement("canvas");
   cv.width = 512; cv.height = 200;
@@ -640,6 +645,13 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
        돌기 때문에, 그 안에서 지금의 상태 함수를 직접 부르면 처음 값에 붙박인다.
        ref 를 거치면 언제 불려도 최신 것이 불린다. */
   const rootRef = useRef(null);   // 툴팁 좌표를 이 상자 기준으로 되돌리는 데 쓴다
+  /* 출고 작업대의 포스기를 누르면 실제 출고 화면으로 넘어간다.
+     ★ `<a href>` 가 아니라 라우터를 쓴다. 3D 안의 물체라 링크를 걸 DOM 이 없기도 하고,
+       `router.push` 는 클라이언트 전환이라 앱을 새로 내려받지 않는다(뒤로 가기도 된다). */
+  const goPackingRef = useRef(null);
+  /* 검수실이 열려 있는가. 씬을 만드는 effect 안의 키 처리기가 읽는다 —
+     상태를 직접 잡으면 첫 값에 붙박이므로 ref 로 넘긴다 */
+  const inRoomRef = useRef(false);
   const onEnterPortalRef = useRef(null);
   const onPortalHoverRef = useRef(null);
 
@@ -647,6 +659,10 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
      ⚠️ 렌더 중에 ref 를 건드리면 안 된다 — 리액트가 화면을 그리는 도중에 바깥 값을 바꾸는
         셈이라, 같은 렌더가 두 번 돌 때(개발 모드의 이중 실행) 결과가 갈린다.
         의존성 없는 effect 에 두면 **그릴 것을 다 그린 뒤** 매번 갱신된다. */
+  const router = useRouter();
+  useEffect(() => { goPackingRef.current = () => router.push("/packing-win98"); }, [router]);
+  useEffect(() => { inRoomRef.current = inRoom; }, [inRoom]);
+
   useEffect(() => {
     onPortalHoverRef.current = (hovered, x, y) => setPortalTip(hovered ? { x, y } : null);
     onEnterPortalRef.current = () => {
@@ -1044,19 +1060,43 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       scene.add(wraps);
     }
 
+    /* ── 출고 포장 작업대 2대 ──
+       ★ 랙에서 꺼낸 물건이 도크로 나가기 전에 거치는 자리다. 컨베이어는 벽과 나란히
+         (z 방향으로) 놓는다 — 구역을 가로지르게 놓으면 AGV 순환 경로(x = 13.2 / 14.1)를
+         가로막는다.
+       ⚠️ 포스기는 **작업자 쪽이면서 기본 시점에서도 읽히는** 각도로 튼다. 통로만 보게
+          하면 창고를 처음 열었을 때 화면이 옆모습으로만 보여, 누를 수 있다는 걸 아무도
+          모른다. -0.75 rad 이 그 절충이다.
+       ⚠️ z 자리는 아래 대기 화물과 겹치지 않게 잡혀 있다. 한쪽을 옮기면 다른 쪽도 볼 것. */
+    const stationX = floorW / 2 - 1.15;
+    const stations = [-4.5, 4.5].map((sz, i) => {
+      const st = createPackingStation(THREE, {
+        position: [stationX, 0, floorCz + sz],
+        rotationY: -0.75,
+        line: 3 + i,
+        packed: 128 + i * 37,
+        seed: i,
+      });
+      scene.add(st.group);
+      return st;
+    });
+
     /* ── 출고 대기 화물 ──
        바닥에 색만 칠해 두면 '비어 있는 구역'이다. 나갈 물건이 실제로 쌓여 있어야
        출고장으로 보인다. 파렛트는 도크 문 앞에 줄 세우고, 토트는 그 옆에 낮게 깐다. */
     {
-      const oz = outZone(floorW, floorCz);
+      /* z 는 아래 `SPOTS` 가 직접 정한다 — 구역 범위(`outZone`)를 균등 분할하던 것을
+         작업대와 겹쳐서 손으로 찍는 방식으로 바꿨다 */
       const cx = floorW / 2 - OUT_ZONE.stageOffset;   // 벽 쪽 한 줄 (위 주석 참고)
       const rngO = mulberry32(505);
       const toteM = new THREE.MeshLambertMaterial({ color: 0x2E6FD8 });
-      /* 파렛트와 토트를 z 방향으로 번갈아 세운다. 한 종류만 줄 세우면 창고가 아니라
-         선반 진열대로 보인다 - 나갈 물건은 원래 형태가 섞여 있다 */
-      const N = 7;
-      for (let i = 0; i < N; i++) {
-        const pz = oz.z0 + 1.6 + i * ((oz.z1 - oz.z0 - 3.2) / (N - 1));
+      /* 파렛트와 토트를 번갈아 세운다. 한 종류만 줄 세우면 창고가 아니라 선반 진열대로
+         보인다 - 나갈 물건은 원래 형태가 섞여 있다.
+         ⚠️ z 를 균등 간격으로 뿌리지 않고 **손으로 찍는다.** 작업대 두 대가 z 로
+            -5.9~-3.1 과 3.1~5.9 를 차지하므로, 균등 간격이면 그 위에 겹쳐 놓인다. */
+      const SPOTS = [-7.4, -1.9, -0.2, 1.5, 7.6];
+      for (let i = 0; i < SPOTS.length; i++) {
+        const pz = floorCz + SPOTS[i];
         if (i % 3 === 2) {
           // 파란 토트 2단
           for (let k = 0; k < 2; k++) {
@@ -1127,37 +1167,62 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       },
     ];
 
-    /* ASRS 셔틀 크레인 — A구역 1번 통로, 실제 점유 슬롯에서 토트 자동 반출 */
-    const zoneA = layout.zones.find((zz) => zz.g.id === "xs");
-    const gA = zoneA.g;
-    const pitchA = gA.h + PITCH_PAD;
-    const rackHA = gA.levels * pitchA + 0.12;
-    const craneX = (zoneA.racks[1] + zoneA.racks[2]) / 2; // 통로 중앙 (양측 랙 서비스)
-    const craneZEnd = zoneA.zStart + zoneA.len;
+    /* ── ASRS 스태커 크레인 ────────────────────────────────────────────
+       ★ A구역(극소형)에만 한 대 있던 것을 **B(소형)·E(특수)에도** 세웠다. 그러면서 통째로
+         공장 함수로 뽑았다 — 세 벌을 복사해 두면 한 대만 고쳐지는 사고가 난다.
+       ★ 구역마다 슬롯 규격도 랙 수도 다르므로 **치수를 전부 계산한다.** 예전 코드는 A구역
+         값(포크 뻗는 거리 0.95, 랙 index 1·2 …)을 숫자로 박아 두고 있었는데, 그대로 두면
+         E구역에서 포크가 랙에 못 닿거나 크레인이 랙을 뚫는다.
+       ⚠️ 크레인이 설 통로는 **랙 두 개 사이**여야 한다. A(8랙)·B(6랙)는 index 1·2 사이가
+          통로지만, E 는 랙이 둘뿐(singles: 2)이라 0·1 사이다. 아래 `iA` 계산이 그것이다 —
+          여기에 1 을 박아 두면 E 에서 `racks[2]` 가 없어 좌표가 NaN 이 된다. */
+    const CRANE_ZONES = [
+      { id: "xs", seed: 9001 },
+      { id: "s", seed: 9002 },
+      { id: "xl", seed: 9003 },
+    ];
     const alu = new THREE.MeshLambertMaterial({ color: 0xB8C0C8 });
     const craneDark = new THREE.MeshLambertMaterial({ color: 0x3A424C });
     const craneWhite = new THREE.MeshLambertMaterial({ color: 0xF2F4F6 });
     const craneBlue = new THREE.MeshLambertMaterial({ color: 0x1E63C8 });
-    const railB = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, zoneA.len + 0.7), alu);
-    railB.position.set(craneX, 0.025, zoneA.zStart + zoneA.len / 2 + 0.1);
-    scene.add(railB);
-    const railT = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, zoneA.len + 0.7), craneDark);
-    railT.position.set(craneX, rackHA + 0.42, zoneA.zStart + zoneA.len / 2 + 0.1);
-    scene.add(railT);
-    const crane = new THREE.Group();
-    crane.position.set(craneX, 0, zoneA.zStart + zoneA.len * 0.35);
-    scene.add(crane);
-    let craneLed;
-    {
-      const mastH = rackHA + 0.4;
+    const craneRib = new THREE.MeshLambertMaterial({ color: 0xD7DCE1 });
+    const craneTote = new THREE.MeshLambertMaterial({ color: 0x9AA1A8 });
+
+    const buildStackerCrane = ({ id, seed }) => {
+      const zone = layout.zones.find((zz) => zz.g.id === id);
+      const g = zone.g;
+      const pitch = g.h + PITCH_PAD;
+      const rackH = g.levels * pitch + 0.12;
+
+      /* 통로가 될 두 랙. 랙이 둘뿐이면 0·1, 그보다 많으면 1·2 */
+      const iA = Math.min(1, zone.racks.length - 2);
+      const iB = iA + 1;
+      const craneX = (zone.racks[iA] + zone.racks[iB]) / 2;
+      const zEnd = zone.zStart + zone.len;
+      /* 포크가 뻗는 거리 = 통로 절반 + 랙 절반 − 여유. 규격이 크면 랙도 두꺼워 더 뻗는다 */
+      const reach = AISLE / 2 + g.w / 2 - 0.05;
+      const dropOff = g.w / 2 + 0.45;
+      const boxW = g.w * 0.8, boxH = g.h * 0.78;
+
+      const railB = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, zone.len + 0.7), alu);
+      railB.position.set(craneX, 0.025, zone.zStart + zone.len / 2 + 0.1);
+      scene.add(railB);
+      const railT = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, zone.len + 0.7), craneDark);
+      railT.position.set(craneX, rackH + 0.42, zone.zStart + zone.len / 2 + 0.1);
+      scene.add(railT);
+
+      const crane = new THREE.Group();
+      crane.position.set(craneX, 0, zone.zStart + zone.len * 0.35);
+      scene.add(crane);
+
+      const mastH = rackH + 0.4;
       // 백색 트윈 마스트 + 수평 리브 + 하부 블루 액센트
       for (const mz of [-0.26, 0.26]) {
         const m = new THREE.Mesh(new THREE.BoxGeometry(0.13, mastH, 0.15), craneWhite);
         m.position.set(0, mastH / 2, mz);
         crane.add(m);
         for (let ry = 0.95; ry < mastH - 0.3; ry += 0.5) {
-          const rib = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.03, 0.17),
-            new THREE.MeshLambertMaterial({ color: 0xD7DCE1 }));
+          const rib = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.03, 0.17), craneRib);
           rib.position.set(0, ry, mz);
           crane.add(rib);
         }
@@ -1169,10 +1234,10 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       const cap = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.76), craneWhite);
       cap.position.set(0, mastH + 0.1, 0);
       crane.add(cap);
-      craneLed = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.055, 0.7),
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.055, 0.7),
         new THREE.MeshBasicMaterial({ color: 0x35D96B }));
-      craneLed.position.set(0, mastH + 0.19, 0);
-      crane.add(craneLed);
+      led.position.set(0, mastH + 0.19, 0);
+      crane.add(led);
       // 모바일 베이스 — 백색 + 다크 스커트 + 블루 밴드 + 컬러 도트
       const base = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.2, 0.98), craneWhite);
       base.position.y = 0.14;
@@ -1183,8 +1248,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       const bAcc = new THREE.Mesh(new THREE.BoxGeometry(0.585, 0.07, 0.99), craneBlue);
       bAcc.position.y = 0.225;
       crane.add(bAcc);
-      const dotCols = [0xE8542F, 0xF2B23E, 0x2FA84F, 0x2E5FBF];
-      dotCols.forEach((dc, di) => {
+      [0xE8542F, 0xF2B23E, 0x2FA84F, 0x2E5FBF].forEach((dc, di) => {
         for (const sx of [-1, 1]) {
           const d = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.05, 0.05),
             new THREE.MeshBasicMaterial({ color: dc }));
@@ -1193,10 +1257,9 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         }
       });
       // 온보드 버퍼 선반 (마스트 후방 3단 + 회색 토트)
-      const toteG = new THREE.MeshLambertMaterial({ color: 0x9AA1A8 });
       for (const px of [-0.17, 0.17]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, rackHA * 0.82, 0.05), craneWhite);
-        post.position.set(px, rackHA * 0.41 + 0.24, -0.64);
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, rackH * 0.82, 0.05), craneWhite);
+        post.position.set(px, rackH * 0.41 + 0.24, -0.64);
         crane.add(post);
       }
       for (let sh = 0; sh < 3; sh++) {
@@ -1204,66 +1267,75 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         const plate = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.035, 0.34), craneWhite);
         plate.position.set(0, shy, -0.64);
         crane.add(plate);
-        const t = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.17, 0.26), toteG);
+        const t = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.17, 0.26), craneTote);
         t.position.set(0, shy + 0.105, -0.64);
         crane.add(t);
       }
-    }
-    const carriage = new THREE.Group();
-    carriage.position.y = 0.6;
-    crane.add(carriage);
-    {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.44), craneWhite);
-      b.position.y = 0.22; carriage.add(b);
-      const tr = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.05, 0.46), craneBlue);
-      tr.position.y = 0.41; carriage.add(tr);
-      const wn = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.09, 0.09),
-        new THREE.MeshBasicMaterial({ color: 0xFFD23E }));
-      wn.position.set(0.256, 0.24, 0); carriage.add(wn);
-    }
-    const forkA = new THREE.Group();
-    forkA.position.y = 0.03;
-    carriage.add(forkA);
-    forkA.add((() => { const p = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.035, 0.34), alu); return p; })());
-    const carried = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.155, 0.24),
-      new THREE.MeshLambertMaterial({ color: 0xC59A63 }));
-    carried.position.y = 0.1; carried.visible = false;
-    forkA.add(carried);
-    // P&D 스테이션 (통로 출구 소형 컨베이어)
-    const dropZ = craneZEnd - 0.55;
-    const conv = new THREE.Group();
-    conv.position.set(craneX + 0.62, 0, dropZ);
-    scene.add(conv);
-    {
+
+      const carriage = new THREE.Group();
+      carriage.position.y = 0.6;
+      crane.add(carriage);
+      {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.44), craneWhite);
+        b.position.y = 0.22; carriage.add(b);
+        const tr = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.05, 0.46), craneBlue);
+        tr.position.y = 0.41; carriage.add(tr);
+        const wn = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.09, 0.09),
+          new THREE.MeshBasicMaterial({ color: 0xFFD23E }));
+        wn.position.set(0.256, 0.24, 0); carriage.add(wn);
+      }
+      const fork = new THREE.Group();
+      fork.position.y = 0.03;
+      carriage.add(fork);
+      fork.add(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.035, 0.34), alu));
+      const carried = new THREE.Mesh(new THREE.BoxGeometry(boxW, boxH, boxW),
+        new THREE.MeshLambertMaterial({ color: 0xC59A63 }));
+      carried.position.y = boxH / 2 + 0.02;
+      carried.visible = false;
+      fork.add(carried);
+
+      // P&D 스테이션 (통로 출구 소형 컨베이어)
+      const dropZ = zEnd - 0.55;
+      const conv = new THREE.Group();
+      conv.position.set(craneX + dropOff, 0, dropZ);
+      scene.add(conv);
       const top = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.8), craneDark);
       top.position.y = 0.36; conv.add(top);
       for (const [lx, lz] of [[-0.2, -0.32], [0.2, -0.32], [-0.2, 0.32], [0.2, 0.32]]) {
         const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.05), alu);
         leg.position.set(lx, 0.18, lz); conv.add(leg);
       }
-    }
-    const depBox = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.155, 0.24),
-      new THREE.MeshLambertMaterial({ color: 0xC59A63 }));
-    depBox.position.set(craneX + 0.62, 0.47, dropZ);
-    depBox.visible = false;
-    scene.add(depBox);
-    const rngC = mulberry32(9001);
-    const cr = { phase: "pause", timer: 1.2, tgt: null, t: 0 };
-    const cranePickSlot = () => {
-      const gm = gradeMeshes.xs;
-      const per = gA.levels * gA.cols;
-      const nFilled = curCounts.xs ?? 0;
-      for (let t = 0; t < 40; t++) {
-        const rackIdx = 1 + Math.floor(rngC() * 2); // 통로 양측 랙 (index 1·2)
-        const k = Math.floor(rngC() * gA.levels);
-        const j = 1 + Math.floor(rngC() * (gA.cols - 2));
-        const i = rackIdx * per + k * gA.cols + j;
-        if (gm.rank[i] < nFilled) {
-          return { i, z: zoneA.zStart + (j + 0.5) * gA.w, y: k * pitchA + 0.04, dir: rackIdx === 1 ? -1 : 1 };
+      const depBox = new THREE.Mesh(new THREE.BoxGeometry(boxW, boxH, boxW),
+        new THREE.MeshLambertMaterial({ color: 0xC59A63 }));
+      depBox.position.set(craneX + dropOff, 0.39 + boxH / 2, dropZ);
+      depBox.visible = false;
+      scene.add(depBox);
+
+      const rng = mulberry32(seed);
+      const per = g.levels * g.cols;
+      /* 실제로 물건이 있는 슬롯만 고른다 — 빈 칸에 포크를 넣고 상자를 꺼내면
+         아무것도 없던 자리에서 상자가 생겨난다 */
+      const pickSlot = () => {
+        const gm = gradeMeshes[id];
+        const nFilled = curCounts[id] ?? 0;
+        for (let t = 0; t < 40; t++) {
+          const rackIdx = rng() < 0.5 ? iA : iB;
+          const k = Math.floor(rng() * g.levels);
+          const j = 1 + Math.floor(rng() * (g.cols - 2));
+          const i = rackIdx * per + k * g.cols + j;
+          if (gm.rank[i] < nFilled) {
+            return { i, z: zone.zStart + (j + 0.5) * g.w, y: k * pitch + 0.04, dir: rackIdx === iA ? -1 : 1 };
+          }
         }
-      }
-      return null;
+        return null;
+      };
+
+      return {
+        id, crane, carriage, fork, carried, depBox, led, dropZ, reach, dropOff, pickSlot, rng,
+        st: { phase: "pause", timer: 1.2 + rng() * 1.4, tgt: null, t: 0 },
+      };
     };
+    const cranes = CRANE_ZONES.map(buildStackerCrane);
 
     /* ── 카메라 궤도 컨트롤 ── */
     const OVERVIEW = { az: 0.62, pol: 1.00, r: 28.5, tx: 0, ty: 1.3, tz: 0.6 };
@@ -1288,6 +1360,33 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
        (주의) **쓰는 곳보다 위에** 둔다. `let` 은 선언 줄을 지나기 전에는 읽을 수 없어서,
           아래 `focusAt`/`onHover` 보다 뒤에 두면 호출 시점에 따라 터진다. */
     let portalHovered = false;
+    /* 마우스가 올라와 있는 작업대 (없으면 null). 매 프레임 읽는 값이라 상태로 두면
+       초당 60번 리렌더가 돈다 — 포탈 쪽과 같은 이유다 */
+    let hoveredStation = null;
+    /* 카메라가 지금 어느 작업대를 들여다보고 있나 (없으면 null).
+       ★ 두 단계로 나눈 이유: 멀리서 누르자마자 라우트가 바뀌면, 무엇을 눌렀는지 보지도
+         못한 채 화면이 넘어간다. 한 번은 다가가서 **무엇인지 보여 주고**, 그 다음 클릭에
+         넘긴다. 무엇을 하는 클릭인지는 포스기 화면 자신이 적어 준다. */
+    let focusedStation = null;
+
+    /* 작업대 포스기 정면으로 카메라를 옮긴다.
+       ⚠️ 새 카메라 연출을 만들지 않고 **기존 궤도 목표값만 바꾼다** — 루프가 이미 목표를
+          향해 부드럽게 따라가므로(`cur += (des-cur)*0.09`) 그것만으로 다가가는 그림이 난다.
+       ⚠️ 화면의 정면 방향은 작업대가 놓인 각도에 따라 달라진다. 고정된 각도를 적어 두면
+          작업대를 옮기는 순간 카메라가 화면 뒤통수를 본다. 앵커에서 매번 뽑는다. */
+    const focusStation = (st) => {
+      const p = new THREE.Vector3();
+      st.screenAnchor.getWorldPosition(p);
+      const n = new THREE.Vector3(0, 0, 1)
+        .applyQuaternion(st.screenAnchor.getWorldQuaternion(new THREE.Quaternion()));
+      des.tx = p.x; des.ty = p.y; des.tz = p.z;
+      des.az = Math.atan2(n.x, n.z);
+      des.pol = 1.34;   // 거의 수평. 서서 화면을 보는 눈높이
+      /* ⚠️ 1.9m 에서 1.05m 로 당겼다. 화면에 대시보드 한 판이 통째로 그려져 있어서,
+         멀면 옮겨 그린 보람 없이 글자가 뭉갠다. 이 거리에서 화면 세로가 화면(뷰포트)의
+         절반을 넘게 차지해 캔버스가 거의 1:1 로 보인다. */
+      des.r = 1.05;
+    };
 
     const focusAt = (px, py) => {
       const rect = el.getBoundingClientRect();
@@ -1300,6 +1399,19 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       /* ★ 포탈을 **먼저** 본다. 포탈 판이 바닥·랙보다 앞에 있어도, 일반 클릭 판정은
          "가장 가까운 것"을 고르므로 소용돌이의 투명한 부분에서 뒤가 잡힐 수 있다.
          따로 먼저 검사하면 그 어긋남이 없다. */
+      /* 출고 포스기 — 포탈과 같은 이유로 따로 먼저 검사한다. 클릭 판정용 판이 투명해서
+         일반 판정에 맡기면 뒤에 있는 랙이 잡힌다 */
+      for (const st of stations) {
+        if (ray.intersectObjects(st.pickTargets, false).length === 0) continue;
+        if (focusedStation === st) {
+          goPackingRef.current?.();     // 이미 들여다보고 있다 → 실제 화면으로
+        } else {
+          focusedStation = st;
+          focusStation(st);             // 처음 눌렀다 → 다가가서 보여 준다
+        }
+        return;
+      }
+
       const portalHit = ray.intersectObjects(portal.pickTargets, false);
       if (portalHit.length > 0) {
         /* 호버 상태를 손으로 되돌린다. 이제 화면이 검수실로 덮이므로 마우스가 포탈에서
@@ -1326,6 +1438,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       des.ty = Math.min(3.0, Math.max(0.7, h.point.y));
       des.tz = h.point.z;
       des.r = Math.max(6.5, cur.r * 0.55); // 클릭할 때마다 단계 줌인
+      focusedStation = null;   // 다른 데를 봤으면 작업대에서 눈을 뗀 것이다
     };
     const onDown = (e) => {
       ptrs.set(e.pointerId, [e.clientX, e.clientY]);
@@ -1342,8 +1455,18 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
       ray.setFromCamera(nd, camera);
+      /* 작업대 호버 — 커서만 바꾸고 상태는 안 건드린다 */
+      const overStation = stations.find((st) => ray.intersectObjects(st.pickTargets, false).length > 0) ?? null;
+      if (overStation !== hoveredStation) {
+        hoveredStation = overStation;
+        if (overStation) el.style.cursor = "pointer";
+      }
+
       const next = ray.intersectObjects(portal.pickTargets, false).length > 0;
-      if (next === portalHovered) return; // 바뀔 때만 알린다
+      if (next === portalHovered) {
+        if (!next && !hoveredStation) el.style.cursor = "";
+        return; // 바뀔 때만 알린다
+      }
 
       portalHovered = next;
       el.style.cursor = next ? "pointer" : "";
@@ -1386,7 +1509,42 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       ptrs.delete(e.pointerId);
       if (ptrs.size < 2) pinchD = 0;
     };
-    const onDbl = () => { Object.assign(des, OVERVIEW); };
+    const onDbl = () => { Object.assign(des, OVERVIEW); focusedStation = null; };
+
+    /* Enter — 출고 포스기를 차례로 확대한다.
+       ★ 순서는 **앞쪽(카메라에 가까운 쪽)부터**다. 기본 시점에서 눈에 먼저 들어오는 것이
+         앞쪽이고, 시연에서 "저거요" 하고 가리키는 것도 그쪽이다.
+       ★ 마지막 작업대에서 한 번 더 누르면 전체 보기로 돌아간다. 키 하나로 한 바퀴가
+         닫혀야 손이 키보드를 떠나지 않는다.
+       ⚠️ Esc 는 쓰지 않는다. 이 컴포넌트는 분석 화면에서 전체 화면 오버레이로도 뜨는데,
+          거기서 Esc 는 오버레이를 닫는 키다. 두 곳이 같은 키를 두고 다투면 어느 쪽이
+          이길지가 붙는 순서에 달리게 된다.
+       ⚠️ 3D 판이 숨겨져 있을 때는 받지 않는다. `display:none` 이면 `offsetParent` 가
+          null 이라, 상태를 따로 들고 다니지 않고도 보이는지 알 수 있다. */
+    const onKey = (e) => {
+      if (e.key !== "Enter" || el.offsetParent === null) return;
+      /* ⚠️ 검수실이 화면을 덮고 있으면 넘긴다. 검수실도 Enter 를 쓰는데(측정기 → 모니터),
+         두 곳이 같은 창(window)에서 듣고 있어 그냥 두면 **둘 다** 반응한다. 보이지 않는
+         창고 카메라가 멋대로 움직여서, 돌아왔을 때 엉뚱한 자리에 서 있게 된다.
+         리스너 등록 순서에 기대는 `stopPropagation` 대신 여기서 못을 박는다. */
+      if (inRoomRef.current) return;
+      if (e.target instanceof HTMLElement) {
+        const tag = e.target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT") return;
+      }
+      e.preventDefault();
+      const order = [...stations].reverse();   // 앞쪽(+z)이 배열 뒤에 있다
+      const at = order.indexOf(focusedStation);
+      const next = order[at + 1];
+      if (next) {
+        focusedStation = next;
+        focusStation(next);
+      } else {
+        Object.assign(des, OVERVIEW);
+        focusedStation = null;
+      }
+    };
+    window.addEventListener("keydown", onKey);
     const onWheel = (e) => { e.preventDefault(); des.r = Math.min(58, Math.max(6, des.r * (1 + e.deltaY * 0.0011))); };
     el.addEventListener("pointerdown", onDown);
     el.addEventListener("pointermove", onMove);
@@ -1434,7 +1592,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       des.az = z.row === 0 ? 0.45 : 0.45;
       des.pol = 1.02;
     };
-    const resetView = () => Object.assign(des, OVERVIEW);
+    const resetView = () => { Object.assign(des, OVERVIEW); focusedStation = null; };
 
     apiRef.current = { applyDay, setHighlight, flyTo, resetView };
 
@@ -1545,53 +1703,56 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         a.u.led.scale.y = 1 + 0.7 * Math.abs(Math.sin(a.t * (a.pauseT > 0 ? 12 : 5)));
       }
 
-      /* ASRS 크레인 — 반출 사이클 상태 기계 */
+      /* ASRS 스태커 크레인 — 반출 사이클 상태 기계 (구역마다 한 대) */
       {
         const mv = (v, tv, spd) => v + Math.max(-spd * dt, Math.min(spd * dt, tv - v));
-        cr.t += dt;
-        craneLed.scale.y = 1 + 0.35 * Math.abs(Math.sin(cr.t * 3));
-        if (cr.phase === "pause") {
-          cr.timer -= dt;
-          if (cr.timer <= 0) {
-            cr.tgt = cranePickSlot();
-            if (cr.tgt) cr.phase = "toSlot";
-            else cr.timer = 2; // 적재 슬롯 없음(사용률 극저) — 대기
+        for (const c of cranes) {
+          const s = c.st;
+          s.t += dt;
+          c.led.scale.y = 1 + 0.35 * Math.abs(Math.sin(s.t * 3));
+          if (s.phase === "pause") {
+            s.timer -= dt;
+            if (s.timer <= 0) {
+              s.tgt = c.pickSlot();
+              if (s.tgt) s.phase = "toSlot";
+              else s.timer = 2; // 적재 슬롯 없음(사용률 극저) — 대기
+            }
+          } else if (s.phase === "toSlot") {
+            c.crane.position.z = mv(c.crane.position.z, s.tgt.z, 1.7);
+            c.carriage.position.y = mv(c.carriage.position.y, s.tgt.y, 1.1);
+            if (Math.abs(c.crane.position.z - s.tgt.z) < 0.01 && Math.abs(c.carriage.position.y - s.tgt.y) < 0.01) {
+              s.phase = "extend";
+              c.depBox.visible = false; // 이전 하역분은 반출된 것으로
+            }
+          } else if (s.phase === "extend") {
+            c.fork.position.x = mv(c.fork.position.x, s.tgt.dir * c.reach, 1.6);
+            if (Math.abs(c.fork.position.x - s.tgt.dir * c.reach) < 0.01) { s.phase = "grab"; s.timer = 0.28; }
+          } else if (s.phase === "grab") {
+            s.timer -= dt;
+            if (s.timer <= 0) {
+              const gm = gradeMeshes[c.id];
+              gm.im.setMatrixAt(s.tgt.i, ZERO); // 랙에서 실제 박스 반출
+              gm.im.instanceMatrix.needsUpdate = true;
+              c.carried.visible = true;
+              s.phase = "retract";
+            }
+          } else if (s.phase === "retract") {
+            c.fork.position.x = mv(c.fork.position.x, 0, 1.6);
+            if (Math.abs(c.fork.position.x) < 0.01) s.phase = "toDrop";
+          } else if (s.phase === "toDrop") {
+            c.crane.position.z = mv(c.crane.position.z, c.dropZ, 1.7);
+            c.carriage.position.y = mv(c.carriage.position.y, 0.34, 1.1);
+            if (Math.abs(c.crane.position.z - c.dropZ) < 0.01 && Math.abs(c.carriage.position.y - 0.34) < 0.01) s.phase = "dExtend";
+          } else if (s.phase === "dExtend") {
+            c.fork.position.x = mv(c.fork.position.x, c.dropOff, 1.6);
+            if (Math.abs(c.fork.position.x - c.dropOff) < 0.01) { s.phase = "drop"; s.timer = 0.25; }
+          } else if (s.phase === "drop") {
+            s.timer -= dt;
+            if (s.timer <= 0) { c.carried.visible = false; c.depBox.visible = true; s.phase = "dRetract"; }
+          } else if (s.phase === "dRetract") {
+            c.fork.position.x = mv(c.fork.position.x, 0, 1.6);
+            if (Math.abs(c.fork.position.x) < 0.01) { s.phase = "pause"; s.timer = 0.8 + c.rng() * 1.6; }
           }
-        } else if (cr.phase === "toSlot") {
-          crane.position.z = mv(crane.position.z, cr.tgt.z, 1.7);
-          carriage.position.y = mv(carriage.position.y, cr.tgt.y, 1.1);
-          if (Math.abs(crane.position.z - cr.tgt.z) < 0.01 && Math.abs(carriage.position.y - cr.tgt.y) < 0.01) {
-            cr.phase = "extend";
-            depBox.visible = false; // 이전 하역분은 반출된 것으로
-          }
-        } else if (cr.phase === "extend") {
-          forkA.position.x = mv(forkA.position.x, cr.tgt.dir * 0.95, 1.6);
-          if (Math.abs(forkA.position.x - cr.tgt.dir * 0.95) < 0.01) { cr.phase = "grab"; cr.timer = 0.28; }
-        } else if (cr.phase === "grab") {
-          cr.timer -= dt;
-          if (cr.timer <= 0) {
-            const gm = gradeMeshes.xs;
-            gm.im.setMatrixAt(cr.tgt.i, ZERO); // 랙에서 실제 박스 반출
-            gm.im.instanceMatrix.needsUpdate = true;
-            carried.visible = true;
-            cr.phase = "retract";
-          }
-        } else if (cr.phase === "retract") {
-          forkA.position.x = mv(forkA.position.x, 0, 1.6);
-          if (Math.abs(forkA.position.x) < 0.01) cr.phase = "toDrop";
-        } else if (cr.phase === "toDrop") {
-          crane.position.z = mv(crane.position.z, dropZ, 1.7);
-          carriage.position.y = mv(carriage.position.y, 0.34, 1.1);
-          if (Math.abs(crane.position.z - dropZ) < 0.01 && Math.abs(carriage.position.y - 0.34) < 0.01) cr.phase = "dExtend";
-        } else if (cr.phase === "dExtend") {
-          forkA.position.x = mv(forkA.position.x, 0.62, 1.6);
-          if (Math.abs(forkA.position.x - 0.62) < 0.01) { cr.phase = "drop"; cr.timer = 0.25; }
-        } else if (cr.phase === "drop") {
-          cr.timer -= dt;
-          if (cr.timer <= 0) { carried.visible = false; depBox.visible = true; cr.phase = "dRetract"; }
-        } else if (cr.phase === "dRetract") {
-          forkA.position.x = mv(forkA.position.x, 0, 1.6);
-          if (Math.abs(forkA.position.x) < 0.01) { cr.phase = "pause"; cr.timer = 0.8 + rngC() * 1.6; }
         }
       }
 
@@ -1600,7 +1761,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         workers: workers.map((w) => ({ x: w.m.grp.position.x, z: w.m.grp.position.z, r: w.m.grp.rotation.y })),
         agvs: agvs.map((a) => ({ x: a.u.grp.position.x, z: a.u.grp.position.z, r: a.u.grp.rotation.y })),
         fk: { x: fk.grp.position.x, z: fk.grp.position.z, r: fk.grp.rotation.y },
-        crane: { x: crane.position.x, z: crane.position.z, carrying: carried.visible },
+        cranes: cranes.map((c) => ({ x: c.crane.position.x, z: c.crane.position.z, carrying: c.carried.visible })),
       };
 
       /* 벽 자동 페이드 — 카메라가 벽 너머로 넘어가면 해당 벽 투명화 */
@@ -1628,6 +1789,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       applyCam();
       if (mount.clientWidth > 4) renderer.render(scene, camera);
       portal.update(dt, portalHovered);   // dt 는 위에서 이미 0.05 로 잘려 있다
+      for (const st of stations) st.update(dt, st === hoveredStation, st === focusedStation);
       raf = requestAnimationFrame(tick);
     };
     applyDay(29);
@@ -1647,6 +1809,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       el.removeEventListener("pointermove", onHover);
       portal.dispose();
       exterior.dispose();
+      for (const st of stations) st.dispose();
       cancelAnimationFrame(raf);
       ro.disconnect();
       el.removeEventListener("pointerdown", onDown);
@@ -1654,6 +1817,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointercancel", onUp);
       el.removeEventListener("dblclick", onDbl);
+      window.removeEventListener("keydown", onKey);
       el.removeEventListener("wheel", onWheel);
       renderer.dispose();
       mount.removeChild(renderer.domElement);
@@ -1811,14 +1975,23 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       // 실시간 엔티티
       const sim = simRef.current;
       if (sim) {
-        if (sim.crane) { // ASRS 크레인 + 레일
-          const zA = layout.zones[0];
-          ctx.strokeStyle = "rgba(200,210,220,0.4)"; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.moveTo(X(sim.crane.x), Y(zA.zStart)); ctx.lineTo(X(sim.crane.x), Y(zA.zStart + zA.len)); ctx.stroke();
+        /* ASRS 스태커 크레인 + 레일 — 세 구역에 한 대씩.
+           ⚠️ 레일 길이는 크레인이 선 **그 구역**의 길이여야 한다. 예전에는 항상 첫 구역
+              (A)의 길이를 썼는데, 크레인이 늘어난 뒤로는 B·E 의 레일이 엉뚱한 길이로
+              그려진다. 크레인의 x 로 구역을 되찾아 그 길이를 쓴다. */
+        for (const cr of sim.cranes ?? []) {
+          const zc = layout.zones.find((zz) => cr.x >= zz.x0 - 0.5 && cr.x <= zz.x0 + zz.width + 0.5);
+          if (zc) {
+            ctx.strokeStyle = "rgba(200,210,220,0.4)"; ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(X(cr.x), Y(zc.zStart));
+            ctx.lineTo(X(cr.x), Y(zc.zStart + zc.len));
+            ctx.stroke();
+          }
           ctx.fillStyle = "#F2F4F6";
-          ctx.fillRect(X(sim.crane.x) - 4, Y(sim.crane.z) - 4, 8, 8);
-          ctx.fillStyle = sim.crane.carrying ? "#FFB040" : "#35D96B";
-          ctx.beginPath(); ctx.arc(X(sim.crane.x), Y(sim.crane.z) - 7, 2.5, 0, Math.PI * 2); ctx.fill();
+          ctx.fillRect(X(cr.x) - 4, Y(cr.z) - 4, 8, 8);
+          ctx.fillStyle = cr.carrying ? "#FFB040" : "#35D96B";
+          ctx.beginPath(); ctx.arc(X(cr.x), Y(cr.z) - 7, 2.5, 0, Math.PI * 2); ctx.fill();
         }
         for (const a of sim.agvs) { // AGV — 흰 원 + 파랑 링 + 시안 헤딩
           const ax = X(a.x), ay = Y(a.z);
@@ -2190,7 +2363,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
 
       {/* ── 우하단 힌트 ── */}
       <div style={{ position: "absolute", bottom: 14, right: 14, fontSize: 10.5, color: "#5F7186", textAlign: "right", lineHeight: 1.6, pointerEvents: "none", fontFamily: "'Noto Sans KR', sans-serif" }}>
-        드래그 회전 · 스크롤/핀치 확대 · 클릭 → 지점 줌인<br />더블클릭 → 전체 보기 · 범례 클릭 → 구역 하이라이트
+        드래그 회전 · 스크롤/핀치 확대 · 클릭 → 지점 줌인<br />
+        <b style={{ color: "#FFC978" }}>Enter → 출고 포스기 확대</b> · 더블클릭 → 전체 보기 · 범례 클릭 → 구역 하이라이트
       </div>
             </div>
           </div>
