@@ -1,12 +1,15 @@
 "use client";
 
 import { Fragment } from "react";
-import { ImagePlus } from "lucide-react";
 import type { Product, ScanResponse } from "@/lib/types";
 import { Panel, Sunken, w98 } from "./win98-ui";
 
 /**
  * 1-1 응답 표시 — 목업의 `Product Manifest` 패널.
+ *
+ * ★ 아래에 붙어 있던 `Product Photo`(마스터 이미지) 칸을 **Visual Inspection 으로 옮겼다**
+ *   (사용자 결정). 이 자리는 촬영 직후 뜨는 취급 주의사항 창이 서는 곳이 됐다.
+ *   그래서 이 패널은 다시 텍스트 명세 하나만 갖고, 남는 세로를 전부 먹는다.
  *
  * 목업은 읽기 전용 textarea 에 `ITEM ID / DESC / DEST / ROUTING / PRIORITY` 를 찍고
  * 마지막 줄에 `> WAITING FOR CONFIRMATION...` 을 둔다. 그 **텍스트 단말 표현**을 그대로
@@ -118,9 +121,6 @@ export function ManifestPanel({
           </>
         ) : null}
       </Sunken>
-
-      {/* 아래 — 제품 사진 자리 */}
-      <ProductPhotoSlot product={result?.product ?? null} isPending={isPending} />
     </Panel>
   );
 }
@@ -151,68 +151,6 @@ function ProductName({ product, isPending }: { product: Product | null; isPendin
       >
         {name}
       </span>
-    </div>
-  );
-}
-
-/* ── 제품 사진 자리 ──────────────────────────────────────────────────────────
-   Manifest 패널 **아래쪽**에 붙는 작은 사진 칸이다 (사용자 요청).
-
-   ★ 지금은 대부분 빈 자리다. 1-1 응답의 `product.imageUrl`(코리안넷 마스터 이미지)이
-     들어오면 그걸 그리지만, mock 은 네 상품 모두 `imageUrl: null` 이라 자리표시만 보인다.
-     실제 서버가 붙으면 그때부터 사진이 뜬다 — 코드는 이미 그 경로를 타고 있다.
-
-   ⚠️ **업로드 버튼을 만들지 않았다.** 사진 업로드는 아직 계약에도 화면 명세에도 없다
-      (§1-1 은 마스터 이미지 URL 만 준다). 누르면 아무 일도 없는 버튼을 두면 "되는 기능"으로
-      오해되므로, 자리와 예정만 적어 둔다. 업로드 API 가 정해지면 이 칸 안에 넣으면 된다.
-   ⚠️ `img` 를 next/image 로 바꾸지 않았다. 이미지 출처가 백엔드 도메인이라
-      next.config 의 remotePatterns 를 먼저 합의해야 한다(출고 화면과 같은 판단). */
-function ProductPhotoSlot({
-  product,
-  isPending,
-}: {
-  product: Product | null;
-  isPending: boolean;
-}) {
-  const imageUrl = product?.imageUrl ?? null;
-
-  /* ★ 가로:세로 = **16:9** 다 (사용자 결정). 정사각형 → 4:3 → 16:9 로 두 번 낮췄고,
-     이유는 매번 같다 — 위 텍스트 칸(제품 상세)이 더 커야 한다. 우측 열 폭 408px 기준으로
-     4:3 이 292px, 16:9 가 219px 이라 이번에 **73px** 이 텍스트 칸으로 넘어갔다.
-     높이를 픽셀로 박지 않고 비율로 둔 이유: 우측 열 폭이 바뀌면 사진 칸도 같이 움직여야 한다.
-     ⚠️ 위 텍스트 칸이 flex-1 이라 이 칸이 커진 만큼 그쪽이 줄어든다. 취급 주의사항을
-        창으로 뺀 덕에 그만한 여유가 생겼다. */
-  return (
-    <div
-      className={`${w98.sunken} flex aspect-[16/9] w-full shrink-0 flex-col bg-[color:var(--surface-bright)] p-1`}
-    >
-      {/* 네이비 캡션 줄 — 이 화면의 다른 사진 칸(Visual Inspection)과 같은 표현이다 */}
-      <span
-        className={`${w98.small} mb-1 flex shrink-0 items-center justify-between gap-2 bg-[color:var(--primary)] px-1 text-[color:var(--primary-foreground)]`}
-      >
-        <span>Product Photo</span>
-        <span className="shrink-0 opacity-80">마스터 이미지</span>
-      </span>
-
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[color:var(--surface-dim)]">
-        {isPending ? (
-          <span className={`${w98.mono} ${w98.small} text-white`}>LOADING…</span>
-        ) : imageUrl === null ? (
-          <div className="flex flex-col items-center gap-1 opacity-40">
-            <ImagePlus className="size-6" aria-hidden />
-            <span className={`${w98.mono} ${w98.small} uppercase`}>
-              {product === null ? "no product" : "업로드 예정"}
-            </span>
-          </div>
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={imageUrl}
-            alt={`${product?.name ?? "제품"} 마스터 이미지`}
-            className="h-full w-full object-contain"
-          />
-        )}
-      </div>
     </div>
   );
 }
