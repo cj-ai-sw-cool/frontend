@@ -16,9 +16,8 @@ import { ActionButtons } from "./_components/action-buttons";
 import { BarcodePanel } from "./_components/barcode-panel";
 import { ManifestPanel } from "./_components/manifest-panel";
 import { ManualInputDialog } from "./_components/manual-input-dialog";
-import { Btn, w98 } from "./_components/win98-ui";
 import { MeasurementPanel } from "./_components/measurement-panel";
-import { PrecautionsWindow } from "./_components/precautions-window";
+import { PrecautionsPanel } from "./_components/precautions-panel";
 import { VisualInspectionPanel } from "./_components/visual-inspection-panel";
 import {
   useBarcodeScan,
@@ -37,6 +36,7 @@ import {
  * 목업 본문 구조 그대로다:
  *   가운데  Automatic Measurement Data (파인 상자 4개) + Visual Inspection (메인 65% + 서브 35%)
  *   우측    Barcode Data / Product Manifest / 취급 주의사항 / 촬영 · 등록
+ *            (취급 주의사항은 한때 떠다니는 창이었다가 이 자리로 돌아왔다)
  *
  * ⚠️ 목업에 있으나 우리 계약에 없는 값(DEST·ROUTING·PRIORITY, `NO ANOMALIES DETECTED`,
  *    무게 상한 초과)은 **지어내지 않았다.** 각 컴포넌트 주석에 무엇으로 갈아 끼웠는지 적어 뒀다.
@@ -99,20 +99,6 @@ export default function InboundPage() {
    *   ⚠️ 여기 담기는 dims 는 **축 정렬(D-18)을 이미 끝낸** 값이다 — sortAxes 참고.
    */
   const [manual, setManual] = useState<{ dims: Dimensions; weightKg: number | null } | null>(null);
-  /**
-   * 취급 주의사항 창이 열려 있는가.
-   * ★ 오른쪽 열에 붙박이로 있던 패널을 **떠다니는 창**으로 뺐다 (사용자 결정) — 그 자리를
-   *   제품 상세(Product Manifest)가 먹는다. 곧 사진까지 붙을 칸이라 세로가 절실했고,
-   *   취급 주의사항은 한 번 정하고 마는 값이라 늘 자리를 차지할 이유가 없었다.
-   * ★ **신규 물품을 촬영한 직후에만 저절로 열린다** (사용자 결정). 늘 떠 있던 창을 닫은
-   *   이유는 두 가지다 — 취급 주의사항을 실제로 정해야 하는 때가 신규 물품의 확정 직전
-   *   한 순간뿐이고(REGISTERED 는 치수가 이미 확정돼 있어 고칠 것이 없다), 그 전까지는
-   *   화면 한가운데를 가리고만 있었다.
-   * ⚠️ 이 창 안에 **수량**도 들어 있다. 그래서 저절로 열리지 않는 흐름(REGISTERED)에서는
-   *    제목 줄의 `취급 주의사항` 버튼으로 열어야 수량을 고칠 수 있다. 수량을 자주 고치는
-   *    흐름이라면 그 칸만 밖으로 빼는 편이 낫다 — 지금은 요청대로 열림 조건만 좁혔다.
-   */
-  const [isPrecautionsOpen, setIsPrecautionsOpen] = useState(false);
 
   /* ── 데이터 ────────────────────────────────────────────── */
   const scan = useBarcodeScan(); // 1-1
@@ -289,19 +275,14 @@ export default function InboundPage() {
         // §1-3 이 정한 동작: 측정 실패면 수동 입력 fallback 을 자동으로 연다
         setIsManualOpen(result.status === "MEASURE_FAILED");
 
-        /* ★ 신규 물품일 때만 취급 주의사항 창을 띄운다 (사용자 결정).
-           촬영이 끝난 이 순간이 취급 속성을 정할 수 있는 유일한 때다 — 다음 단계인
-           1-4 확정에 그 값이 실려 나가고, 확정 뒤에는 고칠 수 없다.
-           ⚠️ 판정으로 가른다. REGISTERED 는 치수가 이미 확정된 상품이라 촬영 자체가
-              선택이고, 이 창을 띄워도 채울 것이 없다.
-           ⚠️ 측정 실패면 띄우지 않는다. 그때는 수동 입력 창이 먼저 떠 있어서 두 창이
-              화면 가운데에서 겹친다 — 지금 해야 할 일은 치수를 손으로 넣는 쪽이다. */
-        if (scan.data?.judgment === "NEW" && result.status !== "MEASURE_FAILED") {
-          setIsPrecautionsOpen(true);
-        }
+        /* ⚠️ 예전에는 여기서 취급 주의사항 **창을 띄웠다.** 이제 그 칸이 오른쪽 열에
+           붙박이로 있어서 띄울 것이 없다 — 대신 `canEditHandling` 이 참이 되면서 그 칸의
+           제목 줄이 빨갛게 바뀐다. "지금이다"를 말하는 방법이 뜨는 것에서 색으로 옮겨 갔다.
+           ⚠️ 조건(신규 + 측정 성공)은 `canEditHandling` 안에 그대로 살아 있다. 여기서
+              사라진 것은 창을 여는 동작뿐이고, 언제 만질 수 있는가는 안 바뀌었다. */
       },
     });
-  }, [product, measure, confirm, scan.data]);
+  }, [product, measure, confirm]);
 
   /**
    * `적용` — 값만 기록하고 닫는다. API 는 부르지 않는다(모달 주석 참고).
@@ -408,10 +389,18 @@ export default function InboundPage() {
         {/* 확정 전에는 1-3 의 images, 확정 후에는 1-6 응답이다(위 images 계산 참고).
             메인·서브 세 칸을 한 부품이 그린다 — 계약이 주는 건 배열 하나뿐이라
             어느 장이 메인인지가 배열 순서로만 정해지기 때문이다. */}
+        {/* ★ 마스터 이미지(§1-1 `product.imageUrl`)를 여기로 넘긴다. 원래는 우측 열의
+            `Product Manifest` 안에 있었는데, 그 자리를 촬영 직후 뜨는 취급 주의사항 창에
+            내주면서 이리로 왔다 (사용자 결정).
+            ⚠️ `images`(§1-3/§1-6 촬영본)와 **합치지 않고 따로 넘긴다.** 출처가 다른 값을
+               한 배열에 섞으면 "몇 번째가 촬영본인가"가 화면 사정에 따라 달라진다. */}
         <VisualInspectionPanel
           images={images}
           isLoading={measure.isPending || productImagesQuery.isLoading}
           sourceLabel={sourceLabel}
+          masterImageUrl={product?.imageUrl ?? null}
+          productName={product?.name ?? null}
+          isProductPending={scan.isPending}
         />
       </div>
 
@@ -443,20 +432,25 @@ export default function InboundPage() {
               업로드가 붙을 예정이라 여기가 가장 크게 자라야 할 칸이기 때문이다.
               그래서 아래 취급 주의사항·버튼은 자기 높이만 갖고 바닥에 붙어 있고,
               늘어나는 칸은 우측 열에서 이것 하나뿐이다. */}
-        <ManifestPanel
-          result={scan.data}
-          isPending={scan.isPending}
-          right={
-            /* 취급 주의사항 창을 여닫는 버튼. 창이 떠 있으면 눌린 상태로 보인다 */
-            <Btn
-              pressed={isPrecautionsOpen}
-              onClick={() => setIsPrecautionsOpen((prev) => !prev)}
-              title="취급 주의사항·수량 창"
-              className={`${w98.small} h-5 shrink-0 px-2 font-normal`}
-            >
-              취급 주의사항
-            </Btn>
-          }
+        {/* 취급 주의사항을 여는 버튼이 제목 줄에 있었는데, 그 칸이 아래에 붙박이로
+            들어오면서 열고 닫을 것이 없어졌다 */}
+        <ManifestPanel result={scan.data} isPending={scan.isPending} />
+
+        {/* ★ 떠다니는 창에서 **붙박이 칸**으로 바꿨다 (사용자 결정 — 이 자리에 넣기).
+            창일 때는 촬영 직후 화면 가운데에 떠서 측정값·사진을 덮었는데, 그 둘을 보면서
+            정해야 하는 값이라 정작 봐야 할 것을 가리고 있었다. 세로를 내줄 여유는 마스터
+            이미지가 이 열을 떠나 Visual Inspection 으로 가면서 생겼다.
+            ⚠️ 넘기는 값은 창일 때와 **똑같다.** 1-4 의 handling 과 1-5 의 qty 는 그대로
+               page.tsx 가 들고 있고, 이 칸은 그리기만 한다 — 계약으로 나가는 값은 안 바뀐다. */}
+        <PrecautionsPanel
+          value={handling}
+          onChange={setHandling}
+          disabled={!canEditHandling}
+          qty={qty}
+          onQtyChange={setQty}
+          qtyDisabled={product === null}
+          note={precautionsNote}
+          active={canEditHandling}
         />
 
         {/* 촬영(1-3) / 등록(1-4 → 1-5 연쇄) */}
@@ -473,22 +467,6 @@ export default function InboundPage() {
           onSubmit={handleDbSubmit}
         />
       </div>
-
-      {/* 취급 주의사항 + 수량 — 떠다니는 창. 끌어서 아무 데나 둘 수 있다.
-          ⚠️ 값은 여기(page.tsx)가 들고 있어서 창을 닫아도 사라지지 않는다. */}
-      {isPrecautionsOpen ? (
-        <PrecautionsWindow
-          value={handling}
-          onChange={setHandling}
-          disabled={!canEditHandling}
-          qty={qty}
-          onQtyChange={setQty}
-          qtyDisabled={product === null}
-          note={precautionsNote}
-          active={canEditHandling}
-          onClose={() => setIsPrecautionsOpen(false)}
-        />
-      ) : null}
 
       {/* Radix Dialog 라 여기 자리에는 DOM 이 생기지 않는다(스테이지로 포탈) */}
       <ManualInputDialog
