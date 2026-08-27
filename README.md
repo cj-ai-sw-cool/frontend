@@ -99,6 +99,10 @@ cp .env.example .env
 sudo docker compose up -d --build
 ```
 
+`BACKEND_ORIGIN` 은 빌드 인자로도 들어간다. `next.config.ts` 의 rewrites 가 빌드 때 한 번
+계산돼 `routes-manifest.json` 에 박히기 때문에, 런타임 환경변수만 바꾸면 브라우저 요청이
+예전 주소로 간다. `.env` 를 고쳤으면 `--build` 로 다시 올린다.
+
 프론트 컨테이너는 백엔드 compose 가 만든 네트워크(`backend_default`)에 얹혀 `backend:8000` 으로
 부른다. 그래서 **백엔드 포트를 인터넷에 열지 않아도** 화면이 동작한다. 백엔드가 먼저 떠 있어야
 하고, 네트워크 이름이 다르면 `.env` 의 `BACKEND_NETWORK` 로 바꾼다.
