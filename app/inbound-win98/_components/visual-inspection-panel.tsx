@@ -229,13 +229,26 @@ function SlotBody({
     );
   }
 
+  /* 사진은 S3 에 있고 주소는 유효시간이 붙은 임시 주소다 (backend D-25). 목업 단계에서는
+     파일이 없어 이 자리에 주소를 글자로 찍어 뒀는데, 이제 실물이 있으므로 그대로 그린다.
+     ⚠️ next/image 를 쓰지 않는다 — 주소가 매번 바뀌는 서명 URL 이라 최적화 캐시가 듣지 않고,
+        도메인을 remotePatterns 에 박으면 버킷 이름이 코드에 고정된다. */
+  const label = image.cameraNo === null ? "MASTER IMAGE" : `CAM 0${image.cameraNo}`;
   return (
-    <div className={`${w98.mono} ${w98.small} w-full p-2 text-center ${tone === "dark" ? w98.camGreen : ""}`}>
-      <span className="block font-bold">
-        {image.cameraNo === null ? "MASTER IMAGE" : `CAM 0${image.cameraNo}`}
+    <div className="relative h-full w-full">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={image.url}
+        alt={label}
+        className="h-full w-full object-contain"
+        loading="lazy"
+      />
+      {/* 어느 카메라인지 겹쳐 둔다 — 칸이 셋이라 사진만으로는 구분이 안 된다 */}
+      <span
+        className={`${w98.mono} ${w98.small} absolute left-1 top-1 bg-black/60 px-1 text-white`}
+      >
+        {label}
       </span>
-      <span className="mt-1 block break-all">{image.url}</span>
-      <span className="mt-1 block">(no image file — placeholder)</span>
     </div>
   );
 }
