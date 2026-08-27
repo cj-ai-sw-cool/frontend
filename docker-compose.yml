@@ -5,14 +5,11 @@
 # 열 필요가 없다 — 보안 그룹에서 8000 을 닫아도 화면은 그대로 동작한다.
 services:
   frontend:
-    build:
-      context: .
-      args:
-        # 빌드 때 rewrites 에 박히는 값. 런타임 환경변수와 같아야 한다.
-        BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8000}
+    build: .
     restart: unless-stopped
     environment:
       BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8000}
+      DEMO_API_KEY: ${DEMO_API_KEY:-}
       DEMO_USER: ${DEMO_USER:-}
       # 비어 있으면 아무도 못 막는다 — 시연 서버에서는 반드시 채운다
       DEMO_PASSWORD: ${DEMO_PASSWORD:?DEMO_PASSWORD 를 .env 에 넣으세요}
