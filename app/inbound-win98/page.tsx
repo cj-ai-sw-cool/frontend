@@ -184,11 +184,6 @@ export default function InboundPage() {
    *    되돌리기 경로를 새로 만드는 것은 이번 범위 밖이라 PM 보고 항목으로 남긴다.
    */
   const canCapture = product !== null && !isBusy && stockIn.data === undefined;
-  /**
-   * ★ 수동 입력은 **언제든** 열린다 — 조건은 상품이 잡혔는가 하나뿐이다 (사용자 결정).
-   * 촬영 여부도 확정 여부도 보지 않는다. 근거는 barcode-scan-row.tsx 의 canManualInput 주석.
-   */
-  const canManualInput = product !== null;
 
   /**
    * 측정 패널 위에 뜨는 **행동 안내** 한 줄 — 지금 무엇을 하면 되는가.
@@ -447,9 +442,6 @@ export default function InboundPage() {
           hasNextBarcode={hasNextBarcode}
           isPending={scan.isPending}
           error={scan.error?.message ?? null}
-          canManualInput={canManualInput}
-          onOpenManual={() => setIsManualOpen(true)}
-          isManualUrged={isUnlockUrged}
         />
 
         {/* 1-1 표시값 + 판정(계약 필수 UI ①) + 분류 읽기 전용(계약 필수 UI ③, D-21).

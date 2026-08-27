@@ -1,6 +1,6 @@
 "use client";
 
-import { Keyboard, SquarePen } from "lucide-react";
+import { Keyboard } from "lucide-react";
 import { Ean13Barcode } from "./ean-13-barcode";
 import { Btn, Field, Panel, Sunken, w98 } from "./win98-ui";
 
@@ -8,13 +8,8 @@ import { Btn, Field, Panel, Sunken, w98 } from "./win98-ui";
  * 1-1 진입점 — 목업의 `Barcode Data` 패널. 이 화면의 시작이다.
  * 못 찾은 바코드도 200 + UNKNOWN 이라(§1-1) 이 패널의 에러 자리는 평소 비어 있다.
  *
- * 버튼이 둘이다.
- *   키보드 — 다음 시연 바코드를 서버에서 받아 칸을 채우고 곧바로 조회한다. 시연장에 스캐너가
- *            없어 이 버튼이 스캐너를 대신한다. 다 쓰면 서버가 204 를 주고 버튼이 잠긴다.
- *   연필   — 치수 수동 입력(1-4 MANUAL). 게이트 미통과·측정 실패를 푸는 두 갈래 중 하나다(§1-3).
- *
- * 원래는 키보드 하나가 수동 입력을 맡고 있었다. 스캐너 대신이 될 버튼이 필요해지면서
- * 키보드를 그쪽으로 넘기고 수동 입력에 연필을 줬다 — 손으로 값을 적는다는 뜻이 더 가깝다.
+ * 목업의 키보드 버튼은 다음 시연 바코드를 받아 칸을 채우고 곧바로 조회한다. 시연장에
+ * 스캐너가 없어 이 버튼이 스캐너를 대신한다. 다 쓰면 서버가 204 를 주고 버튼이 잠긴다.
  *
  * ★ 입력란 아래 EAN-13 그래픽은 목업에 없다. 그래도 남긴 이유: 조회한 값을 사람이 눈으로
  *   대조하는 유일한 수단이라(스캐너가 오독하면 여기서만 드러난다) 없애면 기능이 사라진다.
@@ -26,9 +21,6 @@ export function BarcodePanel({
   onScan,
   isPending,
   error,
-  canManualInput,
-  onOpenManual,
-  isManualUrged,
   onNextBarcode,
   isNextPending,
   hasNextBarcode,
@@ -39,9 +31,6 @@ export function BarcodePanel({
   onScan: () => void;
   isPending: boolean;
   error?: string | null;
-  canManualInput: boolean;
-  onOpenManual: () => void;
-  isManualUrged: boolean;
   /** 다음 시연 바코드를 받아 칸을 채우고 조회까지 실행한다 */
   onNextBarcode: () => void;
   isNextPending: boolean;
@@ -96,20 +85,6 @@ export function BarcodePanel({
           className="flex h-10 shrink-0 items-center justify-center px-2.5"
         >
           <Keyboard className="size-5" aria-hidden />
-        </Btn>
-
-        {/* 수동 입력 — 게이트 미통과·측정 실패일 때 눌린 상태로 강조한다. 그때 이 버튼이
-            "해제 수단 두 갈래" 중 하나이기 때문이다(다른 하나는 하단 Capture, §1-3).
-            ⚠️ win98 에는 링·글로우가 없다. 강조 수단이 베벨뿐이라 `pressed` 로 표현한다. */}
-        <Btn
-          disabled={!canManualInput}
-          pressed={isManualUrged}
-          onClick={onOpenManual}
-          title="치수를 직접 입력합니다 (1-4 MANUAL)"
-          aria-label="수동 입력"
-          className="flex h-10 shrink-0 items-center justify-center px-2.5"
-        >
-          <SquarePen className="size-5" aria-hidden />
         </Btn>
       </form>
 
