@@ -5,7 +5,11 @@
 # 열 필요가 없다 — 보안 그룹에서 8000 을 닫아도 화면은 그대로 동작한다.
 services:
   frontend:
-    build: .
+    build:
+      context: .
+      args:
+        # 빌드 때 rewrites 에 박히는 값. 런타임 환경변수와 같아야 한다.
+        BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8000}
     restart: unless-stopped
     environment:
       BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8000}

@@ -6,6 +6,11 @@ RUN npm ci
 
 FROM node:24.19-alpine AS build
 WORKDIR /app
+# next.config.ts 의 rewrites 는 빌드 때 한 번 계산돼 routes-manifest.json 에 박힌다.
+# 그래서 런타임 환경변수로는 프록시 대상이 바뀌지 않는다 — 빌드 인자로 받아야 한다.
+# 서버 컴포넌트가 직접 부르는 경로(lib/api.ts)는 런타임 값을 읽으므로 양쪽에 같은 값을 준다.
+ARG BACKEND_ORIGIN=http://127.0.0.1:8000
+ENV BACKEND_ORIGIN=$BACKEND_ORIGIN
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
