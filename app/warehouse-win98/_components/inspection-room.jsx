@@ -65,6 +65,14 @@ const ITEM = {
 };
 const MM = 0.001;
 
+/* 모형을 그리는 배율.
+   ★ 실제 크기(412 x 275 x 58 mm)로 두면 1.2m 짜리 계량판 위에서 납작하고 작아, 무엇이
+     올라가 있는지 알아보기 어려웠다. 1.45배로 그린다.
+   ⚠️ **모니터에 뜨는 치수는 실제 값 그대로다.** 여기서 배율을 쓰는 것은 3D 모형뿐이고,
+      화면·라벨의 숫자는 `ITEM` 을 그대로 읽는다. 창고 쪽에서 슬롯 개수만 축소 모형인 것과
+      같은 성격의 타협이다 — 보여 주려고 키운 것이지 값이 달라진 게 아니다. */
+const PROP_SCALE = 1.45;
+
 const ROOM_W = 12;
 const ROOM_D = 9.5;
 const ROOM_H = 4.4;
@@ -299,7 +307,13 @@ function buildWalls(scene, dispose) {
   }
   dispose.push(postGeo, postMat);
 
-  /* 천장 트러스 — 창고의 골조를 축소해 옮겼다. 없으면 방이 아니라 '무대'처럼 보인다 */
+  /* 천장 트러스 — 창고의 골조를 축소해 옮겼다. 없으면 방이 아니라 '무대'처럼 보인다.
+     ★ 천장 판은 **없앴다.** 카메라를 높이 올리면 판이 시야를 막아 방 안이 안 보였다.
+       골조만 남기면 위에서 내려다볼 수 있으면서도 "덮인 공간"이라는 인상은 남는다 —
+       실제 물류창고도 천장이 마감돼 있기보다 철골이 드러나 있다.
+     ⚠️ 조명 기구의 봉이 이 트러스에 닿아야 한다. 천장이 없어진 뒤로는 봉이 허공에서
+        끝나면 등이 떠 보인다. 그래서 `buildLights` 의 등 자리를 트러스의 z 값에 맞춘다 —
+        아래 배열을 바꾸면 그쪽도 같이 바꿀 것. */
   const trussMat = new THREE.MeshLambertMaterial({ color: 0x39424e });
   const trussGeo = new THREE.BoxGeometry(ROOM_W, 0.14, 0.14);
   for (const z of [-3.0, -0.6, 1.8]) {
@@ -308,13 +322,6 @@ function buildWalls(scene, dispose) {
     scene.add(t);
   }
   dispose.push(trussGeo, trussMat);
-
-  const ceilMat = new THREE.MeshLambertMaterial({ color: 0x2a323c, side: THREE.DoubleSide });
-  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W, ROOM_D), ceilMat);
-  ceil.rotation.x = Math.PI / 2;
-  ceil.position.y = ROOM_H;
-  scene.add(ceil);
-  dispose.push(ceil.geometry, ceilMat);
 
   /* 셔터 — 뒷벽 가운데, 물품이 들어오는 문 */
   const shutter = patternTexture(64, (c, S) => {
@@ -809,7 +816,7 @@ function buildRig(scene, dispose) {
        L/R  — 좌우 앞 45° 에서 → 높이와 옆면, 그리고 서로의 사각(死角)을 메운다
      ⚠️ 세 대가 모두 **같은 한 점**(상판 위 물건의 중심)을 봐야 한다. 각자 다른 데를
         보면 각도만 다른 세 대가 아니라 그냥 흩어진 장식이 된다. */
-  const AIM = new THREE.Vector3(0, PLATE_TOP + ITEM.heightMm * MM * 0.5, 0);
+  const AIM = new THREE.Vector3(0, PLATE_TOP + ITEM.heightMm * MM * PROP_SCALE * 0.5, 0);
   const mounts = [
     { label: "TOP", pos: [0, POST_H - 0.2, POST_Z] },
     { label: "L-45", pos: [-POST_X + 0.02, 1.86, POST_Z + 0.62] },
@@ -838,32 +845,28 @@ function buildRig(scene, dispose) {
   const L = ITEM.lengthMm * MM, H = ITEM.heightMm * MM, WD = ITEM.widthMm * MM;
   const pack = buildHetbanPack(dispose);
   pack.position.set(0, PLATE_TOP, 0);   // 팩은 바닥이 원점이라 판 높이만 넘기면 된다
+  pack.scale.setScalar(PROP_SCALE);     // 보이라고 키운다 (위 `PROP_SCALE` 주의 참고)
   g.add(pack);
   /* ⚠️ 팩의 원점은 **바닥**이다. 아래 와이어프레임과 치수 라벨은 물건의 **가운데**를
      기준으로 놓이므로, 팩 위치를 그대로 복사하면 안 되고 높이의 절반을 더해야 한다.
      (예전 골판지 상자는 원점이 가운데여서 그냥 복사하면 됐다) */
-  const cy = PLATE_TOP + H / 2;
+  const cy = PLATE_TOP + (H * PROP_SCALE) / 2;
 
-  /* ── 치수 와이어프레임 + 라벨 ──
+  /* ── 치수 와이어프레임 ──
      이건 남긴다. 광선과 달리 **측정 결과의 표시**라서, 없으면 무엇을 쟀는지 안 보인다.
-     ⚠️ 상자와 똑같은 크기로 두면 선이 면에 파묻혀 점선처럼 끊긴다. 2cm 키운다. */
-  const wireGeo = new THREE.BoxGeometry(L + 0.02, H + 0.02, WD + 0.02);
+     ★ 옆에 붙어 있던 `412 mm` 같은 숫자 라벨은 **뺐다.** 같은 값이 바로 앞 모니터에 크게
+       떠 있어서, 물건 옆에 또 적으면 눈이 두 번 읽고 화면만 어수선해진다. 여기서는 "무엇을
+       재고 있다"만 선으로 말하고, 값은 화면이 맡는다.
+     ⚠️ 상자와 똑같은 크기로 두면 선이 면에 파묻혀 점선처럼 끊긴다. 2cm 키운다.
+     ⚠️ 모형을 키웠으므로 테두리도 같은 배율이어야 한다 — 안 그러면 선이 상자 속을 지난다. */
+  const wireGeo = new THREE.BoxGeometry(
+    L * PROP_SCALE + 0.02, H * PROP_SCALE + 0.02, WD * PROP_SCALE + 0.02,
+  );
   const edges = new THREE.EdgesGeometry(wireGeo);
   const wire = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x4cc9ff }));
   wire.position.set(0, cy, 0);
   g.add(wire);
   dispose.push(wireGeo, edges, wire.material);
-
-  for (const [txt, pos] of [
-    [`${ITEM.lengthMm} mm`, [0, cy - H / 2 - 0.1, WD / 2 + 0.14]],
-    [`${ITEM.widthMm} mm`, [L / 2 + 0.2, cy - H / 2 - 0.1, 0]],
-    [`${ITEM.heightMm} mm`, [-L / 2 - 0.22, cy, WD / 2 + 0.05]],
-  ]) {
-    const sp = makeLabel(txt, { color: "#BFE9FF", size: 40, scale: 0.6 });
-    sp.position.set(...pos);
-    g.add(sp);
-    dispose.push(sp.material.map, sp.material);
-  }
 
   scene.add(g);
   return { group: g, cams, plateEdge, plateTop: PLATE_TOP };
@@ -943,9 +946,9 @@ function buildMonitor(scene, dispose) {
 }
 
 /** 짧은 컨베이어 + 대기 중인 상자 */
-function buildConveyor(scene, dispose) {
+function buildConveyor(scene, dispose, LEN = 5.6) {
   const g = new THREE.Group();
-  const LEN = 3.4, WD = 0.78, TOP = 0.62;
+  const WD = 0.78, TOP = 0.62;
 
   const frameMat = new THREE.MeshLambertMaterial({ color: 0x353c44 });
   const side = new THREE.BoxGeometry(LEN, 0.12, 0.05);
@@ -956,41 +959,61 @@ function buildConveyor(scene, dispose) {
   }
   dispose.push(side);
 
+  /* 다리 — 길이에 맞춰 2.4m 마다 한 쌍씩. 양 끝에만 세우면 5m 넘는 벨트가 공중에
+     걸쳐 있는 꼴이 되어, 가운데가 처져 보이지 않아도 보는 사람이 불안해한다 */
   const legGeo = new THREE.BoxGeometry(0.07, TOP, 0.07);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    const l = new THREE.Mesh(legGeo, frameMat);
-    l.position.set(sx * (LEN / 2 - 0.22), TOP / 2, sz * (WD / 2 - 0.03));
-    g.add(l);
+  const pairs = Math.max(2, Math.round(LEN / 2.4) + 1);
+  for (let i = 0; i < pairs; i++) {
+    const lx = -LEN / 2 + 0.22 + (i * (LEN - 0.44)) / (pairs - 1);
+    for (const sz of [-1, 1]) {
+      const l = new THREE.Mesh(legGeo, frameMat);
+      l.position.set(lx, TOP / 2, sz * (WD / 2 - 0.03));
+      g.add(l);
+    }
   }
   dispose.push(legGeo, frameMat);
 
   const rollMat = new THREE.MeshLambertMaterial({ color: 0x9aa5b1 });
+  /* ⚠️ 회전축을 **지오메트리에 구워 넣는다.** 메시의 `rotation` 으로 눕혀 놓고 다른 축을
+     더하면 원통이 제자리에서 도는 게 아니라 통째로 휘청인다 — 오일러 각은 XYZ 순서로
+     곱해지므로, 눕히는 회전이 바깥에 남아 있으면 더해지는 회전이 원통의 축이 아니라
+     월드 축을 기준으로 걸리기 때문이다. 실제로 벨트가 이상하게 돌아 보였던 이유다.
+     구워 넣으면 메시의 회전이 비어 있어서, 더하는 축이 곧 원통의 축이 된다. */
   const rollGeo = new THREE.CylinderGeometry(0.055, 0.055, WD - 0.06, 12);
+  rollGeo.rotateX(Math.PI / 2);        // 축을 +y 에서 +z 로 (벨트는 x 로 흐른다)
   const rollers = [];
   for (let i = 0; i < Math.floor(LEN / 0.17); i++) {
     const r = new THREE.Mesh(rollGeo, rollMat);
-    r.rotation.x = Math.PI / 2;
     r.position.set(-LEN / 2 + 0.1 + i * 0.17, TOP + 0.02, 0);
     g.add(r);
     rollers.push(r);
   }
   dispose.push(rollGeo, rollMat);
 
-  /* 대기 상자 — 크기와 색을 조금씩 달리해야 "여러 건"으로 보인다 */
-  for (const [w, h, d, col, x] of [
-    [0.42, 0.3, 0.32, 0xc9a06a, -1.05],
-    [0.34, 0.26, 0.28, 0xb98f5c, -0.25],
-    [0.5, 0.34, 0.36, 0xd1aa76, 0.72],
-  ]) {
+  /* 실려 가는 상자 — 크기와 색을 조금씩 달리해야 "여러 건"으로 보인다.
+     ★ 가만히 놓여 있던 것을 **흐르게** 바꿨다. 롤러만 돌고 짐이 멈춰 있으면 고장난 벨트다.
+     ⚠️ 간격을 일정하게 두지 않는다. 자로 잰 듯 같은 간격이면 컨베이어가 아니라 회전목마로
+        보인다 — 실제 라인은 짐이 몰렸다 비었다 한다. */
+  const boxes = [];
+  const SPEC = [
+    [0.42, 0.30, 0.32, 0xc9a06a, 0.00],
+    [0.34, 0.26, 0.28, 0xb98f5c, 0.19],
+    [0.50, 0.34, 0.36, 0xd1aa76, 0.41],
+    [0.38, 0.28, 0.30, 0xc09363, 0.58],
+    [0.46, 0.32, 0.34, 0xd6b183, 0.83],
+  ];
+  for (const [w, h, d, col, frac] of SPEC) {
     const mat = new THREE.MeshLambertMaterial({ color: col });
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-    m.position.set(x, TOP + 0.02 + h / 2, 0);
+    m.position.set(-LEN / 2 + frac * LEN, TOP + 0.02 + h / 2, 0);
+    m.rotation.y = (frac - 0.5) * 0.16;
     g.add(m);
+    boxes.push(m);
     dispose.push(m.geometry, mat);
   }
 
   scene.add(g);
-  return { group: g, rollers };
+  return { group: g, rollers, boxes, len: LEN, top: TOP };
 }
 
 /* ── 창고 소품 ────────────────────────────────────────────────────────────
@@ -1038,8 +1061,11 @@ function buildIncomingGoods(scene, dispose) {
 
   /* ── ① 즉석밥 6개입 (3열 × 3행 × 3단 = 27팩) ── */
   const ricePallet = makePallet(dispose);
-  ricePallet.position.set(-2.55, 0, 2.95);
-  ricePallet.rotation.y = 0.2;
+  /* 측정대 왼쪽 — 컨베이어가 있던 자리다 (위 맞바꿈 주석 참고).
+     ⚠️ x = -3.6 은 측정대(받침대 ±0.65, 갠트리 기둥 ±0.98)와 파렛트 폭(1.1)이
+        서로 안 닿는 최소한의 거리다. 더 붙이면 갠트리 기둥에 짐이 파고든다. */
+  ricePallet.position.set(-3.6, 0, -0.6);
+  ricePallet.rotation.y = 0.22;
   scene.add(ricePallet);
 
   const RC = 3, RR = 3, RL = 3;           // 열 · 행 · 단
@@ -1088,8 +1114,8 @@ function buildIncomingGoods(scene, dispose) {
 
   /* ── ② 음료 12입 세트 (3열 × 3행 × 2단 = 18세트, 216병) ── */
   const drinkPallet = makePallet(dispose);
-  drinkPallet.position.set(-1.0, 0, 3.62);
-  drinkPallet.rotation.y = -0.34;
+  drinkPallet.position.set(-3.4, 0, 0.98);
+  drinkPallet.rotation.y = -0.28;
   scene.add(drinkPallet);
 
   const DC = 3, DR = 3, DL = 2;
@@ -1245,7 +1271,9 @@ function buildLights(scene, dispose) {
   const bulbGeo = new THREE.CircleGeometry(0.34, 18);
   const rodGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.34, 8);
 
-  for (const [x, z] of [[-3.1, -2.2], [3.1, -2.2], [-3.1, 1.4], [3.1, 1.4]]) {
+  /* ⚠️ z 값(-3.0 / 1.8)은 `buildWalls` 의 트러스 위치다. 봉이 트러스에 물려야 등이
+     매달린 것으로 보인다 — 천장 판이 없어진 뒤로는 이게 유일한 지지대다 */
+  for (const [x, z] of [[-3.1, -3.0], [3.1, -3.0], [-3.1, 1.8], [3.1, 1.8]]) {
     const shade = new THREE.Mesh(shadeGeo, shadeMat);
     shade.position.set(x, ROOM_H - 0.5, z);
     scene.add(shade);
@@ -1610,10 +1638,29 @@ export default function InspectionRoom({ onExit }) {
 
     /* 배치 — 측정대가 가운데, 모니터는 오른쪽 앞에서 안쪽을 보고,
        컨베이어는 왼쪽에서 측정대 쪽으로 물건을 보낸다 */
-    mon.stand.position.set(3.15, 0, 0.9);
-    mon.stand.rotation.y = -0.66;
-    conv.group.position.set(-3.5, 0, 0.15);
-    conv.group.rotation.y = 0.1;
+    /* 모니터를 측정대 쪽으로 당겼다 (x 3.15 → 2.3, z 0.9 → 1.15).
+       ★ 멀리 두면 "방 한쪽에 놓인 다른 장비"로 보인다. 이 화면은 **지금 재고 있는 그 물건의
+         결과**를 띄우는 것이라, 측정대 옆에 붙어 있어야 둘이 한 세트로 읽힌다.
+       ⚠️ 더 당길 수는 없다. 화면 판이 폭 2m 라 이 위치에서 x 1.48~3.13 을 차지하는데,
+          갠트리 기둥이 x = ±0.98 이다. 여기서 0.5m 만 더 붙이면 화면 모서리가 기둥을 파고든다.
+       ⚠️ 기본 시점(카메라가 +x·+z 쪽)에서 측정대를 가리지 않는지도 확인했다. 카메라와
+          원점을 잇는 선은 이 모니터의 z 높이에서 x ≈ 0.79 를 지나므로 화면 왼쪽 끝(1.48)
+          바깥이다 — 가리지 않는다. */
+    mon.stand.position.set(2.3, 0, 1.15);
+    mon.stand.rotation.y = -0.62;
+    /* ★ 컨베이어를 **왼쪽 벽에 붙여 앞까지** 뽑았다. 방 한가운데 3.4m 짜리가 덩그러니
+         놓여 있으니 어디서 와서 어디로 가는지가 없어, 라인이 아니라 소품으로 보였다.
+         벽을 따라 길게 놓으면 셔터 쪽에서 들어와 앞으로 나간다는 방향이 생긴다.
+       ★ 화물 더미(즉석밥·음료)는 측정대 옆에 그대로 둔다. 키가 1.2m 라 앞에 두면 측정대를
+         가리는데, 컨베이어는 무릎 높이라 앞을 지나도 아무것도 안 가린다.
+       ⚠️ `rotation.y = -π/2` 여야 짐이 **앞쪽(+z)** 으로 흐른다. `+π/2` 로 돌리면 local +x
+          가 world −z 로 가서 짐이 셔터 쪽으로 거슬러 올라간다.
+       ⚠️ z 는 -1.4 에서 시작한다. 그보다 뒤는 벽에 붙은 복귀 포탈(z ≈ -1.85 ~ -4.15)
+          자리라, 더 늘리면 컨베이어가 포탈을 관통한다.
+       ⚠️ x = -5.15. 벽 안쪽 면이 -5.83 이고 벨트 폭이 0.78 이니 벽과 0.29m 뜬다 — 붙어
+          보이면서 다리가 벽을 뚫지는 않는 자리다. */
+    conv.group.position.set(-5.15, 0, 1.4);
+    conv.group.rotation.y = -Math.PI / 2;
 
     /* 돌아가는 작은 포탈 — 왼쪽 벽에 붙인다.
        ⚠️ 벽에 딱 붙이면 흑요석 뒷면이 벽을 뚫는다. 벽 안쪽 면에서 조금 띄운다. */
@@ -1713,7 +1760,62 @@ export default function InspectionRoom({ onExit }) {
       e.preventDefault();
       des.r = Math.min(14, Math.max(2.6, des.r * (1 + e.deltaY * 0.0011)));
     };
-    const onDbl = () => { Object.assign(des, HOME); };
+    const onDbl = () => { Object.assign(des, HOME); stop = -1; };
+
+    /* Enter — 이 방에서 볼 것을 차례로 확대한다: 측정기 → 모니터 → 전체.
+       ★ 순서가 곧 작업 순서다. 물건을 재고(측정기), 결과를 읽는다(모니터). 한 번 더 누르면
+         전체로 돌아와 한 바퀴가 닫힌다 — 키 하나로 끝나야 손이 키보드를 떠나지 않는다.
+       ⚠️ Esc 는 쓰지 않는다. 분석 화면이 이 3D 를 전체 화면으로 띄울 때 Esc 로 닫으므로,
+          여기서 같은 키를 잡으면 어느 쪽이 이길지가 리스너 순서에 달리게 된다.
+       ⚠️ 모니터는 **화면 판에서** 자리와 정면 방향을 뽑는다. 고정 각도를 적어 두면 모니터를
+          옮기는 순간(방금도 옮겼다) 카메라가 화면 뒤통수를 본다. */
+    let stop = -1;
+    const faceOf = (obj, r, pol) => {
+      const p = new THREE.Vector3();
+      obj.getWorldPosition(p);
+      const n = new THREE.Vector3(0, 0, 1)
+        .applyQuaternion(obj.getWorldQuaternion(new THREE.Quaternion()));
+      des.tx = p.x; des.ty = p.y; des.tz = p.z;
+      des.az = Math.atan2(n.x, n.z);
+      des.pol = pol;
+      des.r = r;
+    };
+    const STOPS = [
+      /* 측정기 — 계량판 위 물건의 눈높이. 정면이랄 게 없는 장비라 기본 시점과 같은 쪽에서
+         다가간다(반대편으로 돌아가면 갠트리 뒷면만 보인다) */
+      () => {
+        /* ★ 눈높이에서 옆으로 보던 것을 **위에서 내려다보는 각**으로 바꿨다. 재는 물건은
+             계량판에 납작하게 놓여 있어서, 옆에서 보면 윗면(햇반 뚜껑 인쇄)이 거의 안 보인다.
+             내려다보면 물건이 제대로 보이고, 그것을 겨누는 카메라 세 대도 같이 프레임에 든다 —
+             "저 카메라들이 이걸 찍고 있다"가 한 장면에 담긴다.
+           ⚠️ `pol` 은 위에서 잰 각이다. 작을수록 위에서 본다(0 = 바로 위). 1.16 → 0.86.
+           ⚠️ 겨누는 점을 물건보다 조금 올린다. 물건에 딱 맞추면 갠트리 윗부분이 화면 밖으로
+              밀려나 카메라가 안 보인다. */
+        des.tx = 0; des.ty = rig.plateTop + 0.42; des.tz = 0;
+        des.az = 0.6; des.pol = 0.86; des.r = 2.4;
+      },
+      /* 모니터 — 화면 세로가 시야의 절반쯤을 차지하는 거리.
+         ★ 1.7m 에서 2.7m 로 물러났다. 1.7m 에서는 화면이 시야의 8할을 먹어서, 모니터만
+           보이고 그게 **어디에 놓인 모니터인지**가 안 보였다. 물러나면 측정대와 방이 같이
+           들어와 "재는 자리 옆의 화면"으로 읽힌다.
+         ⚠️ 거리를 정하는 계산: 세로 시야각 46도이므로 거리 r 에서 보이는 높이는
+            2·r·tan(23°) ≈ 0.85·r 이다. 화면 세로가 1.2m 이니 r = 2.7 이면
+            1.2 / (0.85 × 2.7) ≈ 0.52 — 화면이 시야의 절반이다. 더 작게 하려면 r 을 키운다. */
+      () => faceOf(mon.screen, 2.7, 1.36),
+    ];
+
+    const onKey = (e) => {
+      if (e.key !== "Enter") return;
+      if (e.target instanceof HTMLElement) {
+        const tag = e.target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT") return;
+      }
+      e.preventDefault();
+      stop += 1;
+      if (stop >= STOPS.length) { Object.assign(des, HOME); stop = -1; return; }
+      STOPS[stop]();
+    };
+    window.addEventListener("keydown", onKey);
 
     el.addEventListener("pointerdown", onDown);
     el.addEventListener("pointermove", onMove);
@@ -1769,7 +1871,17 @@ export default function InspectionRoom({ onExit }) {
       // 계량판 테두리가 아주 느리게 숨쉰다
       rig.plateEdge.material.color.setHSL(0.56, 0.62, 0.5 + 0.08 * Math.sin(elapsed * 1.6));
 
-      for (const r of conv.rollers) r.rotation.y += dt * 5.5;
+      /* 벨트 — 롤러가 돌고 짐이 그 위를 흐른다.
+         ⚠️ 롤러 회전 속도와 짐의 속도는 **같은 값에서 나와야** 한다. 따로 적으면 짐이
+            롤러 위를 미끄러지는 것처럼 보인다. 반지름 0.055m 이므로 각속도 = v / r. */
+      const beltV = 0.34;                        // m/s — "천천히"
+      for (const r of conv.rollers) r.rotation.z += (beltV / 0.055) * dt;
+      for (const b of conv.boxes) {
+        b.position.x += beltV * dt;
+        /* 끝에 닿으면 반대쪽 끝에서 다시 들어온다. 짐이 사라졌다 나타나는 것이 아니라
+           라인이 계속 돌고 있는 것으로 읽히도록, 넘기는 자리를 화면 밖(벨트 끝 너머)에 둔다 */
+        if (b.position.x > conv.len / 2 + 0.4) b.position.x = -conv.len / 2 - 0.4;
+      }
 
       back.update(dt, hovered?.targets === back.pickTargets);
 
@@ -1823,6 +1935,7 @@ export default function InspectionRoom({ onExit }) {
       el.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("dblclick", onDbl);
+      window.removeEventListener("keydown", onKey);
       back.dispose();
       for (const d of dispose) d?.dispose?.();
       renderer.dispose();
@@ -1862,6 +1975,8 @@ export default function InspectionRoom({ onExit }) {
         신규 물품 입고 검수실 · 3면 비전 체적 측정
         <br />
         <span style={{ color: "#5E7A96", fontWeight: 400 }}>
+          <b style={{ color: "#FFC978" }}>Enter → 측정기 · 모니터 확대</b>
+          <br />
           드래그 회전 · 스크롤 확대 · 더블클릭 전체 보기 · 벽면 포탈 클릭 시 창고로
         </span>
       </div>
