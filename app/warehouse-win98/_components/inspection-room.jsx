@@ -1831,7 +1831,16 @@ export default function InspectionRoom({ onExit }) {
       if (w <= 4 || h <= 4) return;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h, false);
+      /* ⚠️ 세 번째 인자(`updateStyle`)를 **끄면 안 된다.** 끄면 three.js 가 그리기 버퍼만
+         `w × DPR` 로 잡고 캔버스의 CSS 크기는 손대지 않는데, 이 캔버스에는 CSS 크기가
+         따로 없어서(`display:block`·`touchAction` 만 준다) 브라우저가 버퍼 크기를 그대로
+         CSS 픽셀로 읽는다 — 배율 200% 화면에서 판의 두 배로 깔리고, 부모의
+         `overflow:hidden` 이 오른쪽·아래를 잘라 왼쪽 위 4분의 1만 보인다.
+         ★ 만든 사람 화면이 DPR = 1 이라 우연히 멀쩡했고, 배율을 쓰는 팀원 화면에서만
+           드러났다. 창고 쪽(`warehouse-slot-3d.jsx`)은 처음부터 기본값이라 문제가 없었다.
+         ⚠️ 출고 화면(`box-3d-viewer.tsx`)은 `false` 를 쓰는 것이 맞다 — 거기는 일부러
+            작게 그려 도트로 키우는 화면이라, CSS 크기를 `100%` 로 직접 준다. */
+      renderer.setSize(w, h);
     };
     resize();
     const ro = new ResizeObserver(resize);
