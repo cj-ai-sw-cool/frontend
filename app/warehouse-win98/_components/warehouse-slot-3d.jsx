@@ -1438,7 +1438,9 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       },
     });
     simRunRef.current = (items) => {
-      inboundSim.start(items);
+      /* ⚠️ 지금 보고 있던 각을 넘겨준다. 도입부가 그 각을 붙들고 시작해야 버튼을 누른
+         순간 화면이 홱 돌지 않는다 (`inbound-sim` 의 `introAz` 참고). */
+      inboundSim.start(items, cur.az);
       followSim = true;
       /* 촬영 시작 — 지금 카메라 자리에서 이어 받는다. 0 에서 시작하면 첫 프레임에 카메라가
          창고 원점으로 순간이동했다가 날아온다 */
@@ -1640,10 +1642,32 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
          창고 카메라가 멋대로 움직여서, 돌아왔을 때 엉뚱한 자리에 서 있게 된다.
          리스너 등록 순서에 기대는 `stopPropagation` 대신 여기서 못을 박는다. */
       if (inRoomRef.current) return;
-      if (e.target instanceof HTMLElement) {
-        const tag = e.target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT") return;
+      const tag = e.target instanceof HTMLElement ? e.target.tagName : "";
+      /* 글자를 치고 있는 중이면 언제나 넘긴다 — 카메라가 남의 타자를 가로채면 안 된다 */
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      /* ── 시뮬레이션에서 빠져나오기 ────────────────────────────────
+         ★ 적재가 끝나면 `outro` 가 출고 쪽을 비춘 채 멈추는데, 그동안에도 카메라는
+           시뮬레이션 것이다(`running` 이 참으로 남는다). 놓아 주지 않으면 아래에서
+           `des` 를 바꿔 봐야 매 프레임 덮어써진다.
+         ⚠️ **버튼 걸러내기보다 먼저** 와야 한다. 시뮬레이션을 버튼으로 시작하면 그
+            버튼에 포커스가 남고, Enter 는 브라우저가 그 버튼의 클릭으로 바꿔 보낸다 —
+            나가려고 누른 Enter 가 시뮬레이션을 **다시 시작**시켰다. 여기서 가로채고
+            `preventDefault` 로 그 클릭 합성을 막는다.
+         ⚠️ 여기서 **돌아간다.** 같은 Enter 로 포스기까지 한 번에 가면 빠져나온 창고
+            화면을 보지도 못하고 다음 곳으로 끌려간다. 한 번 더 누르면 그때 간다.
+         ⚠️ 시뮬레이션이 매 프레임 지금 카메라를 `cur`/`des` 에 되받아 적어 두므로,
+            `des` 만 전체 보기로 바꾸면 서 있던 자리에서 부드럽게 물러난다. */
+      if (followSim || inboundSim?.running) {
+        e.preventDefault();
+        inboundSim?.finish();
+        followSim = false;
+        focusedStation = null;
+        Object.assign(des, OVERVIEW);
+        return;
       }
+
+      if (tag === "BUTTON") return;   // 평소에는 버튼이 Enter 를 먼저 가진다
       e.preventDefault();
       const order = [...stations].reverse();   // 앞쪽(+z)이 배열 뒤에 있다
       const at = order.indexOf(focusedStation);
@@ -2366,7 +2390,11 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
                 <button
                   className="w98-btn"
                   style={{ marginLeft: "auto" }}
-                  onClick={() => simRunRef.current?.(DEMO_ITEMS)}
+                  /* ⚠️ 누른 뒤 **포커스를 놓는다.** 안 놓으면 이 버튼이 Enter 를 계속
+                     물고 있어서, 시뮬레이션에서 나가려고 누른 Enter 가 이 버튼을 다시
+                     눌러 처음부터 되돌린다. 위 `onKey` 에서도 막지만, 애초에 영화가
+                     시작된 뒤에 시작 버튼이 포커스를 쥐고 있을 이유가 없다. */
+                  onClick={(e) => { e.currentTarget.blur(); simRunRef.current?.(DEMO_ITEMS); }}
                   title="상품 3건을 입고 문에서 받아 등급별 슬롯까지 적재한다"
                 >
                   ▶ 입고 적재 시뮬레이션

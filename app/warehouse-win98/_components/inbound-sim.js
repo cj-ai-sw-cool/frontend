@@ -173,6 +173,15 @@ export function createInboundSim(THREE, deps) {
        따라 돌았고, 그 끊임없는 회전이 화면을 정신없게 만든 진짜 원인이었다. 통로를 따라
        곧게 가는 구간에서는 각도가 바뀔 이유가 없다. */
   let travelAz = -Math.PI / 2;
+  /* 도입부에서 붙들고 있을 각. 시작할 때 **지금 사용자가 보고 있던 각**을 받아 둔다 —
+     여기서 임의의 각을 잡으면 버튼을 누르는 순간 화면이 홱 돌고, 그 다음에야 밀고
+     들어간다. 보던 자리에서 그대로 이어져야 "들어간다"로 읽힌다. */
+  let introAz = -Math.PI / 2;
+  /* 도입부 길이 — 멀리서 붙들기 / 밀고 들어가기 (초).
+     ⚠️ `PUSH` 는 창고 쪽 카메라 감쇠(k ≈ 1.0, 90% 에 2.3초)보다 짧게 잡는다. 다 붙은
+        뒤에 출발시키면 멈춰 선 화면을 한참 보게 된다 — 아직 밀고 들어가는 중에
+        로봇이 떠나야 그 둘이 한 동작으로 이어진다. */
+  const INTRO_HOLD = 1.3, INTRO_PUSH = 1.2;
 
   /* 마지막에 카메라가 향할 곳 — 출고 구역이다. 창고 쪽에서 좌표를 받는다 */
   const outroAt = deps.outboundAt ? new THREE.Vector3(...deps.outboundAt) : null;
@@ -245,7 +254,7 @@ export function createInboundSim(THREE, deps) {
       phase = "outro";
       timer = 2.6;
       legs = [];
-      onStatus("적재 완료 — Enter 를 눌러 출고 포스기로");
+      onStatus("적재 완료 — Enter 를 눌러 창고 화면으로");
       return;
     }
     if (j.crane === null || j.target === null) {
@@ -280,7 +289,26 @@ export function createInboundSim(THREE, deps) {
       return phase !== "idle";
     },
 
-    start(items = DEMO_ITEMS) {
+    /** 시뮬레이션을 지금 끝내고 카메라와 통로를 창고 쪽에 돌려준다.
+     *
+     *  ★ 적재가 끝나면 `outro` 가 그 자리에서 멈추는데, 그때도 `running` 은 참이다 —
+     *    카메라를 계속 붙들고 있어야 화면이 출고 쪽을 비춘 채 서 있기 때문이다. 그래서
+     *    빠져나오려면 **누군가 끝났다고 말해 주어야** 한다 (창고 화면의 Enter).
+     *  ⚠️ 로봇은 **그 자리에 둔다.** 집으로 돌려보내면 화면이 창고로 물러나는 바로 그
+     *     순간에 로봇만 통로를 가로질러 날아가는 그림이 된다. 다음 `start()` 가 어차피
+     *     포탈 앞에 다시 세운다. */
+    finish() {
+      if (phase === "idle") return;
+      phase = "idle";
+      legs = [];
+      state.chase = false;
+      clearCorridor(false);   // 통로를 돌려준다 (위 `clearCorridor` 주의 참고)
+      for (const cg of cargoes) cg.visible = false;
+      onStatus(null);
+    },
+
+    /** @param fromAz 지금 궤도 카메라가 서 있는 각 (도입부가 이어받는다) */
+    start(items = DEMO_ITEMS, fromAz = null) {
       filled.clear();
       // 다시 돌리면 지난번에 넣은 것부터 치운다 — 예약 칸이 세 개뿐이라 금방 찬다
       for (const c of cranes) {
@@ -327,14 +355,38 @@ export function createInboundSim(THREE, deps) {
             2D 지도에서도 점들이 얼어붙는다. */
       clearCorridor(true);
 
-      /* ★ 포탈로 들어갔다 나오는 연출을 **뺐다** (사용자 지적). 로봇은 늘 포탈 앞에 서
-         있다가 짐을 싣고 **바로 출발한다.** 나타났다 사라지는 것이 오히려 "어디서 왔지"를
-         만들었고, 시작 전에 한 박자 쉬는 것도 시연에서는 군더더기였다. */
-      startNext();
+      /* ★ 포탈로 들어갔다 나오는 연출은 **뺐다** (사용자 지적). 로봇은 늘 포탈 앞에 서
+         있다가 짐을 싣고 바로 출발한다 — 나타났다 사라지는 것이 오히려 "어디서 왔지"를
+         만들었다.
+         ★ 대신 **카메라로** 도입부를 만든다 (사용자 요청): 트럭까지 보이는 먼 자리에서
+           입고 문을 잡고, 거기서 밀고 들어가며 로봇이 출발한다. 로봇을 움직여 만드는
+           도입부가 아니라 **시선을 옮겨** 만드는 도입부라, 장면에 군더더기가 안 붙는다. */
+      introAz = fromAz ?? travelAz;
+      phase = "intro";
+      timer = INTRO_HOLD + INTRO_PUSH;
+      onStatus("입고 문 — 상품 3건 도착");
     },
 
     update(dt) {
       if (phase === "idle") return;
+
+      if (phase === "intro") {
+        /* 도입부 — 멀리서 입고 문을 잡았다가 밀고 들어간다.
+           ⚠️ 시선은 처음부터 **입고 문**에 둔다. 멀리 있을 때 창고 한가운데를 보다가
+              옮기면, 밀고 들어가는 동작에 옆으로 미끄러지는 동작이 겹쳐 어지럽다.
+              시선을 먼저 문에 앉히고 거리만 좁히는 편이 훨씬 또렷하다.
+           ⚠️ 거리·각만 바꾸고 **끝나는 자리를 이동 구간과 똑같이** 맞춘다(15 / 0.62).
+              도입부 전용 값을 따로 두면 출발하는 순간 카메라가 한 번 더 튄다. */
+        focus.set(HOME[0], DECK_Y + 0.4, HOME[2]);
+        timer -= dt;
+        const pushing = timer <= INTRO_PUSH;
+        state.az = pushing ? travelAz : introAz;
+        state.pol = pushing ? 0.62 : 0.95;   // 멀리서는 눈높이에 가깝게 내려다본다
+        state.dist = pushing ? 15 : 30;      // 30 ≈ 전체 보기 — 트럭과 야적장이 다 들어온다
+        state.minY = pushing ? 8 : 12;
+        if (timer <= 0) startNext();
+        return;
+      }
 
       const j = job();
       const c = j?.crane ?? null;
