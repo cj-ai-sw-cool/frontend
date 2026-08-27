@@ -1,7 +1,44 @@
 "use client";
 
-import { BarChart3, Boxes, Clock3, TriangleAlert } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useState } from "react";
+import { BarChart3, Clock3, TriangleAlert } from "lucide-react";
 import { Panel, Sunken, w98 } from "./_components/win98-ui";
+
+/* 창고 맵은 캔버스와 `ResizeObserver` 를 쓰므로 서버에서 그릴 수 없다.
+   ⚠️ `ssr: false` 를 빼면 빌드 시 정적 생성 단계에서 `window` 를 찾다가 터진다. */
+const WarehouseMap = dynamic(() => import("./_components/warehouse-map"), {
+  ssr: false,
+  loading: () => (
+    <Sunken className="flex min-h-0 flex-1 items-center justify-center">
+      <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>맵 불러오는 중…</span>
+    </Sunken>
+  ),
+});
+
+/**
+ * 창고 3D — 지도를 누르면 전체 화면으로 뜬다.
+ *
+ * ★ 이 컴포넌트만은 **창고 라우트에서 그대로 가져온다.** 이 저장소는 win98 화면마다
+ *   `_components` 를 따로 갖는 것이 규칙이지만, 그 규칙은 셸(타이틀바·태스크바·네비)처럼
+ *   화면마다 다르게 만지고 싶은 것들을 위한 것이다. 이건 2,000줄짜리 three.js 씬이고
+ *   지금도 계속 손보는 중이라, 복사본을 두면 두 벌이 반드시 어긋난다 — 한 화면에서만
+ *   트럭이 바뀌거나 조명이 다른 사고가 난다.
+ *   (2D 지도는 반대다. 그쪽은 3D 씬 없이 혼자 돌아야 해서 사본이 필요했다.)
+ * ⚠️ `ssr: false` 여야 한다. three.js 가 모듈 최상단에서 `document` 를 만진다.
+ * ⚠️ 눌렀을 때만 불러온다 — 분석 화면을 열 때마다 3D 번들을 받아 오면 첫 로딩이 무거워진다.
+ */
+const WarehouseSlot3D = dynamic(
+  () => import("../warehouse-win98/_components/warehouse-slot-3d"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center bg-[#10151C] text-sm text-[#8FA3B8]">
+        3D 창고 불러오는 중…
+      </div>
+    ),
+  },
+);
 
 /**
  * 분석 화면 (win98 스킨) — **아직 비어 있다.** 자리와 생김새만 잡아 둔 뼈대다 (사용자 요청).
@@ -19,58 +56,94 @@ import { Panel, Sunken, w98 } from "./_components/win98-ui";
  *
  * ── 세로·가로 예산 ──────────────────────────────────────────────────────────
  *   화면 영역 = 1390 × 872 (layout.tsx 주석 참고)
- *   세로: 요약 카드 120 + gap 8 + 본문 flex-1 = 872
- *   가로: 좌 flex-1 + gap 8 + 우 420
+ *   ★ 위에 있던 요약 카드 넷(Packed·Inbound·Avg.Time·Mismatch)을 걷어냈다. 페이지를
+ *     통째로 세 칸으로 나누라는 요청이었고, 네 카드는 전부 `--` 였다 — 자리만 차지하고
+ *     아무것도 말하지 않는 줄이 화면 위쪽 120px 를 먹고 있었다.
+ *   세로: 세 칸 모두 화면 높이를 다 쓴다
+ *   가로: 같은 폭 세 칸 (flex-1 x 3 + gap 8 x 2)
  */
+/* ── 페이지 전체를 세 칸으로 ────────────────────────────────────────────────
+   ★ 한 열에 **패널 하나씩**, 같은 폭 세 칸이 화면 높이를 다 쓴다. 위아래로 더 쪼개지
+     않는다 — 칸이 여섯 개가 되면 어디부터 봐야 하는지가 없어지고, 창고 맵처럼 세로가
+     필요한 것이 눌린다.
+   ⚠️ 세 칸 모두 `min-w-0` 이 있어야 한다. 없으면 안쪽 캔버스가 줄어들지 못해 그 칸이
+      제 몫보다 넓어지고, 나머지 두 칸이 밀려 찌그러진다. */
 export default function AnalyticsPage() {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
-      {/* ── 위: 요약 카드 넷 ─────────────────────────────────────────────── */}
-      <div className="grid h-[120px] shrink-0 grid-cols-4 gap-2">
-        {SUMMARY.map((card) => (
-          <Panel key={card.label} title={card.title} className="min-h-0">
-            <Sunken className="flex min-h-0 flex-1 flex-col justify-center px-3 py-2">
-              <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>
-                {card.label}
-              </span>
-              <span className={`${w98.mono} text-[30px] leading-9 font-bold tabular-nums`}>--</span>
-            </Sunken>
-          </Panel>
-        ))}
-      </div>
+  /* 3D 전체 화면이 떠 있는가 */
+  const [full, setFull] = useState(false);
+  const close = useCallback(() => setFull(false), []);
 
-      {/* ── 아래: 그래프 + 목록 ──────────────────────────────────────────── */}
-      <div className="flex min-h-0 flex-1 gap-2">
-        <Panel title="Throughput — 시간대별 처리량" className="min-h-0 flex-1">
-          <Placeholder icon={<BarChart3 className="size-10 opacity-30" aria-hidden />}>
+  /* Esc 로 닫는다.
+     ⚠️ 리스너는 **떠 있을 때만** 붙인다. 늘 붙여 두면 3D 를 열지도 않았는데 Esc 를 가로채,
+        나중에 이 화면에 팝업이나 입력이 생겼을 때 그쪽 Esc 를 먹는다.
+     ⚠️ `capture` 로 받는다. 3D 판은 자기 캔버스에 포인터 이벤트를 잡아 두는데, 키 이벤트가
+        그 안에서 멈추는 경우가 있어 버블링만 기다리면 놓칠 수 있다. */
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setFull(false);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [full]);
+
+  return (
+    <div className="flex min-h-0 flex-1 gap-2">
+      {/* ── 왼쪽 (3/4) — 위 좁게, 아래 넓게 ── */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+        <Panel title="Throughput — 시간대별 처리량" className="h-[228px] shrink-0">
+          <Placeholder icon={<BarChart3 className="size-8 opacity-30" aria-hidden />}>
             그래프 자리
           </Placeholder>
         </Panel>
 
-        <div className="flex w-[420px] shrink-0 flex-col gap-2">
-          <Panel title="Line Status — 라인별 현황" className="min-h-0 flex-1">
-            <Placeholder icon={<Boxes className="size-10 opacity-30" aria-hidden />}>
-              라인 목록 자리
-            </Placeholder>
-          </Panel>
-          <Panel title="Alerts — 이상 항목" className="h-[220px] shrink-0">
-            <Placeholder icon={<TriangleAlert className="size-10 opacity-30" aria-hidden />}>
-              경고 목록 자리
-            </Placeholder>
-          </Panel>
-        </div>
+        {/* ★ 원래 처리량 그래프가 이 칸을 다 쓰고 있었다. 그 수치는 아직 계약이 없지만
+            **창고 지도는 이미 실측 데이터로 돌아간다.** 비어 있는 자리를 붙들고 있는 것보다
+            지금 보여 줄 수 있는 것을 놓는 편이 낫다 — 그래프는 위 좁은 칸으로 옮겼다.
+            ★ 지도를 **가장 넓고 높은 칸**에 둔 이유: 가로 33m x 세로 22m 짜리 그림이라
+              가로로 넉넉해야 구역 이름과 채움 수가 겹치지 않고 다 들어간다.
+            ⚠️ 이 지도는 창고 화면의 사본이다 — `warehouse-map.jsx` 머리말 주의 참고. */}
+        <Panel title="Warehouse — 실시간 창고 맵" className="min-h-0 flex-1">
+          <Sunken className="flex min-h-0 flex-1 flex-col p-1.5">
+            <WarehouseMap onOpen3D={() => setFull(true)} />
+          </Sunken>
+        </Panel>
       </div>
+
+      {/* ── 오른쪽 (1/4) — 세로로 긴 목록 한 칸 ──
+          ⚠️ 원래 여기에 "Line Status — 라인별 현황" 도 같이 있었다. 세 칸으로 나누라는
+             요청이라 한 칸을 비워야 했고, 경고 목록을 남겼다 — 대시보드에서 먼저 찾게 되는
+             것은 "무엇이 잘못됐나"이고, 좁고 긴 칸은 그 목록에 맞는 모양이다. */}
+      <Panel title="Alerts — 이상 항목" className="min-h-0 w-[344px] shrink-0">
+        <Placeholder icon={<TriangleAlert className="size-10 opacity-30" aria-hidden />}>
+          경고 목록 자리
+        </Placeholder>
+      </Panel>
+
+      {/* ── 3D 전체 화면 ────────────────────────────────────────────────
+          ⚠️ 크기를 `inset-0` 이 아니라 **1600 x 1004 로 박는다.** `position: fixed` 의 기준은
+             transform 이 걸린 가장 가까운 조상 = 스테이지인데, 그 transform 은 하이드레이션
+             뒤에 JS 가 얹는다. 첫 한 프레임 동안은 기준이 뷰포트라 `inset-0` 이면 크기가
+             튄다(레이아웃 파일의 같은 주의 참고).
+          ⚠️ z-200 은 분석 창(z-60)·공용 헤더(z-50)·네비(z-40)보다 위다. */}
+      {full && (
+        <div className="fixed top-0 left-0 z-[200] h-[1004px] w-[1600px] bg-[#10151C]">
+          <WarehouseSlot3D initialTab="3d" />
+          <button
+            type="button"
+            onClick={close}
+            className="absolute top-3 right-3 z-10 cursor-pointer rounded border border-[rgba(150,180,215,.28)] bg-[rgba(12,17,24,.86)] px-3 py-1.5 text-xs font-bold text-[#DCE5EF] hover:border-[#FF8A2A]"
+          >
+            ESC 닫기 ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }
-
-/** 요약 카드 — 이름은 **가정**이다. 계약이 정해지면 바꾼다 */
-const SUMMARY: { title: string; label: string }[] = [
-  { title: "Packed", label: "오늘 포장 완료" },
-  { title: "Inbound", label: "오늘 입고 건수" },
-  { title: "Avg. Time", label: "평균 처리시간" },
-  { title: "Mismatch", label: "수량 불일치" },
-];
 
 /**
  * 빈 칸 — 무엇이 들어올 자리인지 말하고, **아직 없다는 것도 같이 말한다.**
