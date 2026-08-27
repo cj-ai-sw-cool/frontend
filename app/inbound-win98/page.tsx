@@ -257,6 +257,23 @@ export default function InboundPage() {
     [scan, measure, confirm, stockIn],
   );
 
+  /**
+   * 화면을 처음 상태로 되돌린다 — 바코드 칸까지 비운다.
+   * 새 바코드를 잡을 때(runScan)와 입고를 마쳤을 때 같은 자리를 쓴다.
+   */
+  const clearScreen = useCallback(() => {
+    setBarcode("");
+    setScannedBarcode("");
+    setIsManualOpen(false);
+    setManual(null);
+    setHandling(EMPTY_HANDLING);
+    setQty(1);
+    scan.reset();
+    measure.reset();
+    confirm.reset();
+    stockIn.reset();
+  }, [scan, measure, confirm, stockIn]);
+
   /** 입력창에서 Enter · Scan 버튼 — 지금 입력창에 있는 값으로 조회한다 */
   const handleScan = useCallback(() => runScan(barcode), [runScan, barcode]);
 
@@ -329,10 +346,9 @@ export default function InboundPage() {
         {
           onSuccess: () => {
             toast.success(`입고 완료`);
-            // TODO(P1): 입고 후 화면을 어디까지 비울지 정한다. 출고 포장 화면은 완료 시
-            //   전부 비우고 다음 토트를 받지만, 입고는 같은 상품을 나눠 넣는 경우가 있어
-            //   비우면 오히려 방해가 될 수 있다. 지금은 아무것도 비우지 않고, 대신
-            //   `DB 입력` 을 잠가 중복 입고만 막는다(buildSubmitPlan 첫 분기).
+            // 한 건이 끝나면 처음 상태로 돌아간다 (사용자 결정). 다음 상품의 바코드를
+            // 바로 받을 수 있어야 하고, 남아 있는 값이 다음 건의 것으로 오해되면 안 된다.
+            clearScreen();
           },
           onError: (error) => toast.error("입고에 실패했습니다", { description: error.message }),
         },
@@ -387,7 +403,7 @@ export default function InboundPage() {
           description: `${error.message} 수기 입력값은 그대로 남아 있습니다. 다시 DB 입력을 누르거나 촬영을 실행하세요.`,
         }),
     });
-  }, [product, plan, measurement, manual, handling, qty, stockIn, confirm, measure]);
+  }, [product, plan, measurement, manual, handling, qty, stockIn, confirm, measure, clearScreen]);
 
   /* ── 표시 ──────────────────────────────────────────────── */
   return (
