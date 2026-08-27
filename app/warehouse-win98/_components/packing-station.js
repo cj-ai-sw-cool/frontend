@@ -260,7 +260,12 @@ function emptyNote(c, x, y, w, h, text) {
  * @param {{ position: [number, number, number], rotationY?: number, line?: number, packed?: number, seed?: number }} opts
  * @returns {{ group, pickTargets: object[], update: (dt: number, hovered: boolean) => void, dispose: () => void }}
  */
-export function createPackingStation(THREE, { position, rotationY = 0, line = 3, packed = 128, seed = 0 }) {
+/**
+ * @param {{makePiglin?: () => object}} opt.makePiglin 작업대에 세울 사람. **창고 안 작업자와
+ *   같은 함수**를 넘겨야 한다 — 여기서 따로 만들면 같은 창고에서 다른 사람이 일한다.
+ *   없으면 사람 없이 설비만 놓는다.
+ */
+export function createPackingStation(THREE, { position, rotationY = 0, line = 3, packed = 128, seed = 0, makePiglin }) {
   const group = new THREE.Group();
   group.position.set(position[0], position[1], position[2]);
   group.rotation.y = rotationY;
@@ -415,6 +420,18 @@ export function createPackingStation(THREE, { position, rotationY = 0, line = 3,
     line,
     packed,
   };
+  /* ── 작업자 ──
+     ★ 설비만 있고 사람이 없으면 "전시된 장비"로 보인다 (사용자 요청). 벨트 옆에 서서
+       손을 놀리고 있으면 그때부터 이 자리가 **일하는 자리**가 된다.
+     ⚠️ 벨트 **옆**에 세운다. 벨트 위나 끝에 세우면 흘러오는 상자를 몸으로 막는다.
+     ⚠️ 팔은 두 팔의 위상을 어긋나게 흔든다. 똑같이 흔들면 손뼉 치는 것처럼 보인다. */
+  const worker = typeof makePiglin === "function" ? makePiglin() : null;
+  if (worker) {
+    worker.grp.position.set(WID / 2 + 0.52, 0, LEN / 2 - 0.15);
+    worker.grp.rotation.y = -Math.PI / 2;   // 벨트 쪽(-x)을 보고 선다
+    group.add(worker.grp);
+  }
+
   let elapsed = 0, lastDraw = -1;
   drawScreen(ctx, cv.width, cv.height, live);
   tex.needsUpdate = true;
@@ -428,6 +445,17 @@ export function createPackingStation(THREE, { position, rotationY = 0, line = 3,
     update(dt, hovered, focused = false) {
       elapsed += dt;
       for (const r of rollers) r.rotation.x += dt * 5.2;   // 축이 x 로 구워져 있다
+
+      if (worker) {
+        /* 상자를 집어 테이프를 붙이는 손놀림. 팔만 움직이고 발은 붙어 있다 —
+           포장 작업은 제자리에서 하는 일이라 걷게 하면 오히려 딴짓으로 보인다. */
+        const w = elapsed * 3.1;
+        worker.lArm.rotation.x = worker.armRest - 0.75 + 0.5 * Math.sin(w);
+        worker.rArm.rotation.x = worker.armRest - 0.75 + 0.5 * Math.sin(w + 1.9);
+        worker.grp.position.y = 0.022 * Math.abs(Math.sin(w));
+        // 이따금 포스기 쪽으로 몸을 튼다 — 계속 같은 각이면 마네킹으로 보인다
+        worker.grp.rotation.y = -Math.PI / 2 + 0.30 * Math.sin(elapsed * 0.42);
+      }
 
       const want = hovered ? 0.85 + 0.15 * Math.sin(elapsed * 5) : 0.28;
       glow.material.opacity += (want - glow.material.opacity) * 0.18;
