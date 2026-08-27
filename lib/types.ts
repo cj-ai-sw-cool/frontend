@@ -224,3 +224,12 @@ export interface DemoNextBarcode {
   /** 이 건을 빼고 남은 입고 시연 상품 수 */
   remaining: number;
 }
+
+/** 시연 초기화 결과 (`POST /admin/demo/reset`). 요약 한 줄만 읽어도 상태를 알 수 있다. */
+export interface DemoResetSummary {
+  products: { inbound: number; outbound: number };
+  queuedBatches: number;
+  totes: { idle: number; assigned: number };
+  boxTypes: { count: number; stockQty: number };
+  summary: string;
+}

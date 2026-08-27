@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import { CaveEntrance } from "./cave-entrance";
 import { ClockWindow } from "./clock-window";
+import { demo } from "@/lib/endpoints";
 import { w98, Btn, Etched, TrayBox } from "./win98-ui";
 
 /**
@@ -151,6 +154,16 @@ const SCREENS: Screen[] = [
 
 export function Win98Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+
+  /**
+   * 태스크바 Start = 시연 초기화. 주문·측정 세션·재고 원장을 비우고 상품과 대기열을 다시 만든다.
+   * 화면을 새로 그리지는 않는다 — 각 화면의 상태는 바코드를 다시 잡는 순간 새로 채워진다.
+   */
+  const reset = useMutation({
+    mutationFn: () => demo.reset(),
+    onSuccess: (summary) => toast.success(summary.summary.split("\n")[0] ?? "시연을 초기화했습니다."),
+    onError: (error) => toast.error(error.message),
+  });
   const active = SCREENS.find((screen) => pathname.startsWith(screen.href)) ?? SCREENS[0];
 
   /** 시계 팝업이 열려 있는가. 태스크바 트레이의 시계를 누르면 토글된다 */
@@ -274,7 +287,14 @@ export function Win98Shell({ children }: { children: ReactNode }) {
         className={`flex h-7 w-full shrink-0 items-center justify-between border-t-2 border-white bg-[color:var(--surface)] px-2`}
       >
         <div className="flex h-full items-center gap-2">
-          <Btn disabled aria-hidden className={`${w98.titleText} flex h-6 items-center gap-1 px-3`}>
+          {/* 시연 초기화 — 주문·측정·재고를 비우고 상품과 대기열을 처음 상태로 되돌린다.
+              화면마다 따로 두지 않고 태스크바에 하나만 둔다 (사용자 결정). */}
+          <Btn
+            disabled={reset.isPending}
+            onClick={() => reset.mutate()}
+            title="시연을 처음 상태로 되돌립니다"
+            className={`${w98.titleText} flex h-6 items-center gap-1 px-3`}
+          >
             <LayoutGrid className="size-3.5 text-[color:var(--primary)]" aria-hidden />
             Start
           </Btn>
