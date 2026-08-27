@@ -233,23 +233,17 @@ function SlotBody({
      파일이 없어 이 자리에 주소를 글자로 찍어 뒀는데, 이제 실물이 있으므로 그대로 그린다.
      ⚠️ next/image 를 쓰지 않는다 — 주소가 매번 바뀌는 서명 URL 이라 최적화 캐시가 듣지 않고,
         도메인을 remotePatterns 에 박으면 버킷 이름이 코드에 고정된다. */
-  const label = image.cameraNo === null ? "MASTER IMAGE" : `CAM 0${image.cameraNo}`;
+  /* ⚠️ `draggable={false}` 와 `select-none` 이 없으면 사진을 끌어 옮길 수 있다. 브라우저가
+     이미지에 기본으로 주는 동작인데, 이 화면은 CCTV 화면을 흉내 낸 자리라 끌리면 안 된다. */
   return (
-    <div className="relative h-full w-full">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={image.url}
-        alt={label}
-        className="h-full w-full object-contain"
-        loading="lazy"
-      />
-      {/* 어느 카메라인지 겹쳐 둔다 — 칸이 셋이라 사진만으로는 구분이 안 된다 */}
-      <span
-        className={`${w98.mono} ${w98.small} absolute left-1 top-1 bg-black/60 px-1 text-white`}
-      >
-        {label}
-      </span>
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={image.url}
+      alt={image.cameraNo === null ? "마스터 이미지" : `카메라 ${image.cameraNo} 촬영본`}
+      className="h-full w-full select-none object-contain"
+      draggable={false}
+      loading="lazy"
+    />
   );
 }
 
