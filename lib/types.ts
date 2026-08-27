@@ -212,3 +212,15 @@ export interface CompleteResponse {
   /** 대시보드 처리량 +1 즉시 반영값 */
   line: { lineId: number; packedCount: number };
 }
+
+/**
+ * 시연용 다음 바코드 (`POST /admin/demo/inbound/next-barcode`).
+ * 시연장에 스캐너가 없어 화면 버튼이 이 값을 받아 스캔 칸을 채운다.
+ * 다 쓰면 서버가 204 를 주고, 그때는 `null` 이 된다.
+ */
+export interface DemoNextBarcode {
+  barcode: string;
+  name: string;
+  /** 이 건을 빼고 남은 입고 시연 상품 수 */
+  remaining: number;
+}

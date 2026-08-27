@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Dockerfile 이 .next/standalone 만 런타임 이미지에 담는다 (docs 06 §3)
-  output: "standalone",
+  // Dockerfile 이 .next/standalone 만 런타임 이미지에 담는다 (docs 06 §3).
+  // Vercel 은 자체 빌더가 산출물을 알아서 묶으므로 standalone 을 주면 빌드가 깨진다
+  // (`.next/next-server.js.nft.json` 을 못 찾는다). VERCEL 은 그쪽 빌드에서만 세팅된다.
+  output: process.env.VERCEL ? undefined : "standalone",
 
   // 백엔드 호출은 app/api/v1/[...path]/route.ts 가 대신한다 → CORS 설정 불필요.
   // rewrites 를 쓰지 않는 이유는 두 가지다. (1) 요청 헤더를 붙일 수 없어 백엔드 열쇠를

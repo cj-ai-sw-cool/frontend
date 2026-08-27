@@ -10,6 +10,7 @@ import type {
   ConfirmRequest,
   ConfirmResponse,
   DashboardSummary,
+  DemoNextBarcode,
   MeasurementResponse,
   ProductImagesResponse,
   ScanResponse,
@@ -78,6 +79,17 @@ export const outbound = {
 };
 
 /* ── P3 대시보드 ─────────────────────────────────────────── */
+/* ── 시연 조작 ───────────────────────────────────────────── */
+
+export const demo = {
+  /**
+   * 다음 시연 바코드 하나. 다 쓰면 서버가 204 라 본문이 없다 — 그때 `null` 을 돌려준다.
+   * 리셋하면 처음부터 다시 나온다.
+   */
+  nextBarcode: () =>
+    api.postOrNull<DemoNextBarcode>("/admin/demo/inbound/next-barcode"),
+};
+
 export const dashboard = {
   /** 2-1 전체 현황 */
   summary: () => api.get<DashboardSummary>("/dashboard/summary"),

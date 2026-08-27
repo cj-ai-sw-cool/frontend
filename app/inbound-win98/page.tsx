@@ -21,6 +21,7 @@ import { PrecautionsPanel } from "./_components/precautions-panel";
 import { VisualInspectionPanel } from "./_components/visual-inspection-panel";
 import {
   useBarcodeScan,
+  useNextDemoBarcode,
   useConfirmMeasurement,
   useMeasure,
   useProductImages,
@@ -102,6 +103,9 @@ export default function InboundPage() {
 
   /* ── 데이터 ────────────────────────────────────────────── */
   const scan = useBarcodeScan(); // 1-1
+  const nextBarcode = useNextDemoBarcode(); // 시연용 바코드 발급
+  /** 남은 시연 상품이 없으면 바코드 버튼을 잠근다. 처음에는 있다고 보고 시작한다 */
+  const [hasNextBarcode, setHasNextBarcode] = useState(true);
   const measure = useMeasure(); // 1-3
   const confirm = useConfirmMeasurement(); // 1-4
   const stockIn = useStockIn(); // 1-5
@@ -261,6 +265,26 @@ export default function InboundPage() {
   /** 입력창에서 Enter · Scan 버튼 — 지금 입력창에 있는 값으로 조회한다 */
   const handleScan = useCallback(() => runScan(barcode), [runScan, barcode]);
 
+  /**
+   * 시연장에 스캐너가 없어 이 버튼이 스캐너를 대신한다. 서버가 다음 상품의 바코드를 주면
+   * 곧바로 1-1 까지 실행한다 — 한 번 더 Enter 를 치게 하면 스캐너 흉내라는 목적이 반감된다.
+   * 다 쓰면 204 로 본문이 없어 `null` 이 오고, 그때 버튼을 잠근다.
+   */
+  const handleNextBarcode = useCallback(() => {
+    nextBarcode.mutate(undefined, {
+      onSuccess: (issued) => {
+        if (issued === null) {
+          setHasNextBarcode(false);
+          toast.info("입고 시연 상품을 모두 사용했습니다. 리셋하면 처음부터 다시 나옵니다.");
+          return;
+        }
+        setHasNextBarcode(issued.remaining > 0);
+        runScan(issued.barcode);
+      },
+      onError: (error) => toast.error(error.message),
+    });
+  }, [nextBarcode, runScan]);
+
   /** 촬영 = 첫 촬영과 재촬영을 겸한다. 재촬영은 같은 productId 로 1-3 재호출 (§1-3) */
   const handleCapture = useCallback(() => {
     if (product === null) return;
@@ -418,8 +442,9 @@ export default function InboundPage() {
           scannedValue={scannedBarcode}
           onChange={setBarcode}
           onScan={handleScan}
-          testCases={TEST_BARCODES}
-          onPickTest={runScan}
+          onNextBarcode={handleNextBarcode}
+          isNextPending={nextBarcode.isPending}
+          hasNextBarcode={hasNextBarcode}
           isPending={scan.isPending}
           error={scan.error?.message ?? null}
           canManualInput={canManualInput}
@@ -615,13 +640,6 @@ const IMAGE_SOURCE_LABEL: Record<ProductImagesResponse["source"], string> = {
  * ⚠️ 실제 API 로 배선할 때 이 상수와 BarcodePanel 의 TEST DATA 줄을 함께 지운다.
  *    지어낸 값을 실서버 화면에 남겨 두면 안 된다.
  */
-const TEST_BARCODES: { label: string; barcode: string }[] = [
-  { label: "게이트 통과 · 기존 데이터 有", barcode: "8801234567893" },
-  { label: "게이트 통과 · 신규", barcode: "8801234500029" },
-  { label: "치수 신뢰도 미달", barcode: "8801234500036" },
-  { label: "치수 측정 timeout", barcode: "8801234500043" },
-  { label: "UNKNOWN (마스터에 없음)", barcode: "8800000000000" },
-];
 
 /** 촬영 전·새 스캔 직후의 취급속성. 1-3 이 오면 handlingDefaults 로 덮인다 */
 const EMPTY_HANDLING: Handling = { refrigerate: false, fragile: false, irregular: false };
