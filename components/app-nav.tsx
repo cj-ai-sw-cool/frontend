@@ -56,6 +56,7 @@ const NAV_ICON: Record<string, LucideIcon | undefined> = {
   // 플라스크로 묶어 "본 화면이 아니라 별도 스킨"임을 목록에서 바로 알 수 있게 한다.
   "/inbound-win98": FlaskConical,
   "/packing-win98": FlaskConical,
+  "/warehouse-win98": FlaskConical,
   "/analytics-win98": FlaskConical,
   "/packing": PackageCheck, // 출고 포장 = 담고 확인해서 내보냄 (확정본: package_2)
   "/dashboard": LayoutDashboard, // (확정본: dashboard)

@@ -97,6 +97,24 @@ function AnalyticsIcon({ className }: { className?: string }) {
   );
 }
 
+/** 창고 — 선반 3단에 상자가 얹힌 모습 */
+function WarehouseIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" shapeRendering="crispEdges" className={className} aria-hidden>
+      {/* 선반 기둥 둘 + 칸 셋 */}
+      <path d="M2 2h1v12H2z" fill="#8a7318" stroke="#000000" />
+      <path d="M13 2h1v12h-1z" fill="#8a7318" stroke="#000000" />
+      <path d="M2 6h12v1H2z" fill="#8a7318" stroke="#000000" />
+      <path d="M2 10h12v1H2z" fill="#8a7318" stroke="#000000" />
+      {/* 칸마다 놓인 상자 */}
+      <path d="M4 3h3v3H4z" fill="#c8a06a" stroke="#000000" />
+      <path d="M9 4h3v2H9z" fill="#c8a06a" stroke="#000000" />
+      <path d="M4 8h4v2H4z" fill="#c8a06a" stroke="#000000" />
+      <path d="M10 7h3v3h-3z" fill="#c8a06a" stroke="#000000" />
+    </svg>
+  );
+}
+
 const SCREENS: Screen[] = [
   {
     href: "/inbound-win98",
@@ -109,6 +127,16 @@ const SCREENS: Screen[] = [
     label: "Packing",
     windowTitle: "OUTBOUND PACKING — 출고 포장",
     icon: PackingIcon, // 목업: desktop_windows
+  },
+  {
+    /* 창고 — 슬롯 점유를 2D 지도와 3D 로 본다.
+       ⚠️ 이 화면만 three.js 를 쓴다. 3D 판이 `display:none` 일 때도 시뮬레이션은 계속
+          돌아야 2D 지도가 실시간이라, 안 보이는 판도 DOM 에 남겨 둔다
+          (`_components/warehouse-slot-3d.jsx` 주석 참고). */
+    href: "/warehouse-win98",
+    label: "Warehouse",
+    windowTitle: "WAREHOUSE — 슬롯 창고 현황",
+    icon: WarehouseIcon,
   },
   {
     /* 분석 — **아직 비어 있는 화면**이다(자리와 생김새만 잡아 둔 뼈대).

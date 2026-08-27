@@ -43,8 +43,16 @@ export function Box3DViewer({
   pixelScale = 3,
   decalUrl,
   pigs = false,
+  bare = false,
   className = "",
 }: {
+  /**
+   * 액자 없이 **상자만** 그린다 — 파인 테두리·바탕·아래 안내 문구를 모두 뺀다.
+   *
+   * 바탕화면 이스터에그처럼 화면 위에 상자를 띄울 때 쓴다. 그 자리에는 감쌀 칸이 없어서,
+   * 테두리가 있으면 배경 위에 창이 하나 더 뜬 것처럼 보인다.
+   */
+  bare?: boolean;
   /**
    * 🐷 뚜껑이 열릴 때 **마인크래프트 돼지가 튀어나온다** (이스터에그).
    * 마크 상자에만 켠다 — 택배 상자에서 돼지가 나오면 그건 사고다.
@@ -650,7 +658,6 @@ export function Box3DViewer({
               return Math.max(r, g, b) - Math.min(r, g, b);
             };
 
-            const cells = 48;
             const vertex = new THREE.Vector3();
 
             for (const flap of found) {
@@ -689,8 +696,6 @@ export function Box3DViewer({
               }
               if (count === 0) continue;
               const mid = sum / count;
-              const lengthStep = Math.max(1e-9, maxLength - minLength) / cells;
-              const sideStep = Math.max(1e-9, maxSide - minSide) / cells;
 
               /* 두 면의 알록달록함을 재서 어느 쪽이 골판지인지 정한다 */
               let brightAbove = 0;
@@ -716,58 +721,83 @@ export function Box3DViewer({
                 continue;
               }
 
-              /* 골판지 면의 UV 를 격자 칸마다 모아 둔다 */
-              const cellU = new Float64Array(cells * cells);
-              const cellV = new Float64Array(cells * cells);
-              const cellN = new Int32Array(cells * cells);
+              /* ── 골판지 면의 정점을 격자에 담아 둔다 ───────────────────────
+                 ★ 한때 **칸마다 UV 를 평균 내서** 회색 면에 나눠 줬다가 되돌렸다. 그러면
+                   칸 경계를 지나는 삼각형이 텍스처의 전혀 다른 자리로 건너뛰어, 그 경계가
+                   전부 이음매로 보인다 — 화면에 상자 표면이 갈라진 것처럼 금이 갔던 게
+                   이것이다. 평균은 값을 뭉개는 연산이라 **연속이어야 하는 UV 에 쓰면 안 된다.**
+                 ★ 대신 **가장 가까운 정점의 UV 를 그대로 복사**한다. 이웃한 회색 정점은
+                   이웃한 갈색 정점을 찾아가므로 UV 도 이웃끼리 붙어 있고, 무늬가 끊기지 않는다.
+                 ⚠️ 격자는 "가까운 것부터 보기" 위한 장치일 뿐 값을 섞지 않는다. 칸마다 정점
+                    번호만 이어 두고(연결 리스트), 실제로는 거리를 재서 하나를 고른다. */
+              const grid = 96;
+              const head = new Int32Array(grid * grid).fill(-1);
+              const next = new Int32Array(position.count).fill(-1);
+
+              const gridLength = Math.max(1e-9, maxLength - minLength) / grid;
+              const gridSide = Math.max(1e-9, maxSide - minSide) / grid;
+              const cellOf = (along: number, across: number) => {
+                const gx = Math.min(
+                  grid - 1,
+                  Math.max(0, Math.floor((along - minLength) / gridLength)),
+                );
+                const gy = Math.min(
+                  grid - 1,
+                  Math.max(0, Math.floor((across - minSide) / gridSide)),
+                );
+                return gx * grid + gy;
+              };
+
               for (let i = 0; i < position.count; i += 1) {
                 vertex.fromBufferAttribute(position as THREE_NS.BufferAttribute, i);
                 if (heightOf(vertex) >= mid !== aboveIsCardboard) continue;
-                const cx = Math.min(
-                  cells - 1,
-                  Math.max(0, Math.floor((lengthOf(vertex) - minLength) / lengthStep)),
-                );
-                const cy = Math.min(
-                  cells - 1,
-                  Math.max(0, Math.floor((sideOf(vertex) - minSide) / sideStep)),
-                );
-                const cell = cx * cells + cy;
-                cellU[cell] += uv.getX(i);
-                cellV[cell] += uv.getY(i);
-                cellN[cell] += 1;
+                const cell = cellOf(lengthOf(vertex), sideOf(vertex));
+                next[i] = head[cell]!;
+                head[cell] = i;
               }
 
-              /* 회색 면의 정점에 같은 칸의 골판지 UV 를 준다 */
+              /* ── 회색 면의 정점에 가장 가까운 갈색 정점의 UV 를 준다 ──────── */
+              const probe = new THREE.Vector3();
               let repaired = 0;
+
               for (let i = 0; i < position.count; i += 1) {
                 vertex.fromBufferAttribute(position as THREE_NS.BufferAttribute, i);
                 if (heightOf(vertex) >= mid === aboveIsCardboard) continue;
 
-                const cx = Math.min(
-                  cells - 1,
-                  Math.max(0, Math.floor((lengthOf(vertex) - minLength) / lengthStep)),
-                );
-                const cy = Math.min(
-                  cells - 1,
-                  Math.max(0, Math.floor((sideOf(vertex) - minSide) / sideStep)),
-                );
+                const along = lengthOf(vertex);
+                const across = sideOf(vertex);
+                const cell = cellOf(along, across);
+                const cx = Math.floor(cell / grid);
+                const cy = cell % grid;
 
-                // 빈 칸이면 둘레로 조금씩 넓혀 가며 찾는다
-                let sourceCell = -1;
-                for (let ring = 0; ring < 4 && sourceCell < 0; ring += 1) {
-                  for (let dx = -ring; dx <= ring && sourceCell < 0; dx += 1) {
-                    for (let dy = -ring; dy <= ring && sourceCell < 0; dy += 1) {
+                let bestIndex = -1;
+                let bestDistance = Infinity;
+                // 가까운 칸부터 넓혀 가며 본다. 찾은 뒤에도 한 겹 더 봐야 진짜 최단이 나온다
+                for (let ring = 0; ring < 6; ring += 1) {
+                  for (let dx = -ring; dx <= ring; dx += 1) {
+                    for (let dy = -ring; dy <= ring; dy += 1) {
+                      if (ring > 0 && Math.abs(dx) !== ring && Math.abs(dy) !== ring) continue;
                       const x = cx + dx;
                       const y = cy + dy;
-                      if (x < 0 || y < 0 || x >= cells || y >= cells) continue;
-                      if (cellN[x * cells + y]! > 0) sourceCell = x * cells + y;
+                      if (x < 0 || y < 0 || x >= grid || y >= grid) continue;
+
+                      for (let j = head[x * grid + y]!; j >= 0; j = next[j]!) {
+                        probe.fromBufferAttribute(position as THREE_NS.BufferAttribute, j);
+                        const da = lengthOf(probe) - along;
+                        const db = sideOf(probe) - across;
+                        const distance = da * da + db * db;
+                        if (distance < bestDistance) {
+                          bestDistance = distance;
+                          bestIndex = j;
+                        }
+                      }
                     }
                   }
+                  if (bestIndex >= 0 && ring >= 1) break;
                 }
-                if (sourceCell < 0) continue;
+                if (bestIndex < 0) continue;
 
-                const n = cellN[sourceCell]!;
-                uv.setXY(i, cellU[sourceCell]! / n, cellV[sourceCell]! / n);
+                uv.setXY(i, uv.getX(bestIndex), uv.getY(bestIndex));
                 repaired += 1;
               }
 
@@ -2037,8 +2067,8 @@ type Tape = {
       <div
         /* ⚠️ `overflow-hidden` 을 뺐다 — 이게 상자를 자르던 장본인이다. 대신 빈 상태의
               마퀴 막대가 넘칠 일은 없으므로(칸 안에 들어가는 크기다) 잃는 것이 없다. */
-        className={`${w98.sunken} relative flex min-h-0 w-full flex-1 items-center justify-center`}
-        style={{ backgroundColor: STAGE_BG }}
+        className={`${bare ? "" : w98.sunken} relative flex min-h-0 w-full flex-1 items-center justify-center`}
+        style={bare ? undefined : { backgroundColor: STAGE_BG }}
         title={
           isEmpty
             ? undefined
@@ -2101,7 +2131,7 @@ type Tape = {
         )}
       </div>
 
-      {isEmpty ? null : (
+      {isEmpty || bare ? null : (
         <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>
           {wasTouched ? (name ?? "박스") : "드래그 회전 · 클릭해서 여닫기"}
         </span>
