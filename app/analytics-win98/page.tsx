@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
+import { InventoryPanel } from "./_components/inventory-panel";
 import { Panel, Sunken, w98 } from "./_components/win98-ui";
 
 /* 창고 맵은 캔버스와 `ResizeObserver` 를 쓰므로 서버에서 그릴 수 없다.
@@ -93,8 +94,18 @@ export default function AnalyticsPage() {
     <div className="flex min-h-0 flex-1 gap-2">
       {/* ── 왼쪽 (3/4) — 위 좁게, 아래 넓게 ── */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-        <Panel title="Throughput — 시간대별 처리량" className="h-[228px] shrink-0">
-          <Placeholder />
+        {/* ★ 이 칸은 원래 "Throughput — 시간대별 처리량" 이었고 비어 있었다. 그 수치는
+            아직 계약이 없는데 **재고는 이미 실측 데이터로 돌아간다** — 비어 있는 자리를
+            붙들고 있는 것보다 지금 보여 줄 수 있는 것을 놓는 편이 낫다 (사용자 요청).
+            ⚠️ 숫자는 아래 창고 맵과 **같은 함수**에서 온다. 자세한 것은
+               `inventory-panel.tsx` 머리말 참고.
+            높이 228 → **150px** (창고 맵을 키우고 나머지 둘을 줄였다).
+            ⚠️ 이 값과 아래 Alerts 폭은 **한 쌍으로 움직인다.** 지도는 가로:세로가
+               32.62 : 21.70 (= 1.5032) 로 고정이라, 남는 칸이 그 비율보다 길쭉하거나
+               납작하면 짧은 쪽에 회색 띠가 남는다. 둘 중 하나만 바꾸면 키운 만큼이
+               그대로 띠가 된다 — 계산은 아래 Alerts 주석에 적어 두었다. */}
+        <Panel title="Inventory — 박스 규격별 재고" className="h-[150px] shrink-0">
+          <InventoryPanel />
         </Panel>
 
         {/* ★ 원래 처리량 그래프가 이 칸을 다 쓰고 있었다. 그 수치는 아직 계약이 없지만
@@ -114,14 +125,24 @@ export default function AnalyticsPage() {
           ⚠️ 원래 여기에 "Line Status — 라인별 현황" 도 같이 있었다. 세 칸으로 나누라는
              요청이라 한 칸을 비워야 했고, 경고 목록을 남겼다 — 대시보드에서 먼저 찾게 되는
              것은 "무엇이 잘못됐나"이고, 좁고 긴 칸은 그 목록에 맞는 모양이다.
-          ★ 344 → **500px**. 넓힌 이유가 뜻밖인데, **지도 쪽 여백을 없애기 위해서**다.
-            지도는 가로:세로가 32.6 : 19.2 (약 1.70) 로 고정인데, 왼쪽 칸이 그보다 납작하면
-            (더 가로로 길면) 남는 폭이 좌우 띠로 남는다. 오른쪽을 넓혀 왼쪽 칸을 지도 비율에
-            가깝게 만들면 그 띠가 사라진다 — 좁히는 것이 아니라 **비율을 맞추는** 것이다.
-            460px 이 이 화면에서 딱 맞는 값이다 — 왼쪽 칸(위 처리량 228px 을 뺀 나머지)의
-            안쪽 비율이 지도 비율과 같아져 좌우 여백이 0 이 된다. 위 처리량 칸 높이를 바꾸면
-            이 값도 다시 맞춰야 한다. */}
-      <Panel title="Alerts — 이상 항목" className="min-h-0 w-[460px] shrink-0">
+          ★ 344 → 500 → 460 → **372px**. 좁히는 것이 아니라 **비율을 맞추는** 것이다.
+            지도는 `contain` 이 아니라 패널 비율에 세계를 맞춰 늘리는데(`warehouse-map`
+            의 `worldD` 참고), 늘릴 수 있는 한계가 `needD` 다. 그 한계에 걸리면 짧은
+            쪽에 띠가 남는다.
+
+          ── 계산 (바꿀 때 여기부터 다시 재라) ──────────────────────────────
+            화면 영역 1390 x 872 (layout.tsx), 칸 사이 gap 8
+            지도 세계 = 32.62m x 21.70m → 비율 1.5032
+            패널 껍데기(제목줄·테두리·안쪽 여백 합):
+              가로 36 = 테두리 2 + p-2 16 + Sunken 테두리 2 + p-1.5 12 + 지도 테두리 4
+              세로 66 = 위 36 에 제목줄 16 + mb-1 4 + etched 2 + mb-2 8 을 더한 값
+            지도 안쪽 = (1390 - 8 - 이 폭 - 36) x (872 - 위 높이 - 8 - 66)
+              150 / 372 → 974 x 648 → 974/32.62 = 648/21.70 = **29.86 px/m** (띠 0)
+              옛 값 228 / 460 → 886 x 570 → min(27.16, 26.27) = 26.27 (좌우 14.5px 띠)
+            → 축척이 26.27 에서 29.86 로, 그림이 **가로세로 14% · 넓이 30% 커진다.**
+          ⚠️ 한쪽만 줄여도 안 커진다. 지금은 **높이에 걸려** 있어서, Alerts 만 좁히면
+             좌우 띠만 넓어지고 지도는 그대로다. 위 칸 높이를 같이 줄여야 한다. */}
+      <Panel title="Alerts — 이상 항목" className="min-h-0 w-[372px] shrink-0">
         <Placeholder />
       </Panel>
 

@@ -1887,12 +1887,19 @@ export default function InspectionRoom({ onExit }) {
          ⚠️ 롤러 회전 속도와 짐의 속도는 **같은 값에서 나와야** 한다. 따로 적으면 짐이
             롤러 위를 미끄러지는 것처럼 보인다. 반지름 0.055m 이므로 각속도 = v / r. */
       const beltV = 0.34;                        // m/s — "천천히"
-      for (const r of conv.rollers) r.rotation.z += (beltV / 0.055) * dt;
+      /* 흐르는 방향 (사용자 요청으로 뒤집었다).
+         ⚠️ 이 부호 하나로 롤러·짐·되돌아오는 자리 **셋을 다 돌린다.** 셋 중 하나만 뒤집으면
+            짐이 롤러를 거슬러 가거나, 끝에 닿은 짐이 되돌아오지 못하고 그대로 날아간다. */
+      const beltDir = -1;
+      for (const r of conv.rollers) r.rotation.z += beltDir * (beltV / 0.055) * dt;
       for (const b of conv.boxes) {
-        b.position.x += beltV * dt;
+        b.position.x += beltDir * beltV * dt;
         /* 끝에 닿으면 반대쪽 끝에서 다시 들어온다. 짐이 사라졌다 나타나는 것이 아니라
            라인이 계속 돌고 있는 것으로 읽히도록, 넘기는 자리를 화면 밖(벨트 끝 너머)에 둔다 */
-        if (b.position.x > conv.len / 2 + 0.4) b.position.x = -conv.len / 2 - 0.4;
+        const edge = conv.len / 2 + 0.4;
+        if (beltDir > 0 ? b.position.x > edge : b.position.x < -edge) {
+          b.position.x = -beltDir * edge;
+        }
       }
 
       back.update(dt, hovered?.targets === back.pickTargets);
