@@ -1,6 +1,6 @@
 "use client";
 
-import { Keyboard, ScanBarcode } from "lucide-react";
+import { ScanBarcode } from "lucide-react";
 import { Btn, Field, Panel, TrayBox } from "./win98-ui";
 
 /**
@@ -13,10 +13,11 @@ import { Btn, Field, Panel, TrayBox } from "./win98-ui";
  *   작업자가 토트를 헷갈리지 않게 하는 것이 목적이고, 안내와 에러가 자리를 나눠 쓰므로
  *   패널 높이가 상태에 따라 흔들리지 않는다.
  *
- * 시연장에 실물 스캐너가 없어 `Keyboard` 버튼이 그 자리를 대신한다 — 다음 시연 토트를 받아
- * 칸을 채우고 곧바로 스캔까지 실행한다(`app/inbound-win98/_components/barcode-panel.tsx` 의
- * 다음 바코드 버튼과 같은 이유·같은 모양). 직접 입력 + Enter/Scan 버튼도 그대로 둔다 —
- * 특정 바코드를 짚어야 할 때(재현·디버깅) 쓸 자리다.
+ * Scan 버튼 하나가 두 가지를 한다(사용자 지시: "scan 버튼을 누르면 토트 바코드 번호가
+ * 칸에 뜨고 품목·박스 추천이 나타난다") — 칸이 비어 있으면 시연장에 없는 스캐너 대신 다음
+ * 시연 토트를 받아 칸을 채우고 그 값으로 스캔하고, 칸에 값이 있으면(직접 입력·재현·디버깅)
+ * 그 값 그대로 스캔한다. 버튼을 둘로 나누면 시연에서 "Scan 을 눌렀는데 빈 칸이라 에러만
+ * 뜨는" 장면이 나온다.
  */
 export function ToteScanPanel({
   value,
@@ -43,7 +44,15 @@ export function ToteScanPanel({
   hasNextTote: boolean;
 }) {
   const isBusy = isPending || isNextPending;
-  const canScan = value.trim().length > 0 && !isBusy;
+  const isManualEntry = value.trim().length > 0;
+  /* 칸이 비어 있을 때는 다음 토트가 있어야 누를 수 있다. 값이 있으면 그 값으로 언제나
+     스캔할 수 있다(라인·재고와 무관하게 특정 바코드를 짚는 자리라 hasNextTote 를 안 본다). */
+  const canPressScan = !isBusy && (isManualEntry || hasNextTote);
+
+  const handlePressScan = () => {
+    if (isManualEntry) onScan();
+    else onNextTote();
+  };
 
   return (
     <Panel title="Tote Barcode — 토트 스캔" className="shrink-0" bodyClassName="flex-row items-center gap-3">
@@ -51,7 +60,7 @@ export function ToteScanPanel({
         className="flex shrink-0 items-center gap-1"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!canScan) return;
+          if (!isManualEntry || isBusy) return;
           onScan();
         }}
       >
@@ -61,7 +70,7 @@ export function ToteScanPanel({
           mono
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="예: T-0012"
+          placeholder="예: T-0012 (비워 두면 다음 토트를 받습니다)"
           autoComplete="off"
           autoFocus
           disabled={isBusy}
@@ -72,23 +81,19 @@ export function ToteScanPanel({
           className="h-10 w-64 text-[17px]"
         />
         <Btn
-          disabled={!canScan}
-          onClick={onScan}
+          disabled={!canPressScan}
+          onClick={handlePressScan}
+          title={
+            isManualEntry
+              ? "입력한 바코드로 조회합니다"
+              : hasNextTote
+                ? "다음 시연 토트를 불러와 조회합니다"
+                : "이 라인은 포장할 토트가 없습니다"
+          }
           className="flex h-10 items-center gap-1.5 px-4 text-[15px] font-bold"
         >
           <ScanBarcode className="size-5" aria-hidden />
-          {isPending ? "조회 중…" : "Scan"}
-        </Btn>
-
-        {/* 다음 시연 토트 — 스캐너 자리다. 받은 값으로 곧바로 3-5 까지 실행한다. */}
-        <Btn
-          disabled={isBusy || !hasNextTote}
-          onClick={onNextTote}
-          title={hasNextTote ? "다음 시연 토트를 불러옵니다" : "이 라인은 포장할 토트가 없습니다"}
-          aria-label="다음 토트 불러오기"
-          className="flex h-10 shrink-0 items-center justify-center px-2.5"
-        >
-          <Keyboard className="size-5" aria-hidden />
+          {isNextPending ? "불러오는 중…" : isPending ? "조회 중…" : "Scan"}
         </Btn>
       </form>
 
