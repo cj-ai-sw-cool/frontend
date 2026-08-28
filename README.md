@@ -99,6 +99,10 @@ cp .env.example .env
 sudo docker compose up -d --build
 ```
 
+백엔드 호출은 `app/api/v1/[...path]/route.ts` 가 대신한다. 여기서 `DEMO_API_KEY` 를
+`X-Demo-Key` 헤더로 붙이므로 **열쇠는 서버에만 있고 브라우저에는 내려가지 않는다**
+(backend D-26). 화면 접근용 계정(`Authorization`)은 백엔드로 넘기지 않는다.
+
 프론트 컨테이너는 백엔드 compose 가 만든 네트워크(`backend_default`)에 얹혀 `backend:8000` 으로
 부른다. 그래서 **백엔드 포트를 인터넷에 열지 않아도** 화면이 동작한다. 백엔드가 먼저 떠 있어야
 하고, 네트워크 이름이 다르면 `.env` 의 `BACKEND_NETWORK` 로 바꾼다.
