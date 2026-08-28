@@ -1,69 +1,34 @@
 "use client";
 
-import type { Line, ShipmentListItem, ShipmentStatus } from "@/lib/types";
-import { Btn, Panel, Sunken, w98 } from "./win98-ui";
+import type { ShipmentListItem, ShipmentStatus } from "@/lib/types";
+import { Panel, Sunken, w98 } from "./win98-ui";
 
 /**
- * 라인 선택 탭 + 3-1 라인별 배송 내역 — win98 리스트 뷰 모양(`shipment-items-panel.tsx` 와 같은
- * 머리행·파인 상자 스크롤 규칙을 따른다).
+ * 3-1 라인별 배송 내역 — win98 리스트 뷰 모양(`shipment-items-panel.tsx` 와 같은 머리행·파인
+ * 상자 스크롤 규칙을 따른다).
  *
- * 탭은 패널 제목 줄 오른쪽에 둔다(Box Preview 의 모델 전환 탭과 같은 자리) — 세로 예산을
- * 늘리지 않는다. 이름은 서버가 준 그대로 쓴다. `ACTIVE` 가 아닌 라인은 탭에 **그대로 남기고
- * 누를 수만 막는다** — 사라지면 탭이 세 개에서 두 개로 줄어 작업자가 헷갈린다.
+ * 라인은 여기서 고르지 않는다 — 라인 선택 칸은 토트 스캔 패널(`tote-scan-panel.tsx` 의
+ * `LINE:`)에 하나만 둔다(사용자 지시: 화면에 라인 고르는 곳이 둘이면 안 된다). 이 패널은
+ * 그 라인의 결과만 그린다.
  */
 export function LineShipmentsPanel({
-  lines,
-  linesLoading,
   selectedLineId,
-  onSelectLine,
+  linesLoading,
   shipments,
   shipmentsLoading,
   shipmentsError,
   className = "",
 }: {
-  lines: Line[];
-  linesLoading: boolean;
   selectedLineId: number | null;
-  onSelectLine: (lineId: number) => void;
+  /** 라인 목록이 아직 안 왔으면 true — "라인 없음" 과 "아직 안 왔음" 을 가른다 */
+  linesLoading: boolean;
   shipments: ShipmentListItem[];
   shipmentsLoading: boolean;
   shipmentsError: boolean;
   className?: string;
 }) {
   return (
-    <Panel
-      title="Line Shipments — 라인별 배송 내역"
-      right={
-        linesLoading ? (
-          <span className={`${w98.small} shrink-0 text-[color:var(--muted-foreground)]`}>
-            불러오는 중…
-          </span>
-        ) : lines.length === 0 ? (
-          <span className={`${w98.small} shrink-0 text-[color:var(--muted-foreground)]`}>
-            라인 없음
-          </span>
-        ) : (
-          <span className="flex shrink-0 gap-1">
-            {lines.map((line) => {
-              const isActive = line.status === "ACTIVE";
-              return (
-                <Btn
-                  key={line.lineId}
-                  pressed={line.lineId === selectedLineId}
-                  disabled={!isActive}
-                  onClick={() => onSelectLine(line.lineId)}
-                  title={isActive ? line.name : `${line.name} — 지금 고를 수 없음 (${line.status})`}
-                  className={`${w98.small} h-5 px-2 font-normal disabled:opacity-40`}
-                >
-                  {line.name}
-                </Btn>
-              );
-            })}
-          </span>
-        )
-      }
-      className={`h-[340px] shrink-0 ${className}`}
-    >
+    <Panel title="Line Shipments — 라인별 배송 내역" className={`h-[340px] shrink-0 ${className}`}>
       <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto`}>
         {selectedLineId === null ? (
           <Placeholder>

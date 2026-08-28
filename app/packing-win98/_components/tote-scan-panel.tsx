@@ -1,10 +1,16 @@
 "use client";
 
 import { ScanBarcode } from "lucide-react";
-import { Btn, Field, Panel, TrayBox } from "./win98-ui";
+import type { Line } from "@/lib/types";
+import { Btn, Field, Panel, TrayBox, w98 } from "./win98-ui";
 
 /**
  * 3-5 토트 스캔 — 이 화면의 진입점. 목업의 `Barcode Data` 패널을 가로로 눕힌 것이다.
+ *
+ * 라인 선택 칸(`LINE:`)이 목업의 `TEST:` 셀렉트 자리를 그대로 잇는다(사용자 지시:
+ * "TEST 문자를 LINE으로 바꾸고... LINE A~C 있고 활성하고 있는 상태로"). 눌린 탭이 지금
+ * 고른 라인이고, 배송 내역 조회(3-1)·다음 토트 발급이 이 값을 함께 쓴다 — 화면에 라인
+ * 고르는 곳을 두 곳에 두지 않는다.
  *
  * 재스캔은 멱등이다 (D-14) — 같은 토트를 다시 스캔해도 안전하다.
  * TOTE_NOT_ASSIGNED(404)는 오른쪽 문구 자리에 뜬다.
@@ -29,6 +35,10 @@ export function ToteScanPanel({
   onNextTote,
   isNextPending,
   hasNextTote,
+  lines,
+  linesLoading,
+  selectedLineId,
+  onSelectLine,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -42,6 +52,10 @@ export function ToteScanPanel({
   isNextPending: boolean;
   /** 지금 고른 라인에 아직 받아 올 토트가 있는지. 라인을 안 골랐어도 false 로 둔다 */
   hasNextTote: boolean;
+  lines: Line[];
+  linesLoading: boolean;
+  selectedLineId: number | null;
+  onSelectLine: (lineId: number) => void;
 }) {
   const isBusy = isPending || isNextPending;
   const isManualEntry = value.trim().length > 0;
@@ -97,6 +111,38 @@ export function ToteScanPanel({
         </Btn>
       </form>
 
+      {/* LINE 선택 — 배송 내역 조회(3-1)·다음 토트 발급이 여기서 고른 라인을 함께 쓴다.
+          ACTIVE 가 아닌 라인은 탭에 남긴 채 누르지만 못하게 막는다 — 사라지면 탭이
+          세 개에서 두 개로 줄어 헷갈린다. */}
+      <div
+        className={`${w98.sunken} flex shrink-0 items-center gap-1.5 bg-[color:var(--surface)] px-1.5 py-1.5`}
+      >
+        <span className="shrink-0 text-[14px] text-[color:var(--muted-foreground)]">LINE:</span>
+        {linesLoading ? (
+          <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>불러오는 중…</span>
+        ) : lines.length === 0 ? (
+          <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>라인 없음</span>
+        ) : (
+          <span className="flex gap-1">
+            {lines.map((line) => {
+              const isActive = line.status === "ACTIVE";
+              return (
+                <Btn
+                  key={line.lineId}
+                  pressed={line.lineId === selectedLineId}
+                  disabled={!isActive}
+                  onClick={() => onSelectLine(line.lineId)}
+                  title={isActive ? line.name : `${line.name} — 지금 고를 수 없음 (${line.status})`}
+                  className={`${w98.small} h-7 px-2.5 font-normal disabled:opacity-40`}
+                >
+                  {line.name}
+                </Btn>
+              );
+            })}
+          </span>
+        )}
+      </div>
+
       {/* 실패 · 요약이 같은 자리를 쓴다. 스캔 전에는 비워 둔다 — 높이는 고정폭 컨테이너가 잡는다.
           ⚠️ 잘라 버리지 않고 title 로 전문을 남긴다 — 창고에서 경고를 놓치면 오출고가 된다. */}
       {error ? (
@@ -111,8 +157,10 @@ export function ToteScanPanel({
         <div className="min-w-0 flex-1" />
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <TrayBox size="lg">라인 {summary.lineName}</TrayBox>
-          <TrayBox size="lg">분할 {summary.seqNo}</TrayBox>
+          <TrayBox size="lg">{summary.lineName}</TrayBox>
+          {/* 한 주문이 박스 여러 개로 나뉠 때 몇 번째 박스인지 — "분할 {n}" 은 내부 용어라
+              사용자에게는 뜻이 안 드러난다("사용자에게 보이는 말로는 어색하다", 검토 지적). */}
+          <TrayBox size="lg">{summary.seqNo}번째 박스</TrayBox>
           <TrayBox size="lg" className="min-w-0">
             <span className="truncate">토트 {summary.toteBarcode ?? "—"}</span>
           </TrayBox>

@@ -267,15 +267,18 @@ export default function PackingV2Page() {
         onNextTote={handleNextTote}
         isNextPending={nextTote.isPending}
         hasNextTote={hasNextTote && effectiveLineId !== null}
+        lines={lines}
+        linesLoading={linesQuery.isLoading}
+        selectedLineId={effectiveLineId}
+        onSelectLine={handleSelectLine}
       />
 
       <div className="flex min-h-0 flex-1 gap-2">
         {/* ── 좌: 배송 내역 + 품목 ──────────────────────────── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-          {/* 3-1 GET /lines/{lineId}/shipments — LINE 탭으로 라인을 고르고, 그 라인의
-              배송단위를 대기중(TOTE_ASSIGNED)/진행중(PACKING)/완료(PACKED) 로 표시 (D-12).
-              라인 목록은 `GET /lines` — 탭은 이름을 서버가 준 그대로 쓰고, ACTIVE 가 아닌
-              라인은 탭에 남긴 채 고르지만 못하게 막는다(`line-shipments-panel.tsx`). */}
+          {/* 3-1 GET /lines/{lineId}/shipments — 위 토트 스캔 패널의 `LINE:` 탭에서 고른
+              라인의 배송단위를 대기중(TOTE_ASSIGNED)/진행중(PACKING)/완료(PACKED) 로 표시
+              (D-12). 라인은 여기서 다시 고르지 않는다(`line-shipments-panel.tsx`). */}
           {/* ★ 132 → **340px** (사용자 결정 — 라인별 배송 내역을 더 크게).
               이 칸은 라인의 배송단위가 **여러 줄로 쌓이는** 자리라 132px 로는 두세 줄이
               한계였다. 늘어난 208px 은 아래 품목 표(flex-1)가 내준다 — 품목은 보통 서너
@@ -285,10 +288,8 @@ export default function PackingV2Page() {
               ⚠️ 이 숫자 하나만 바꾸면 두 칸의 비율이 정해진다. 왼쪽 열 높이가 약 764px 이라
                  340 이면 배송 내역 : 품목 = 340 : 416 이다. */}
           <LineShipmentsPanel
-            lines={lines}
-            linesLoading={linesQuery.isLoading}
             selectedLineId={effectiveLineId}
-            onSelectLine={handleSelectLine}
+            linesLoading={linesQuery.isLoading}
             shipments={lineShipmentsQuery.data?.shipments ?? []}
             shipmentsLoading={lineShipmentsQuery.isLoading}
             shipmentsError={lineShipmentsQuery.isError}
