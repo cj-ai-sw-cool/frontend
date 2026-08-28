@@ -805,7 +805,11 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
           깔리므로, 치수가 정해지기 전에 부르면 크기가 어긋난다.
        ⚠️ 야적장 판은 y = -0.03 이다. 창고 바닥(y = 0)보다 낮게 두어야 겹치는 자리에서
           두 판이 서로 깜빡이지(z-fighting) 않는다. */
-    const exterior = createExterior(THREE, { floorW, floorD, floorCz });
+    /* ⚠️ 상차 장면의 작업자는 **창고 안 작업자와 같은 함수**로 만든다. 바깥에서 따로
+       만들면 같은 창고에서 다른 사람이 일하게 된다 (`warehouse-exterior` 주석 참고). */
+    const exterior = createExterior(THREE, { floorW, floorD, floorCz }, {
+      makePiglin: () => buildPiglin({ cart: false }),
+    });
     scene.add(exterior.group);
 
     /* 벽 (카메라 방향에 따라 자동 페이드) · 트러스 · 조명기구 */
@@ -824,6 +828,45 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     addWall("left", new THREE.BoxGeometry(0.34, 1.3, floorD), 0x232b35, -floorW / 2, 0.65, floorCz);
     addWall("right", new THREE.BoxGeometry(0.3, 5.4, floorD), 0x1a2028, floorW / 2, 4.0, floorCz);
     addWall("right", new THREE.BoxGeometry(0.34, 1.3, floorD), 0x232b35, floorW / 2, 0.65, floorCz);
+
+    /* ── 팀 로고 (왼쪽 벽 위쪽) ────────────────────────────────────────
+       ★ 벽에 페인트로 쓴 사인이다 (사용자 요청 — 심플하게). 창고 벽의 사인은 회사 로고를
+         크게 하나 박는 것이지 장식이 아니므로, 글자 하나와 밑줄 한 줄로 끝낸다.
+       ⚠️ 재질은 `MeshBasicMaterial` 이다. 이 벽은 빛이 거의 안 닿는 어두운 면(0x1a2028)이라
+          램버트로 두면 글자가 벽과 같이 묻혀 안 보인다. 대신 흰색이 아니라 **회청색**으로
+          낮춰 칠해서, 스스로 빛나는 간판이 아니라 칠해 둔 글자로 보이게 한다.
+       ⚠️ `wallSets.left` 에 함께 넣는다. 카메라가 그 벽 너머로 돌면 벽이 투명해지는데,
+          로고만 남으면 허공에 글자가 떠 있게 된다. */
+    const logoCv = document.createElement("canvas");
+    logoCv.width = 1024; logoCv.height = 256;
+    {
+      const c = logoCv.getContext("2d");
+      c.clearRect(0, 0, 1024, 256);
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      c.font = "700 132px 'Arial', 'Helvetica', sans-serif";
+      /* 자간을 벌린다 — 다섯 글자짜리 짧은 말은 붙여 쓰면 도장처럼 보이고, 벌려 쓰면
+         벽에 자리를 잡은 사인으로 보인다. `letterSpacing` 은 캔버스 2D 의 최신 속성이라
+         없는 브라우저도 있어서, 없으면 그냥 붙여 쓴다 */
+      try { c.letterSpacing = "18px"; } catch { /* 지원 안 하면 자간 없이 */ }
+      c.fillStyle = "#AEBDD0";
+      c.fillText("A.LTS", 512, 112);
+      c.fillStyle = "#FF8A2A";              // 가운데 점만 강조색 — 창고 화면의 강조와 같은 주황
+      c.fillRect(300, 190, 424, 7);
+    }
+    const logoTex = new THREE.CanvasTexture(logoCv);
+    logoTex.colorSpace = THREE.SRGBColorSpace;
+    logoTex.anisotropy = 8;
+    const logo = new THREE.Mesh(
+      new THREE.PlaneGeometry(7.2, 1.8),
+      new THREE.MeshBasicMaterial({ map: logoTex, transparent: true, opacity: 1, depthWrite: false }),
+    );
+    /* 벽 안쪽 면에 붙인다. 벽 두께가 0.3 이라 중심에서 0.15 가 표면이고, 거기서 1cm 띄운다 —
+       딱 붙이면 두 면이 같은 깊이라 z-파이팅으로 글자가 지글거린다 */
+    logo.position.set(-floorW / 2 + 0.16, 5.35, floorCz);
+    logo.rotation.y = Math.PI / 2;   // 판의 앞면(+z)을 창고 안쪽(+x)으로
+    scene.add(logo);
+    wallSets.left.push(logo);
 
     /* 랙 구조 (인스턴싱) */
     const posts = [], decks = [], bars = [];
@@ -1108,6 +1151,14 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         line: 3 + i,
         packed: 128 + i * 37,
         seed: i,
+        /* ★ 작업자는 **앞쪽 한 대에만** 세운다 (사용자 지적 — 뒤쪽엔 빼 달라).
+             둘 다 세우면 좁은 자리에 같은 동작이 나란히 돌아 눈에 거슬리고, 어느 쪽을
+             보라는 화면인지가 흐려진다. 한 명이 일하고 한 대는 비어 있는 편이 실제
+             현장에도 가깝다.
+           ⚠️ 앞쪽은 **i = 1** 이다(z = +4.5). 배열이 [-4.5, +4.5] 라 뒤쪽이 먼저다 —
+              Enter 로 훑는 순서를 뒤집어 쓰는 것과 같은 이유다.
+           창고 안 작업자와 같은 함수로 만든다 (`packing-station` 주석 참고) */
+        makePiglin: i === 1 ? () => buildPiglin({ cart: false }) : undefined,
       });
       scene.add(st.group);
       return st;
@@ -1438,7 +1489,9 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       },
     });
     simRunRef.current = (items) => {
-      inboundSim.start(items);
+      /* ⚠️ 지금 보고 있던 각을 넘겨준다. 도입부가 그 각을 붙들고 시작해야 버튼을 누른
+         순간 화면이 홱 돌지 않는다 (`inbound-sim` 의 `introAz` 참고). */
+      inboundSim.start(items, cur.az);
       followSim = true;
       /* 촬영 시작 — 지금 카메라 자리에서 이어 받는다. 0 에서 시작하면 첫 프레임에 카메라가
          창고 원점으로 순간이동했다가 날아온다 */
@@ -1464,6 +1517,11 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     /* 클릭 지점 포커스 (탭과 드래그 구분) */
     const ray = new THREE.Raycaster();
     let clickInfo = null;
+    /* 우클릭 드래그가 지금 진행 중인가. 드래그가 캔버스 밖에서 끝나도(오버레이 패널 위,
+       3D 탭 wrapper 바깥 등) 뒤따라오는 네이티브 컨텍스트 메뉴를 window 레벨에서 막기
+       위한 게이트. 항상 막아 두지 않고 이 플래그로 게이트하는 이유는 onWindowContextMenu
+       선언부 옆 주석 참고 */
+    let rightDragActive = false;
     /* 포탈에 마우스가 올라와 있는가. 상태가 아니라 지역 변수다 -
        매 프레임 읽는 값이라 상태로 두면 초당 60번 리렌더가 돈다.
        (주의) **쓰는 곳보다 위에** 둔다. `let` 은 선언 줄을 지나기 전에는 읽을 수 없어서,
@@ -1554,6 +1612,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       ptrs.set(e.pointerId, [e.clientX, e.clientY]);
       el.setPointerCapture(e.pointerId);
       clickInfo = ptrs.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+      if (e.button === 2) rightDragActive = true;
     };
     /* 마우스가 포탈 위에 있는지 본다. 끌고 있는 중에는 보지 않는다 —
        화면을 돌리는 동안 커서가 포탈을 스쳐도 반응하면 안 된다 */
@@ -1618,8 +1677,26 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       clickInfo = null;
       ptrs.delete(e.pointerId);
       if (ptrs.size < 2) pinchD = 0;
+      /* 즉시 끄지 않는다 - 우클릭을 뗄 때 브라우저는 pointerup → contextmenu 를 같은
+         태스크 안에서 동기적으로 쏜다. setTimeout(0) 으로 다음 태스크로 미뤄야
+         onWindowContextMenu 가 먼저 플래그를 읽고 소비할 시간을 번다. */
+      setTimeout(() => { rightDragActive = false; }, 0);
     };
     const onDbl = () => { Object.assign(des, OVERVIEW); focusedStation = null; };
+    /* 우클릭 드래그로 카메라를 돌리므로, 네이티브 컨텍스트 메뉴는 방해만 된다 */
+    const onContextMenu = (e) => e.preventDefault();
+    /* el 밖(오버레이 패널 더 바깥, 3D 탭 wrapper 바깥 등)에서 드래그가 끝나는 극단적인
+       경우까지 덮기 위해 window 레벨에서 한 번 더 막는다. 항상 켜 두지 않고
+       rightDragActive 로 게이트하는 이유: 이 앱의 다른 화면(2D 지도, win98 셸의 다른
+       창)에서는 정상적인 우클릭이 필요할 수 있는데, 무조건 preventDefault 하면 그것까지
+       막아 버린다. 이 화면에서 실제로 우클릭-드래그가 일어났을 때만 다음 contextmenu
+       하나를 막는다. */
+    const onWindowContextMenu = (e) => {
+      if (rightDragActive) {
+        e.preventDefault();
+        rightDragActive = false;
+      }
+    };
 
     /* Enter — 출고 포스기를 차례로 확대한다.
        ★ 순서는 **앞쪽(카메라에 가까운 쪽)부터**다. 기본 시점에서 눈에 먼저 들어오는 것이
@@ -1638,10 +1715,32 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
          창고 카메라가 멋대로 움직여서, 돌아왔을 때 엉뚱한 자리에 서 있게 된다.
          리스너 등록 순서에 기대는 `stopPropagation` 대신 여기서 못을 박는다. */
       if (inRoomRef.current) return;
-      if (e.target instanceof HTMLElement) {
-        const tag = e.target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT") return;
+      const tag = e.target instanceof HTMLElement ? e.target.tagName : "";
+      /* 글자를 치고 있는 중이면 언제나 넘긴다 — 카메라가 남의 타자를 가로채면 안 된다 */
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      /* ── 시뮬레이션에서 빠져나오기 ────────────────────────────────
+         ★ 적재가 끝나면 `outro` 가 출고 쪽을 비춘 채 멈추는데, 그동안에도 카메라는
+           시뮬레이션 것이다(`running` 이 참으로 남는다). 놓아 주지 않으면 아래에서
+           `des` 를 바꿔 봐야 매 프레임 덮어써진다.
+         ⚠️ **버튼 걸러내기보다 먼저** 와야 한다. 시뮬레이션을 버튼으로 시작하면 그
+            버튼에 포커스가 남고, Enter 는 브라우저가 그 버튼의 클릭으로 바꿔 보낸다 —
+            나가려고 누른 Enter 가 시뮬레이션을 **다시 시작**시켰다. 여기서 가로채고
+            `preventDefault` 로 그 클릭 합성을 막는다.
+         ⚠️ 여기서 **돌아간다.** 같은 Enter 로 포스기까지 한 번에 가면 빠져나온 창고
+            화면을 보지도 못하고 다음 곳으로 끌려간다. 한 번 더 누르면 그때 간다.
+         ⚠️ 시뮬레이션이 매 프레임 지금 카메라를 `cur`/`des` 에 되받아 적어 두므로,
+            `des` 만 전체 보기로 바꾸면 서 있던 자리에서 부드럽게 물러난다. */
+      if (followSim || inboundSim?.running) {
+        e.preventDefault();
+        inboundSim?.finish();
+        followSim = false;
+        focusedStation = null;
+        Object.assign(des, OVERVIEW);
+        return;
       }
+
+      if (tag === "BUTTON") return;   // 평소에는 버튼이 Enter 를 먼저 가진다
       e.preventDefault();
       const order = [...stations].reverse();   // 앞쪽(+z)이 배열 뒤에 있다
       const at = order.indexOf(focusedStation);
@@ -1668,6 +1767,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     el.addEventListener("pointercancel", onUp);
     el.addEventListener("dblclick", onDbl);
     el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("contextmenu", onContextMenu);
+    window.addEventListener("contextmenu", onWindowContextMenu);
 
     /* ── API ── */
     const applyDay = (d) => {
@@ -1918,7 +2019,14 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         };
         fadeWall(wallSets.back, camP.z < zMin + 2.5);
         fadeWall(wallSets.left, camP.x < -floorW / 2 + 2.5);
-        fadeWall(wallSets.right, camP.x > floorW / 2 - 2.5);
+        /* ★ 오른쪽 벽만 **확대해도** 사라진다 (사용자 요청). 그 너머 도크에서 상차가
+             돌아가고 있는데, 벽이 정확히 그 사이를 막고 있다 — 창고 안에서 당겨 보면
+             트럭 짐칸이 보여야 한다.
+           ⚠️ 기준은 카메라 **거리**(`cur.r`)다. 화면에 꽉 차게 당겼는지를 재는 값이라,
+              어디를 보고 있든 "확대했다"와 뜻이 같다.
+           ⚠️ 나머지 두 벽은 그대로 둔다. 셋 다 이렇게 하면 조금만 당겨도 창고가 지붕 없는
+              평면도가 되어, 안에 있다는 느낌이 사라진다. */
+        fadeWall(wallSets.right, camP.x > floorW / 2 - 2.5 || cur.r < 15);
       }
 
       /* ── 갱신 순서 ───────────────────────────────────────────────────
@@ -1926,6 +2034,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
             늘 **한 프레임 전의 자리**를 보고 있었다 — 초당 60프레임이면 6.2m/s 로 달리는
             로봇이 매 프레임 10cm 씩 앞서 나간다. 화면이 못 따라오는 것처럼 보이던 원인이다. */
       portal.update(dt, portalHovered);   // dt 는 위에서 이미 0.05 로 잘려 있다
+      exterior.update(dt);   // 도크 상차 장면 (뒷문·롤러·피글린)
       for (const st of stations) st.update(dt, st === hoveredStation, st === focusedStation);
       inboundSim?.update(dt);
 
@@ -2025,6 +2134,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       el.removeEventListener("dblclick", onDbl);
       window.removeEventListener("keydown", onKey);
       el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("contextmenu", onWindowContextMenu);
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
@@ -2353,7 +2464,10 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
               </div>
             </div>
             {/* ── 3D PANE ── */}
-            <div style={{ display: tab === "3d" ? "block" : "none", position: "absolute", inset: 0 }}>
+            <div
+              style={{ display: tab === "3d" ? "block" : "none", position: "absolute", inset: 0 }}
+              onContextMenu={(e) => e.preventDefault()}
+            >
               <div className="w98-raised" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 32, display: "flex", alignItems: "center", gap: 6, padding: "0 6px", zIndex: 20 }}>
                 <button className="w98-btn" onClick={() => { setTab("map"); setSel(null); apiRef.current?.setHighlight(null); }}>◀ 지도</button>
                 <button className="w98-btn" onClick={() => { setSel(null); apiRef.current?.setHighlight(null); apiRef.current?.resetView(); }}>전체 보기</button>
@@ -2362,7 +2476,11 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
                 <button
                   className="w98-btn"
                   style={{ marginLeft: "auto" }}
-                  onClick={() => simRunRef.current?.(DEMO_ITEMS)}
+                  /* ⚠️ 누른 뒤 **포커스를 놓는다.** 안 놓으면 이 버튼이 Enter 를 계속
+                     물고 있어서, 시뮬레이션에서 나가려고 누른 Enter 가 이 버튼을 다시
+                     눌러 처음부터 되돌린다. 위 `onKey` 에서도 막지만, 애초에 영화가
+                     시작된 뒤에 시작 버튼이 포커스를 쥐고 있을 이유가 없다. */
+                  onClick={(e) => { e.currentTarget.blur(); simRunRef.current?.(DEMO_ITEMS); }}
                   title="상품 3건을 입고 문에서 받아 등급별 슬롯까지 적재한다"
                 >
                   ▶ 입고 적재 시뮬레이션

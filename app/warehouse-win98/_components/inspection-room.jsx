@@ -990,30 +990,128 @@ function buildConveyor(scene, dispose, LEN = 5.6) {
   }
   dispose.push(rollGeo, rollMat);
 
-  /* 실려 가는 상자 — 크기와 색을 조금씩 달리해야 "여러 건"으로 보인다.
-     ★ 가만히 놓여 있던 것을 **흐르게** 바꿨다. 롤러만 돌고 짐이 멈춰 있으면 고장난 벨트다.
+  /* ── 실려 가는 짐 ──────────────────────────────────────────────────
+     ★ 똑같은 골판지 상자 다섯 개가 흐르던 것을 **비정형 물품**으로 바꿨다 (사용자 요청).
+       검수실은 "상자를 재는 곳"이 아니라 **아직 상자에 안 들어간 것을 재는 곳**이다 —
+       참기름 6입 트레이나 음료수 12병 세트처럼 모양이 제각각인 것이 흐르는 편이 이 방이
+       무엇을 하는 곳인지를 훨씬 잘 말한다. 규격 상자만 흐르면 굳이 잴 이유가 없다.
+     ⚠️ 물품 하나가 **그룹**이다. 아래 흐르기 코드는 `position.x` 만 건드리므로 그룹이어도
+        그대로 흐른다. 원점은 **벨트 표면**에 두고 자식을 위로 쌓는다 — 물품마다 높이가
+        달라서, 원점을 가운데 두면 바닥에 맞추는 계산을 물품마다 따로 해야 한다.
+     ⚠️ 지오메트리와 재질은 물품 안에서 **돌려 쓴다.** 병 열두 개에 재질을 열두 벌 만들면
+        그때마다 셰이더가 새로 컴파일되고, 버릴 것도 그만큼 늘어난다.
      ⚠️ 간격을 일정하게 두지 않는다. 자로 잰 듯 같은 간격이면 컨베이어가 아니라 회전목마로
         보인다 — 실제 라인은 짐이 몰렸다 비었다 한다. */
-  const boxes = [];
-  const SPEC = [
-    [0.42, 0.30, 0.32, 0xc9a06a, 0.00],
-    [0.34, 0.26, 0.28, 0xb98f5c, 0.19],
-    [0.50, 0.34, 0.36, 0xd1aa76, 0.41],
-    [0.38, 0.28, 0.30, 0xc09363, 0.58],
-    [0.46, 0.32, 0.34, 0xd6b183, 0.83],
+  const M = (color, extra) => {
+    const m = new THREE.MeshLambertMaterial({ color, ...extra });
+    dispose.push(m);
+    return m;
+  };
+  const G = (geo) => { dispose.push(geo); return geo; };
+  const mk = (geo, mat, x, y, z, parent) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    parent.add(m);
+    return m;
+  };
+
+  const ITEMS = [
+    /* ① 비비고 왕교자 낱봉 4입 — 트레이에 담긴 **물렁한 봉지**.
+       구를 납작하게 눌러 만든다. 상자와 달리 모서리가 없어서, 이것 하나만 지나가도
+       "규격이 아닌 것이 흐른다"가 읽힌다. */
+    () => {
+      const grp = new THREE.Group();
+      mk(G(new THREE.BoxGeometry(0.46, 0.05, 0.34)), M(0x8f6a45), 0, 0.025, 0, grp);
+      const pouch = G(new THREE.SphereGeometry(0.5, 10, 7));
+      const pm = M(0xd8452f);
+      for (let i = 0; i < 4; i += 1) {
+        const p = mk(pouch, pm, ((i % 2) - 0.5) * 0.22, 0.105, (Math.floor(i / 2) - 0.5) * 0.16, grp);
+        p.scale.set(0.20, 0.10, 0.15);
+        p.rotation.y = (i % 2 ? 1 : -1) * 0.18;
+      }
+      return grp;
+    },
+
+    /* ② 음료수 12병 세트 — 4 x 3 트레이.
+       ⚠️ 병목과 뚜껑을 따로 얹는다. 원통 하나로 두면 페트병이 아니라 캔으로 보인다. */
+    () => {
+      const grp = new THREE.Group();
+      mk(G(new THREE.BoxGeometry(0.40, 0.06, 0.30)), M(0xb08050), 0, 0.03, 0, grp);
+      const body = G(new THREE.CylinderGeometry(0.033, 0.033, 0.20, 10));
+      const neck = G(new THREE.CylinderGeometry(0.016, 0.016, 0.05, 8));
+      const cap = G(new THREE.CylinderGeometry(0.019, 0.019, 0.022, 8));
+      const bm = M(0x2f7d4f), cm = M(0xe8e2d0);
+      for (let i = 0; i < 12; i += 1) {
+        const cx = ((i % 4) - 1.5) * 0.088, cz = (Math.floor(i / 4) - 1) * 0.09;
+        mk(body, bm, cx, 0.16, cz, grp);
+        mk(neck, bm, cx, 0.285, cz, grp);
+        mk(cap, cm, cx, 0.322, cz, grp);
+      }
+      return grp;
+    },
+
+    /* ③ 백설 참기름 6입 — 호박색 유리에 금색 뚜껑. 이 라인에서 가장 작고 낮은 물품이라,
+       크기가 제각각이라는 것을 이것 하나가 맡는다. */
+    () => {
+      const grp = new THREE.Group();
+      mk(G(new THREE.BoxGeometry(0.30, 0.05, 0.22)), M(0xa9793f), 0, 0.025, 0, grp);
+      const body = G(new THREE.CylinderGeometry(0.030, 0.030, 0.13, 10));
+      const cap = G(new THREE.CylinderGeometry(0.016, 0.016, 0.03, 8));
+      const bm = M(0xb8791b), cm = M(0xd4b23c);
+      for (let i = 0; i < 6; i += 1) {
+        const cx = ((i % 3) - 1) * 0.085, cz = (Math.floor(i / 3) - 0.5) * 0.10;
+        mk(body, bm, cx, 0.115, cz, grp);
+        mk(cap, cm, cx, 0.195, cz, grp);
+      }
+      return grp;
+    },
+
+    /* ④ 햇반 6입 묶음 — 수축 포장.
+       ⚠️ 비닐은 **깊이를 쓰지 않는다**(`depthWrite: false`). 켜 두면 비닐이 먼저 그려질 때
+          그 안의 밥그릇이 통째로 가려져, 투명한데 속이 안 보이는 것이 된다. */
+    () => {
+      const grp = new THREE.Group();
+      const bowl = G(new THREE.CylinderGeometry(0.058, 0.050, 0.048, 14));
+      const lid = G(new THREE.CylinderGeometry(0.060, 0.060, 0.006, 14));
+      const bm = M(0xe8e4dc), lm = M(0xc8352c);
+      for (let i = 0; i < 6; i += 1) {
+        const cx = ((i % 3) - 1) * 0.125, cz = (Math.floor(i / 3) - 0.5) * 0.125;
+        mk(bowl, bm, cx, 0.024, cz, grp);
+        mk(lid, lm, cx, 0.051, cz, grp);
+      }
+      mk(G(new THREE.BoxGeometry(0.41, 0.064, 0.29)),
+        M(0xdfe6ee, { transparent: true, opacity: 0.22, depthWrite: false }),
+        0, 0.032, 0, grp);
+      return grp;
+    },
+
+    /* ⑤ 비비고 만두 낱봉 하나 — 눕혀진 봉지에 접착부가 삐져나와 있다.
+       이 라인에서 가장 얇아서, 측정기가 왜 세 방향에서 찍는지를 이것이 설명한다. */
+    () => {
+      const grp = new THREE.Group();
+      const p = mk(G(new THREE.SphereGeometry(0.5, 12, 8)), M(0xcf3b28), 0, 0.058, 0, grp);
+      p.scale.set(0.30, 0.12, 0.19);
+      const flap = mk(G(new THREE.BoxGeometry(0.30, 0.012, 0.045)), M(0xe8dfd2), 0, 0.022, 0.10, grp);
+      flap.rotation.x = 0.22;
+      return grp;
+    },
   ];
-  for (const [w, h, d, col, frac] of SPEC) {
-    const mat = new THREE.MeshLambertMaterial({ color: col });
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-    m.position.set(-LEN / 2 + frac * LEN, TOP + 0.02 + h / 2, 0);
-    m.rotation.y = (frac - 0.5) * 0.16;
-    g.add(m);
-    boxes.push(m);
-    dispose.push(m.geometry, mat);
-  }
+
+  const boxes = [];
+  ITEMS.forEach((build, i) => {
+    const frac = [0.00, 0.19, 0.41, 0.58, 0.83][i];
+    const it = build();
+    it.position.set(-LEN / 2 + frac * LEN, TOP + 0.02, 0);
+    it.rotation.y = (frac - 0.5) * 0.5;   // 조금씩 비뚤게 — 손으로 올린 것처럼
+    g.add(it);
+    boxes.push(it);
+  });
 
   scene.add(g);
-  return { group: g, rollers, boxes, len: LEN, top: TOP };
+  /* `exitX` — 물건이 빨려 들어갈 자리(로컬 x). 벨트 끝(-LEN/2)보다 조금 앞이다.
+     ⚠️ 이 값을 밖에서 다시 계산하지 않게 함께 내준다. 포탈은 이 자리에 세워야 하는데,
+        두 곳에서 따로 적어 두면 벨트 길이를 바꿨을 때 포탈만 제자리에 남는다. */
+  return { group: g, rollers, boxes, len: LEN, top: TOP, exitX: -LEN / 2 + 0.1 };
 }
 
 /* ── 창고 소품 ────────────────────────────────────────────────────────────
@@ -1761,6 +1859,8 @@ export default function InspectionRoom({ onExit }) {
       des.r = Math.min(14, Math.max(2.6, des.r * (1 + e.deltaY * 0.0011)));
     };
     const onDbl = () => { Object.assign(des, HOME); stop = -1; };
+    /* 우클릭 드래그로 카메라를 돌리므로, 네이티브 컨텍스트 메뉴는 방해만 된다 */
+    const onContextMenu = (e) => e.preventDefault();
 
     /* Enter — 이 방에서 볼 것을 차례로 확대한다: 측정기 → 모니터 → 전체.
        ★ 순서가 곧 작업 순서다. 물건을 재고(측정기), 결과를 읽는다(모니터). 한 번 더 누르면
@@ -1823,6 +1923,7 @@ export default function InspectionRoom({ onExit }) {
     el.addEventListener("pointercancel", onUp);
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("dblclick", onDbl);
+    el.addEventListener("contextmenu", onContextMenu);
 
     /* ⚠️ 폭이 4px 이하면 손대지 않는다. 판이 숨겨져 있을 때 0 으로 리사이즈하면
        렌더러가 깨진다(창고 쪽과 같은 이유). */
@@ -1884,15 +1985,33 @@ export default function InspectionRoom({ onExit }) {
          ⚠️ 롤러 회전 속도와 짐의 속도는 **같은 값에서 나와야** 한다. 따로 적으면 짐이
             롤러 위를 미끄러지는 것처럼 보인다. 반지름 0.055m 이므로 각속도 = v / r. */
       const beltV = 0.34;                        // m/s — "천천히"
-      for (const r of conv.rollers) r.rotation.z += (beltV / 0.055) * dt;
+      /* 흐르는 방향 (사용자 요청으로 뒤집었다).
+         ⚠️ 이 부호 하나로 롤러·짐·되돌아오는 자리 **셋을 다 돌린다.** 셋 중 하나만 뒤집으면
+            짐이 롤러를 거슬러 가거나, 끝에 닿은 짐이 되돌아오지 못하고 그대로 날아간다. */
+      const beltDir = -1;
+      for (const r of conv.rollers) r.rotation.z += beltDir * (beltV / 0.055) * dt;
+      /* ★ 물건이 양 끝에서 **서서히 작아지며** 드나든다 (사용자 지적 — 허공에서 뿅
+           사라지면 화면 오류로 보인다).
+         ★ 한때 벨트 끝에 포탈을 하나 더 세웠다가 걷어냈다 (사용자 지적). 문이 둘이 되니
+           어느 쪽이 나가는 문인지 헷갈렸다. 사라지는 자리를 어디로 할지는 아직 정하지
+           않았다 — 지금은 자연스럽게 작아지는 것까지만 해 둔다.
+         ⚠️ 사라지는 것을 **크기로** 표현한다. 투명도로 하려면 물건마다 재질을 다 찾아
+            켜고 꺼야 하는데(한 물건이 예닐곱 벌을 쓴다), 그때마다 셰이더가 새로 컴파일돼
+            벨트가 끊긴다. 크기는 그룹 하나만 건드리면 된다.
+         ⚠️ **들어오는 쪽도** 같이 키운다. 나가는 쪽만 다듬으면 이번엔 반대쪽 끝에서
+            물건이 튀어나오는 것이 눈에 띈다.
+         ⚠️ 0 까지 줄이지 않는다. 크기가 정확히 0 인 행렬은 뒤집을 수 없어서 three.js 가
+            매 프레임 경고를 쏟는다. */
+      const OUT = conv.exitX, IN = conv.len / 2 + 0.4;
       for (const b of conv.boxes) {
-        b.position.x += beltV * dt;
-        /* 끝에 닿으면 반대쪽 끝에서 다시 들어온다. 짐이 사라졌다 나타나는 것이 아니라
-           라인이 계속 돌고 있는 것으로 읽히도록, 넘기는 자리를 화면 밖(벨트 끝 너머)에 둔다 */
-        if (b.position.x > conv.len / 2 + 0.4) b.position.x = -conv.len / 2 - 0.4;
+        b.position.x += beltDir * beltV * dt;
+        if (b.position.x < OUT - 0.15) b.position.x = IN;
+        const grow = Math.min((b.position.x - OUT) / 0.7, (IN - b.position.x) / 0.5, 1);
+        b.scale.setScalar(Math.max(0.001, grow));
       }
 
       back.update(dt, hovered?.targets === back.pickTargets);
+
 
       /* 모니터 테두리 - 마우스가 올라오면 진해지고 천천히 숨쉰다.
          3D 안의 물체는 CSS 의 `:hover` 가 없으니, 누를 수 있다는 걸 이렇게 알린다. */
@@ -1944,6 +2063,7 @@ export default function InspectionRoom({ onExit }) {
       el.removeEventListener("pointercancel", onUp);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("dblclick", onDbl);
+      el.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("keydown", onKey);
       back.dispose();
       for (const d of dispose) d?.dispose?.();

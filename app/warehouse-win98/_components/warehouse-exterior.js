@@ -339,12 +339,21 @@ function rearDoorTexture(THREE) {
  * ⚠️ **뒷문이 원점(z = 0)** 이고 차체는 +z 쪽으로 뻗는다. 도크에 붙일 때 "뒷문을 범퍼에
  *    맞춘다"가 곧 "z 를 범퍼 위치에 둔다"가 되어, 차 길이를 몰라도 세울 수 있다.
  */
-function buildTruck(THREE, dispose) {
-  const g = new THREE.Group();
+/* 적재함 치수 — **상차 장면이 같은 값을 쓴다.** 뒷문·짐칸·상자 더미가 전부 이 숫자에
+   기대고 있어서, 각자 적어 두면 트럭을 조금만 키워도 문이 허공에 뜨거나 상자가 벽을
+   뚫는다. 한 곳에서만 정한다. */
+const BW = 2.32;                                 // 적재함 폭
+const BOX_L = 5.2, BOX_H = 2.5, BOX_Y = 1.05;    // 길이·높이·바닥 높이
+const CAB_L = 2.05;
+/* 적재함 뒷면(뒷문)의 z. `buildTruck` 주석대로 뒷문이 원점 쪽이고 차체가 +z 로 뻗는다 */
+const REAR_Z = 0.1;
 
-  const BW = 2.32;               // 적재함 폭
-  const BOX_L = 5.2, BOX_H = 2.5, BOX_Y = 1.05;   // 적재함 길이·높이·바닥 높이
-  const CAB_L = 2.05;
+/**
+ * @param {{open?: boolean}} opt `open` 이면 뒷문 면을 지우고 짐칸 안쪽을 만들어 둔다 —
+ *   문짝과 상차 장면은 `buildLoading` 이 따로 얹는다.
+ */
+function buildTruck(THREE, dispose, { open = false } = {}) {
+  const g = new THREE.Group();
 
   const blueMat = new THREE.MeshLambertMaterial({ color: 0x1668c4 });
   const roofMat = new THREE.MeshLambertMaterial({ color: 0xe6ebf1 });
@@ -367,6 +376,21 @@ function buildTruck(THREE, dispose) {
   box.position.set(0, BOX_Y + BOX_H / 2, BOX_L / 2 + 0.1);
   g.add(box);
   dispose.push(boxGeo, sideR, sideL, doorMat, liveryR, liveryL, doorTex);
+
+  if (open) {
+    /* ⚠️ 뒷면 재질을 **안 그리게** 한다(`visible = false`). 지오메트리에서 면을 빼는
+       것보다 이 편이 낫다 — 면 순서([+x,-x,+y,-y,+z,-z])가 재질 배열과 짝지어져
+       있어서, 면을 빼면 나머지 재질이 한 칸씩 밀려 옆면에 뒷문 무늬가 붙는다.
+       ⚠️ 안쪽 껍데기를 따로 세운다. 상자는 바깥면만 그리므로(백페이스 컬링) 뒷면을
+          지우면 안이 뚫려 보이는 게 아니라 **반대쪽 바깥 풍경**이 보인다. */
+    doorMat.visible = false;
+    const inGeo = new THREE.BoxGeometry(BW - 0.06, BOX_H - 0.06, BOX_L - 0.06);
+    const inMat = new THREE.MeshLambertMaterial({ color: 0x6f7681, side: THREE.BackSide });
+    const inner = new THREE.Mesh(inGeo, inMat);
+    inner.position.copy(box.position);
+    g.add(inner);
+    dispose.push(inGeo, inMat);
+  }
 
   // 적재함 아래 사이드 스커트
   const skirtGeo = new THREE.BoxGeometry(BW - 0.12, 0.42, BOX_L - 0.2);
@@ -435,6 +459,196 @@ function buildTruck(THREE, dispose) {
   return g;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   상차 장면 — 뒷문 열린 트럭에 좀비화 피글린이 상자를 싣는다.
+
+   ★ 도크에 트럭만 세워 두면 "주차장"이지 출고장이 아니다. 상자가 흘러 들어가고 누군가
+     그것을 받아 쌓고 있어야 이 자리가 무엇을 하는 곳인지 읽힌다 (사용자 요청).
+   ★ 피글린은 **창고 안 작업자와 같은 인물**이다. `makePiglin` 으로 받아 쓴다 — 여기서
+     따로 만들면 같은 창고에서 다른 사람이 일하게 된다.
+
+   ── 좌표 ────────────────────────────────────────────────────────────────────
+   이 그룹은 도크(`bay`) 안에 놓이고, **트럭과 같은 x** 에 선다. 그래서 z 를 트럭과 같은
+   눈금으로 읽을 수 있다: 도크 단이 z 0~1.5, 트럭 뒷문이 z 1.6 + REAR_Z, 짐칸 바닥이
+   y = BOX_Y.
+   ⚠️ 롤러는 도크 단 위(y = DOCK_TOP)에 있고 짐칸 바닥(BOX_Y)은 그보다 10cm **낮다.**
+      그래서 상자가 굴러 들어가는 것이 아니라 **사람이 들어서 내려놓는** 그림이 맞다.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function buildLoading(THREE, dispose, { truckZ, dockTop, makePiglin }) {
+  const g = new THREE.Group();
+  /* ⚠️ 이 안의 z 는 전부 **뒷문 기준**으로 적는다. 트럭을 비스듬히 세우면서 이 그룹이
+     트럭과 같은 축으로 함께 돌게 됐는데, 도크 기준으로 적어 두면 트럭만 돌고 롤러와
+     상자 줄은 제자리에 남아 서로 어긋난다. */
+  const door = truckZ + REAR_Z;      // 뒷문 면
+  const floor = BOX_Y;               // 짐칸 바닥 높이
+
+  const carton = new THREE.MeshLambertMaterial({ color: 0xC59A63 });
+  const steel = new THREE.MeshLambertMaterial({ color: 0x9AA5B1 });
+  const frame = new THREE.MeshLambertMaterial({ color: 0x353C44 });
+  dispose.push(carton, steel, frame);
+
+  /* ── 뒷문 두 짝 ──
+     ⚠️ 경첩을 **모서리에** 두고 판을 그 자식으로 매단다. 판 자체를 돌리면 한가운데를
+        축으로 돌아 반쪽이 짐칸을 뚫고 들어간다.
+     ⚠️ 두 짝의 여는 방향 부호가 서로 **반대**다. 같은 부호를 주면 한 짝은 밖으로,
+        다른 한 짝은 짐칸 안으로 접힌다. */
+  const doorTex = rearDoorTexture(THREE);
+  const doorMat = new THREE.MeshLambertMaterial({ map: doorTex });
+  const panelGeo = new THREE.BoxGeometry(BW / 2, BOX_H - 0.06, 0.055);
+  dispose.push(doorTex, doorMat, panelGeo);
+  const OPEN = 2.0;                  // 약 115° — 도크에 붙은 트럭이 열 수 있는 만큼
+  for (const sx of [-1, 1]) {
+    const hinge = new THREE.Group();
+    hinge.position.set(sx * (BW / 2), floor + BOX_H / 2, door);
+    hinge.rotation.y = sx * OPEN;
+    const panel = new THREE.Mesh(panelGeo, doorMat);
+    panel.position.set(-sx * (BW / 4), 0, 0);
+    hinge.add(panel);
+    g.add(hinge);
+  }
+
+  /* ── 도크 위 롤러 컨베이어 ── */
+  const railGeo = new THREE.BoxGeometry(0.06, 0.13, 1.45);
+  for (const sx of [-1, 1]) {
+    const r = new THREE.Mesh(railGeo, frame);
+    r.position.set(sx * 0.47, dockTop + 0.07, door - 0.92);
+    g.add(r);
+  }
+  const rollGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.88, 10);
+  rollGeo.rotateZ(Math.PI / 2);      // 축을 x 로 — 상자는 z 로 흐른다
+  const rollers = [];
+  for (let i = 0; i < 8; i += 1) {
+    const r = new THREE.Mesh(rollGeo, steel);
+    r.position.set(0, dockTop + 0.1, door - 1.58 + i * 0.18);
+    g.add(r);
+    rollers.push(r);
+  }
+  dispose.push(railGeo, rollGeo);
+
+  /* ── 흘러오는 상자 ──
+     ⚠️ 앞차와의 **간격을 지킨다.** 각자 같은 속도로만 가게 두면 맨 앞 상자가 인계 지점에서
+        기다리는 동안 뒤차가 그대로 파고들어 겹친다. */
+  const FEED_Y = dockTop + 0.15;
+  const HOLD = door - 0.36;          // 인계 지점 — 뒷문 바로 앞
+  const GAP = 0.62;
+  const feedGeo = new THREE.BoxGeometry(0.44, 0.30, 0.34);
+  dispose.push(feedGeo);
+  const feed = [];
+  for (let i = 0; i < 4; i += 1) {
+    const m = new THREE.Mesh(feedGeo, carton);
+    m.position.set(0, FEED_Y, HOLD - i * GAP);
+    g.add(m);
+    feed.push(m);
+  }
+
+  /* ── 짐칸 안의 상자 더미 — 2열 x 4단 ──
+     ⚠️ 미리 만들어 두고 **감췄다 보인다.** 한 개씩 만들면 그때마다 지오메트리가 생기고,
+        더미를 비울 때 버릴 것이 쌓인다. */
+  const STACK_GEO = new THREE.BoxGeometry(0.44, 0.30, 0.34);
+  dispose.push(STACK_GEO);
+  const stack = [];
+  for (let i = 0; i < 8; i += 1) {
+    const m = new THREE.Mesh(STACK_GEO, carton);
+    m.position.set(((i % 2) - 0.5) * 0.52, floor + 0.16 + Math.floor(i / 2) * 0.32, door + 1.95);
+    m.visible = false;
+    g.add(m);
+    stack.push(m);
+  }
+
+  /* ── 피글린 — 짐칸 안에서 문과 더미 사이를 오간다 ── */
+  const pig = makePiglin();
+  pig.grp.position.set(0, floor, door + 0.55);
+  g.add(pig.grp);
+  const held = new THREE.Mesh(STACK_GEO, carton);
+  held.visible = false;
+  g.add(held);
+
+  /* 한 개를 싣는 데 걸리는 시간과, 그 안에서 각 동작이 끝나는 지점(초).
+     ⚠️ 합이 `T` 와 같아야 한다 — 어긋나면 주기가 넘어갈 때 자세가 튄다. */
+  const T = 3.6;
+  const t1 = 0.9, t2 = 1.1, t3 = 2.1, t4 = 2.45;   // 대기 / 집기 / 나르기 / 놓기
+  const Z_DOOR = door + 0.55, Z_STACK = door + 1.5;
+  let t = 0, placed = 0;
+
+  const ease = (u) => u * u * (3 - 2 * u);          // 시작·끝이 느린 보간
+
+  return {
+    group: g,
+    update(dt) {
+      t += dt;
+      if (t >= T) {
+        t -= T;
+        /* 한 칸 채운다. 다 차면 비운다 — 실려 나간 것으로 친다.
+           ⚠️ 더미를 다 채운 뒤에 비워야지, 채우면서 비우면 마지막 한 개가 안 보인다. */
+        if (placed >= stack.length) {
+          for (const b of stack) b.visible = false;
+          placed = 0;
+        }
+        stack[placed].visible = true;
+        placed += 1;
+      }
+
+      for (const r of rollers) r.rotation.x += dt * 4.4;
+
+      /* 상자 흐름 — 맨 앞은 인계 지점에서 멈추고, 뒤는 앞차 간격을 지킨다 */
+      let ahead = HOLD;
+      for (const b of feed) {
+        const want = Math.min(ahead, b.position.z + 0.55 * dt);
+        b.position.z = want;
+        b.visible = t < t2;                        // 집는 순간 사라진다 (피글린 손으로 옮겨간다)
+        ahead = b.position.z - GAP;
+      }
+      if (t < dt) {
+        /* 새 주기 — 맨 앞 상자를 줄 맨 뒤로 돌려보낸다 */
+        const lead = feed.shift();
+        lead.position.z = feed[feed.length - 1].position.z - GAP;
+        feed.push(lead);
+      }
+
+      /* 피글린 — 문 ↔ 더미 왕복 */
+      let z = Z_DOOR, face = Math.PI, walk = 0;
+      if (t < t1) {                                 // 문 앞에서 기다린다
+        pig.lArm.rotation.x = -0.5 - 0.35 * Math.sin((t / t1) * Math.PI);
+        pig.rArm.rotation.x = pig.lArm.rotation.x;
+      } else if (t < t2) {                          // 집는다
+        pig.lArm.rotation.x = -1.3;
+        pig.rArm.rotation.x = -1.3;
+      } else if (t < t3) {                          // 안으로 나른다
+        const u = ease((t - t2) / (t3 - t2));
+        z = Z_DOOR + (Z_STACK - Z_DOOR) * u;
+        face = Math.PI + u * Math.PI;               // 돌아서면서 걷는다
+        walk = 1;
+        pig.lArm.rotation.x = -1.3;
+        pig.rArm.rotation.x = -1.3;
+      } else if (t < t4) {                          // 내려놓는다
+        z = Z_STACK;
+        face = 0;
+        const u = (t - t3) / (t4 - t3);
+        pig.lArm.rotation.x = -1.3 + u * 0.5;
+        pig.rArm.rotation.x = pig.lArm.rotation.x;
+      } else {                                      // 빈손으로 돌아온다
+        const u = ease((t - t4) / (T - t4));
+        z = Z_STACK + (Z_DOOR - Z_STACK) * u;
+        face = u * Math.PI;                         // 0 → π (다시 문을 본다)
+        walk = 1;
+        pig.lArm.rotation.x = -0.2;
+        pig.rArm.rotation.x = -0.2;
+      }
+      pig.grp.position.z = z;
+      pig.grp.rotation.y = face;
+      const sw = walk ? Math.sin(t * 11) * 0.55 : 0;
+      pig.lLeg.rotation.x = sw;
+      pig.rLeg.rotation.x = -sw;
+
+      /* 들고 있는 상자 — 가슴 앞에. 놓는 순간 더미로 넘어간다 */
+      held.visible = t >= t2 && t < t4;
+      if (held.visible) {
+        held.position.set(0, floor + 0.72, z - 0.42 * Math.cos(face));
+      }
+    },
+  };
+}
+
 /** 하역 도크 — 콘크리트 단과 도크 문, 고무 범퍼. -z 를 보는 방향으로 짓는다 */
 function buildDock(THREE, dispose, { width, bays }) {
   const g = new THREE.Group();
@@ -467,15 +681,18 @@ function buildDock(THREE, dispose, { width, bays }) {
     }
   }
   dispose.push(bayGeo, bumpGeo, conc, rubber, doorMat);
-  return { group: g, xs, face: DOCK_D };
+  return { group: g, xs, face: DOCK_D, top: DOCK_H };
 }
 
 /**
  * @param {object} THREE
  * @param {{floorW:number, floorD:number, floorCz:number}} dims 창고 바닥 치수
- * @returns {{group: object, dispose: () => void}}
+ * @param {{makePiglin?: () => object}} deps 상차 장면이 쓸 작업자. **창고 안 작업자와 같은
+ *   함수**를 넘겨야 한다 — 여기서 따로 만들면 같은 창고에서 다른 사람이 일하게 된다.
+ *   없으면 상차 장면 없이 트럭만 세운다.
+ * @returns {{group: object, update: (dt:number) => void, dispose: () => void}}
  */
-export function createExterior(THREE, { floorW, floorD, floorCz }) {
+export function createExterior(THREE, { floorW, floorD, floorCz }, { makePiglin } = {}) {
   const group = new THREE.Group();
   const dispose = [];
 
@@ -515,14 +732,38 @@ export function createExterior(THREE, { floorW, floorD, floorCz }) {
      ⚠️ 트럭은 뒷문이 원점이고 차체가 +z 로 뻗는다(`buildTruck` 주석 참고). 그래서 z 를
         범퍼 바로 뒤(`dock.face + 0.1`)에 두면 뒷문이 범퍼에 닿고 차체 전체가 마당으로
         나간다. 차 길이가 바뀌어도 이 값은 그대로다. */
-  for (const x of dock.xs) {
-    const t = buildTruck(THREE, dispose);
-    t.position.set(x, 0, dock.face + 0.1);
-    bay.add(t);
-  }
+  /* ★ **앞쪽 한 대만 문을 연다** (사용자 요청 — 상차 중인 차). 두 대 다 열어 두면
+     상차 장면이 둘로 늘어 화면이 산만하고, 도크가 늘 만차인 창고로 보인다. */
+  let loading = null;
+  dock.xs.forEach((x, i) => {
+    const open = i === 0 && typeof makePiglin === "function";
+    /* ★ 상차 중인 차는 **비스듬히** 세운다 (사용자 요청 — 안이 잘 안 보인다).
+         뒷문이 창고 벽을 정면으로 보고 있으면 짐칸 안이 어느 각도에서도 안 보인다.
+         조금 틀어 두면 열린 문으로 안이 들여다보이고, 실제 도크에서도 트럭이 자로 잰
+         듯 붙지는 않는다.
+       ⚠️ 축을 **뒷문 자리**에 둔다. 차 한가운데를 축으로 돌리면 뒷문이 도크에서 떨어져
+          나가, 붙어 있던 차가 마당 한가운데로 밀려난다.
+       ⚠️ 트럭과 상차 라인(롤러·상자·피글린)을 **같은 그룹에** 넣는다. 따로 두면 차만
+          돌고 상자 줄은 제자리에 남아 허공에서 상자를 받는 그림이 된다. */
+    const slot = new THREE.Group();
+    slot.position.set(x, 0, dock.face + 0.1);
+    slot.rotation.y = open ? 0.34 : 0;   // 약 19°
+    bay.add(slot);
+
+    const t = buildTruck(THREE, dispose, { open });
+    slot.add(t);
+    if (!open) return;
+    loading = buildLoading(THREE, dispose, {
+      truckZ: 0, dockTop: dock.top, makePiglin,
+    });
+    slot.add(loading.group);
+  });
 
   return {
     group,
+    update(dt) {
+      loading?.update(dt);
+    },
     dispose() {
       for (const d of dispose) d?.dispose?.();
     },

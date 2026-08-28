@@ -21,93 +21,11 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
-/* 실측 데이터 — 창고 화면에서 복사. 이 지도가 실제로 쓰는 것만 남겼다:
-   규격별 재고(`REAL_INV`) 하나뿐이다. 날짜 라벨·사용률·입출고 건수는 조작줄과 함께
-   빠졌다 — 이 지도는 날짜가 저절로 흐르기만 하고 그 값을 화면에 적지 않는다. */
-const REAL_INV = {xs:[2515,3177,3404,4037,4251,4143,4651,5502,5356,5203,4756,3895,6017,4996,5027,5297,5836,5836,5537,5699,5776,5723,5485,5193,4963,5637,5637,5448,5727,5692,5293,5348,4718,4716,4015,4893,4725,4916,5945,6105,5621,5620,5602,5462,5508,5731,5931,5873,5693,5563,5446,5972,5276,5034,5136,5229,5424,5488,5247,5087,5032],s:[1284,1658,1586,2129,2296,2251,2633,3150,3093,3032,2894,2496,3479,3295,3335,3801,4051,4033,3912,3912,4012,3862,3755,3635,3560,3864,3864,3738,3938,4163,3988,4051,3935,4061,3773,3759,3822,3816,3873,3641,3421,3421,3575,3597,3622,3690,3727,3605,3658,3560,3521,3673,3388,3411,3359,3303,3402,3321,3295,3236,3196],m:[789,972,1019,1268,1351,1327,1451,1792,1766,1739,1680,1515,2101,1927,1919,1945,2106,2141,2090,2072,2099,2103,2047,1992,1934,2042,2041,1927,2175,2242,2174,2184,2089,2098,1977,1994,1971,1995,2095,1944,1855,1855,1878,1843,1852,1890,1963,1938,1893,1867,1846,1944,1812,1785,1785,1763,1852,1824,1825,1805,1806],l:[165,283,288,369,412,406,466,594,584,568,536,415,643,552,552,638,673,689,642,659,673,710,693,659,630,683,683,724,711,719,677,690,629,620,545,640,636,660,735,814,763,763,770,740,765,777,802,786,769,746,733,726,630,606,596,596,591,611,594,579,567],xxl:[43,58,44,57,73,68,101,116,108,100,93,46,67,21,21,32,14,26,15,12,20,17,6,9,26,77,77,77,133,141,119,126,96,101,60,92,69,76,117,124,98,98,99,107,121,121,120,103,80,75,69,99,109,104,98,102,104,103,92,85,80],xl:[17,20,12,3,14,9,9,12,16,15,13,12,16,11,13,15,22,16,12,12,25,33,31,29,24,46,46,48,51,49,47,50,47,49,29,22,28,30,39,49,38,38,44,44,44,46,39,33,28,24,27,29,27,23,23,20,14,13,9,13,9]};
-
-const INV_PEAK = {
-  xs: Math.max(...REAL_INV.xs), s: Math.max(...REAL_INV.s), m: Math.max(...REAL_INV.m),
-  l: Math.max(...REAL_INV.l), xl: Math.max(...REAL_INV.xl), xxl: Math.max(...REAL_INV.xxl),
-};
-
-
-/* 규격 정의 — w:한 변(m), h:높이(m), 실제 슬롯 치수 그대로
-   ── 구역 색 ────────────────────────────────────────────────────────────────
-   ★ 여섯 색을 **한 계열의 밝기 계단**으로 바꿨다. 전에는 금색·주홍·파랑·보라·분홍·하늘
-     여섯이 서로 관계없는 색이었는데, A~F 는 사실 **크기 사다리**(극소→특대)다. 색이
-     "무관하다"고 말하는데 실제로는 순서가 있으니 눈이 어긋났다. 계단으로 두면 색만 보고도
-     어느 쪽이 큰 규격인지 읽힌다.
-   ★ **F 만 색을 달리한다.** 그 구역은 `cold: true` — 냉장이라 성격 자체가 다르다. 여기서
-     색이 갈리는 건 장식이 아니라 뜻이다.
-   ★ 구역은 차갑게, 강조는 따뜻하게(`#FF8A2A`). 전에는 여섯이 다 최고 채도라 재생 버튼·
-     슬라이더의 주황이 튈 자리가 없었다. 구역이 물러나야 강조가 강조로 보인다.
-   ⚠️ 이 값은 2D 지도와 3D 뷰가 **같이 쓴다**(`z.g.color`). 같은 구역이 화면마다 다른 색이면
-      오히려 헷갈리므로 한 곳에서만 정한다. */
-const GRADES = [
-  { id: "xs", invKey: "xs", code: "A", name: "극소형", w: 0.30, h: 0.20, vol: "18,000", share: "63.4%", color: 0xA8C0E4, cols: 26, levels: 11, pairs: 4 },
-  { id: "s",  invKey: "s",  code: "B", name: "소형",   w: 0.35, h: 0.30, vol: "36,750", share: "21.1%", color: 0x8FA9D2, cols: 18, levels: 8,  pairs: 3 },
-  { id: "m",  invKey: "m",  code: "C", name: "중형",   w: 0.40, h: 0.40, vol: "64,000", share: "11.6%", color: 0x7792BF, cols: 14, levels: 6,  pairs: 2 },
-  { id: "l",  invKey: "l",  code: "D", name: "대형",   w: 0.50, h: 0.40, vol: "100,000", share: "3.4%", color: 0x5F7BAB, cols: 11, levels: 5,  pairs: 2 },
-  { id: "xl", invKey: "xl", code: "E", name: "특수",   w: 0.60, h: 0.60, vol: "216,000", share: "0.4%", color: 0x4A6595, cols: 9,  levels: 4,  pairs: 0, singles: 2 },
-  { id: "cold", invKey: "xxl", code: "F", name: "특대형", w: 0.60, h: 0.60, vol: "575K~17M", share: "1.1%", color: 0x5FC2C8, cols: 9, levels: 3, pairs: 0, singles: 2, cold: true },
-];
-
-const MAP_FONT = "'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif";
-
-const AISLE = 1.7, PAIR_GAP = 0.08, ZONE_GAP = 2.3;   // 3D 전용 PITCH_PAD 는 뺐다
-
-const CORRIDOR = 3.2;                       // 중앙 작업 통로 폭 (m)
-const ROWS = [["xs", "s", "m"], ["l", "xl", "cold"]]; // 뒷줄 / 앞줄
-
-function computeLayout() {
-  const zones = [];
-  const rowWidths = [];
-  ROWS.forEach((ids, rowIdx) => {
-    let cursor = 0;
-    const rowZones = [];
-    for (const id of ids) {
-      const g = GRADES.find((x) => x.id === id);
-      const depth = g.w, len = g.cols * g.w;
-      const rackXs = [];
-      let width = 0;
-      if (g.pairs > 0) {
-        const pairW = depth * 2 + PAIR_GAP;
-        for (let p = 0; p < g.pairs; p++) {
-          const x0 = p * (pairW + AISLE);
-          rackXs.push(x0 + depth / 2, x0 + depth + PAIR_GAP + depth / 2);
-        }
-        width = g.pairs * pairW + (g.pairs - 1) * AISLE;
-      } else {
-        for (let s = 0; s < g.singles; s++) rackXs.push(s * (depth + AISLE) + depth / 2);
-        width = g.singles * depth + (g.singles - 1) * AISLE;
-      }
-      const pad = g.cold ? 1.0 : 0;
-      rowZones.push({ g, xLocal: cursor + pad, width, len, depth, rackXs, pad, row: rowIdx });
-      cursor += width + ZONE_GAP + pad * 2;
-    }
-    const totalW = cursor - ZONE_GAP;
-    rowWidths.push(totalW);
-    const startX = -totalW / 2;
-    for (const z of rowZones) {
-      z.x0 = startX + z.xLocal;
-      z.center = z.x0 + z.width / 2;
-      z.racks = z.rackXs.map((rx) => z.x0 + rx);
-      if (rowIdx === 0) {           // 뒷줄: 랙 끝이 통로 뒤편에 정렬
-        z.zStart = -CORRIDOR / 2 - z.len;
-        z.labelZ = -CORRIDOR / 2 + 0.95;   // 구역 문자는 통로 안쪽
-      } else {                      // 앞줄: 랙 시작이 통로 앞편에 정렬
-        z.zStart = CORRIDOR / 2;
-        z.labelZ = z.zStart + z.len + 1.35; // 구역 문자는 입고장 쪽
-      }
-      zones.push(z);
-    }
-  });
-  const backLen = Math.max(...zones.filter((z) => z.row === 0).map((z) => z.len));
-  const frontLen = Math.max(...zones.filter((z) => z.row === 1).map((z) => z.len));
-  return { zones, rowWidths, backLen, frontLen };
-}
-
+/* 배치·재고는 `warehouse-data.js` 한 곳에서 온다 — 규격별 재고 패널과 **같은 숫자**를
+   써야 해서 꺼내 놓았다. 그 파일 머리말 참고. */
+import {
+  REAL_INV, INV_PEAK, MAP_FONT, CORRIDOR, computeLayout,
+} from "./warehouse-data";
 /* ── 닫힌 경로 위의 한 점 ────────────────────────────────────────────────
    `t` 는 0~1. 변의 길이에 비례해 나눠 걷는다 — 꼭짓점마다 같은 시간을 주면 짧은 변에서
    느려지고 긴 변에서 빨라져, 도는 물체의 속도가 들쭉날쭉해 보인다. */
@@ -242,6 +160,12 @@ export default function WarehouseMap({ onOpen3D }) {
         face: "#C6C6C6", light: "#FFFFFF", shadow: "#808080", dark: "#000000",
         navy: "#000080", teal: "#008080", ink: "#000000",
       };
+      /* 글자 크기 (px).
+         ★ 12/13 → **15/17** (사용자 요청 — 잘 안 보인다). 지도를 키우면서 그림은 커졌는데
+           글자만 그대로여서 상대적으로 더 작아졌다.
+         ⚠️ 키우면 **구역 라벨이 설 자리도 같이 넓혀야** 한다. 아래 `codeY`/`barY` 가 13px
+            기준으로 잡힌 값이라, 글자만 키우면 앞줄(D·E·F) 이름이 구역 네모를 파고든다. */
+      const FS_NOTE = 15, FS_ZONE = 17;
       const px = (v) => Math.round(v) + 0.5;
       /** 튀어나온 테두리 (`out`) / 들어간 테두리 */
       const bevel = (x, y, bw, bh, out = true) => {
@@ -280,7 +204,7 @@ export default function WarehouseMap({ onOpen3D }) {
       ctx.beginPath(); ctx.moveTo(fx, px(Y(0))); ctx.lineTo(fx + fw, px(Y(0))); ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = W98.ink;
-      ctx.font = `700 12px ${MAP_FONT}`; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+      ctx.font = `700 ${FS_NOTE}px ${MAP_FONT}`; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
       ctx.fillText("작업 통로", fx + 6, Y(0) - 4);
 
       /* ── 하역 라인 ── */
@@ -337,14 +261,28 @@ export default function WarehouseMap({ onOpen3D }) {
         const above = z.row === 0;
         const total = z.racks.length * z.g.levels * z.g.cols;
         const filled = Math.round(occ * total);
-        const codeY = above ? ry - 22 : ry + rh + 14;
-        const barY = above ? ry - 18 : ry + rh + 18;
+        /* ── 라벨과 눈금이 설 자리 ──
+           ⚠️ 기준선(baseline)은 글자의 **아랫변이 아니다.** 17px 글자는 기준선 아래로
+              5px 남짓 더 내려간다(디센더). 기준선과 눈금 사이를 5px 로 두었더니 글자
+              아랫부분이 눈금에 덮여 **잘려 보였다** (사용자 지적). 디센더 + 여유로
+              9px 를 준다.
+           ⚠️ 앞줄은 글자가 네모 **아래**에 붙으므로 윗변(기준선 - 어센더 약 14px)이
+              네모를 파고들지 않아야 한다 — 기준선을 17 아래에 둬서 3px 를 띄운다.
+           라벨 자리로 위아래 2.6m(≈78px)를 비워 두었다. 뒷줄 44px / 앞줄 36px 이니
+           둘 다 그 안에 들어간다. */
+        const codeY = above ? ry - 27 : ry + rh + 17;
+        const barY = above ? ry - 18 : ry + rh + 27;
 
         ctx.fillStyle = W98.ink;
-        ctx.font = `700 13px ${MAP_FONT}`;
+        ctx.font = `700 ${FS_ZONE}px ${MAP_FONT}`;
         const head = `${z.g.code} · ${z.g.name}`;
         const num = `${filled}/${total}`;
-        const room = rw + 8;
+        /* 이름을 버릴지 정하는 기준 폭.
+           ★ `rw + 8` 이었다. 글자를 키우고 나니 C·D·E·F 가 전부 이름을 잃고 숫자만
+             남았다 — 그래서 화면이 "내용이 잘린" 것처럼 보였다.
+           ⚠️ 라벨은 구역 네모 밖으로 조금 나와도 된다. 구역 사이가 2.3m(≈69px) 벌어져
+              있으므로, 양쪽으로 28px 씩 빌려도 옆 구역 라벨과 부딪히지 않는다. */
+        const room = rw + 56;
         ctx.fillText(
           ctx.measureText(`${head}  ${num}`).width <= room ? `${head}  ${num}` : num,
           rx + rw / 2, codeY,
@@ -368,6 +306,13 @@ export default function WarehouseMap({ onOpen3D }) {
       /* ⚠️ 움직이는 것들도 98 의 문법으로 그린다 — 원과 그림자 대신 **채운 사각형 + 검은
          1px 테두리**다. 이 크기(5~9px)에서 원은 안티에일리어싱으로 흐려지는데, 사각형은
          또렷하게 남는다. 98 의 아이콘이 전부 네모난 데는 이유가 있다. */
+      /* 움직이는 것들의 크기 (px).
+         ★ 한 번에 **1.4배쯤 키웠다** (사용자 요청). 지도를 키우고 나니 이것들만 예전
+           크기로 남아 상대적으로 더 작아 보였다.
+         ⚠️ 넷을 **같은 비율로** 키운다. 하나만 키우면 그것이 더 중요한 것처럼 읽힌다.
+         ⚠️ 홀수로 잡는다. 1px 테두리를 두르는 네모라, 짝수면 가운데가 픽셀 경계에
+            걸려 좌우 굵기가 달라 보인다. */
+      const SZ = { agv: 13, worker: 11, crane: 13 };
       const chip = (cx2, cy2, size, fill) => {
         ctx.fillStyle = fill;
         ctx.fillRect(Math.round(cx2 - size / 2), Math.round(cy2 - size / 2), size, size);
@@ -378,7 +323,7 @@ export default function WarehouseMap({ onOpen3D }) {
       const [a1x, a1z] = onLoop(agv1, el / 26);
       const [a2x, a2z] = onLoop(agv2, -el / 31);
       for (const [ax, az, carrying] of [[a1x, a1z, true], [a2x, a2z, false]]) {
-        chip(X(ax), Y(az), 9, carrying ? "#000080" : "#FFFFFF");
+        chip(X(ax), Y(az), SZ.agv, carrying ? "#000080" : "#FFFFFF");
       }
 
       // 지게차 — 하역 라인을 좌우로 왕복
@@ -387,13 +332,15 @@ export default function WarehouseMap({ onOpen3D }) {
       ctx.save();
       ctx.translate(Math.round(X(fkx)), Math.round(Y(unloadZ)));
       ctx.fillStyle = "#C8A000";
-      ctx.fillRect(-8, -5, 16, 10);
+      /* 몸체 16x10 → 23x14 (위 `SZ` 와 같은 비율). 포크 길이도 같이 늘린다 —
+         몸만 키우면 포크가 몸에 파묻혀 지게차로 안 읽힌다 */
+      ctx.fillRect(-11.5, -7, 23, 14);
       ctx.strokeStyle = "#000000"; ctx.lineWidth = 1;
-      ctx.strokeRect(-7.5, -4.5, 15, 9);
+      ctx.strokeRect(-11, -6.5, 22, 13);
       const dir = Math.cos(el / 7) >= 0 ? 1 : -1;
       ctx.beginPath();
-      ctx.moveTo(dir * 8, -2.5); ctx.lineTo(dir * 13, -2.5);
-      ctx.moveTo(dir * 8, 2.5); ctx.lineTo(dir * 13, 2.5);
+      ctx.moveTo(dir * 11.5, -3.5); ctx.lineTo(dir * 19, -3.5);
+      ctx.moveTo(dir * 11.5, 3.5); ctx.lineTo(dir * 19, 3.5);
       ctx.stroke();
       ctx.restore();
 
@@ -401,7 +348,7 @@ export default function WarehouseMap({ onOpen3D }) {
       const pb = Math.min(...layout.rowWidths) / 2;
       for (const [i, phase, zz] of [[0, 0, -0.72], [1, 2.1, 0.72]]) {
         const wx = Math.sin(el / 11 + phase) * pb * 0.8;
-        chip(X(wx), Y(zz), 7, i === 0 ? "#C8A000" : "#FFFFFF");
+        chip(X(wx), Y(zz), SZ.worker, i === 0 ? "#C8A000" : "#FFFFFF");
       }
 
       // ASRS 크레인 — A 구역 레일 위를 오르내린다
@@ -411,7 +358,7 @@ export default function WarehouseMap({ onOpen3D }) {
       ctx.moveTo(X(zoneA.center), Y(zoneA.zStart));
       ctx.lineTo(X(zoneA.center), Y(zoneA.zStart + zoneA.len));
       ctx.stroke();
-      chip(X(zoneA.center), Y(cz), 9, "#FFFFFF");
+      chip(X(zoneA.center), Y(cz), SZ.crane, "#FFFFFF");
 
       raf = requestAnimationFrame(draw);
     };
