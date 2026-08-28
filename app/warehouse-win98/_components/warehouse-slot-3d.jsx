@@ -1517,6 +1517,11 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     /* 클릭 지점 포커스 (탭과 드래그 구분) */
     const ray = new THREE.Raycaster();
     let clickInfo = null;
+    /* 우클릭 드래그가 지금 진행 중인가. 드래그가 캔버스 밖에서 끝나도(오버레이 패널 위,
+       3D 탭 wrapper 바깥 등) 뒤따라오는 네이티브 컨텍스트 메뉴를 window 레벨에서 막기
+       위한 게이트. 항상 막아 두지 않고 이 플래그로 게이트하는 이유는 onWindowContextMenu
+       선언부 옆 주석 참고 */
+    let rightDragActive = false;
     /* 포탈에 마우스가 올라와 있는가. 상태가 아니라 지역 변수다 -
        매 프레임 읽는 값이라 상태로 두면 초당 60번 리렌더가 돈다.
        (주의) **쓰는 곳보다 위에** 둔다. `let` 은 선언 줄을 지나기 전에는 읽을 수 없어서,
@@ -1607,6 +1612,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       ptrs.set(e.pointerId, [e.clientX, e.clientY]);
       el.setPointerCapture(e.pointerId);
       clickInfo = ptrs.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+      if (e.button === 2) rightDragActive = true;
     };
     /* 마우스가 포탈 위에 있는지 본다. 끌고 있는 중에는 보지 않는다 —
        화면을 돌리는 동안 커서가 포탈을 스쳐도 반응하면 안 된다 */
@@ -1671,10 +1677,26 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       clickInfo = null;
       ptrs.delete(e.pointerId);
       if (ptrs.size < 2) pinchD = 0;
+      /* 즉시 끄지 않는다 - 우클릭을 뗄 때 브라우저는 pointerup → contextmenu 를 같은
+         태스크 안에서 동기적으로 쏜다. setTimeout(0) 으로 다음 태스크로 미뤄야
+         onWindowContextMenu 가 먼저 플래그를 읽고 소비할 시간을 번다. */
+      setTimeout(() => { rightDragActive = false; }, 0);
     };
     const onDbl = () => { Object.assign(des, OVERVIEW); focusedStation = null; };
     /* 우클릭 드래그로 카메라를 돌리므로, 네이티브 컨텍스트 메뉴는 방해만 된다 */
     const onContextMenu = (e) => e.preventDefault();
+    /* el 밖(오버레이 패널 더 바깥, 3D 탭 wrapper 바깥 등)에서 드래그가 끝나는 극단적인
+       경우까지 덮기 위해 window 레벨에서 한 번 더 막는다. 항상 켜 두지 않고
+       rightDragActive 로 게이트하는 이유: 이 앱의 다른 화면(2D 지도, win98 셸의 다른
+       창)에서는 정상적인 우클릭이 필요할 수 있는데, 무조건 preventDefault 하면 그것까지
+       막아 버린다. 이 화면에서 실제로 우클릭-드래그가 일어났을 때만 다음 contextmenu
+       하나를 막는다. */
+    const onWindowContextMenu = (e) => {
+      if (rightDragActive) {
+        e.preventDefault();
+        rightDragActive = false;
+      }
+    };
 
     /* Enter — 출고 포스기를 차례로 확대한다.
        ★ 순서는 **앞쪽(카메라에 가까운 쪽)부터**다. 기본 시점에서 눈에 먼저 들어오는 것이
@@ -1746,6 +1768,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     el.addEventListener("dblclick", onDbl);
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("contextmenu", onContextMenu);
+    window.addEventListener("contextmenu", onWindowContextMenu);
 
     /* ── API ── */
     const applyDay = (d) => {
@@ -2112,6 +2135,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       window.removeEventListener("keydown", onKey);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("contextmenu", onWindowContextMenu);
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
@@ -2440,7 +2464,10 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
               </div>
             </div>
             {/* ── 3D PANE ── */}
-            <div style={{ display: tab === "3d" ? "block" : "none", position: "absolute", inset: 0 }}>
+            <div
+              style={{ display: tab === "3d" ? "block" : "none", position: "absolute", inset: 0 }}
+              onContextMenu={(e) => e.preventDefault()}
+            >
               <div className="w98-raised" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 32, display: "flex", alignItems: "center", gap: 6, padding: "0 6px", zIndex: 20 }}>
                 <button className="w98-btn" onClick={() => { setTab("map"); setSel(null); apiRef.current?.setHighlight(null); }}>◀ 지도</button>
                 <button className="w98-btn" onClick={() => { setSel(null); apiRef.current?.setHighlight(null); apiRef.current?.resetView(); }}>전체 보기</button>
