@@ -240,6 +240,19 @@ export interface DemoNextBarcode {
   remaining: number;
 }
 
+/**
+ * 시연용 다음 토트 (`POST /admin/demo/outbound/next-tote?lineId=`).
+ * 시연장에 스캐너가 없어 화면 버튼이 이 값을 받아 토트 스캔 칸을 채운다.
+ * 그 라인에 포장할 게 남지 않으면 서버가 204 를 주고, 그때는 `null` 이 된다.
+ */
+export interface DemoNextTote {
+  toteBarcode: string;
+  shipmentId: number;
+  receiptNo: string;
+  /** 이 건을 빼고 남은, 그 라인의 포장 대상 수 */
+  remaining: number;
+}
+
 /** 시연 초기화 결과 (`POST /admin/demo/reset`). 요약 한 줄만 읽어도 상태를 알 수 있다. */
 export interface DemoResetSummary {
   products: { inbound: number; outbound: number };

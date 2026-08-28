@@ -11,6 +11,7 @@ import type {
   ConfirmResponse,
   DashboardSummary,
   DemoNextBarcode,
+  DemoNextTote,
   DemoResetSummary,
   LinesResponse,
   MeasurementResponse,
@@ -110,6 +111,13 @@ export const demo = {
    */
   nextBarcode: () =>
     api.postOrNull<DemoNextBarcode>("/admin/demo/inbound/next-barcode"),
+
+  /**
+   * 다음 시연 토트 하나 — 그 라인에 포장할 게 남지 않으면 서버가 204 라 `null` 이다.
+   * 리셋하면 처음부터 다시 나온다.
+   */
+  nextTote: (lineId: number) =>
+    api.postOrNull<DemoNextTote>(`/admin/demo/outbound/next-tote?lineId=${lineId}`),
 };
 
 export const dashboard = {

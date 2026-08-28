@@ -13,6 +13,7 @@ import { ShipmentItemsPanel } from "./_components/shipment-items-panel";
 import { ToteScanPanel } from "./_components/tote-scan-panel";
 import { useLines } from "./_data/use-lines";
 import { useLineShipments } from "./_data/use-line-shipments";
+import { useNextTote } from "./_data/use-next-tote";
 import {
   useBoxTypes,
   useCompletePacking,
@@ -78,6 +79,11 @@ export default function PackingV2Page() {
    * 이 값은 그 패널만 바꾸고, 스캔된 배송단위가 실제로 어느 라인 소속인지와는 무관하다.
    */
   const [selectedLineId, setSelectedLineId] = useState<number | null>(null);
+  /**
+   * 지금 고른 라인에 아직 받아 올 다음 토트가 있는가 (`remaining > 0`).
+   * 라인마다 남은 개수가 다르므로 라인을 바꾸면 다시 true 로 되돌린다(handleSelectLine).
+   */
+  const [hasNextTote, setHasNextTote] = useState(true);
 
   /* ── 데이터 ────────────────────────────────────────────── */
   const scan = useToteScan(); // 3-5
@@ -87,6 +93,7 @@ export default function PackingV2Page() {
   const overrideBox = useOverrideBox(); // 3-3
   const completePacking = useCompletePacking(); // 3-8
   const linesQuery = useLines(); // 라인 목록 — LINE 탭
+  const nextTote = useNextTote(); // 시연용 다음 토트 발급
 
   const shipment = shipmentQuery.data;
   const boxes = useMemo<BoxType[]>(
@@ -130,7 +137,7 @@ export default function PackingV2Page() {
   /**
    * 3-5. 재스캔은 멱등이다 (D-14) — 새 토트를 잡으면 이전 화면 상태를 전부 버린다.
    *
-   * ⚠️ **값을 인자로 받는다.** `barcode` 상태를 직접 읽으면 TEST DATA 버튼처럼 "값을 넣고
+   * ⚠️ **값을 인자로 받는다.** `barcode` 상태를 직접 읽으면 다음 토트 버튼처럼 "값을 받아
    *    곧바로 조회"하는 경로에서 한 박자 늦은 값이 나간다(setState 는 즉시 반영되지 않는다).
    */
   const runScan = useCallback(
@@ -155,6 +162,37 @@ export default function PackingV2Page() {
 
   /** 입력창에서 Enter · Scan 버튼 — 지금 입력창에 있는 값으로 조회한다 */
   const handleScan = useCallback(() => runScan(barcode), [runScan, barcode]);
+
+  /**
+   * LINE 탭 — 라인을 바꾸면 그 라인 기준으로 "남은 토트가 있다"고 다시 가정한다.
+   * 실제 값은 다음 토트 버튼을 눌러야 알지만, 그 전까지 잠가 둘 근거가 없다(버튼을 눌러
+   * 봐야 그 라인이 이미 다 끝났는지 알 수 있다 — 서버가 그 순간 204 로 알려 준다).
+   */
+  const handleSelectLine = useCallback((lineId: number) => {
+    setSelectedLineId(lineId);
+    setHasNextTote(true);
+  }, []);
+
+  /**
+   * 시연장에 스캐너가 없어 이 버튼이 스캐너를 대신한다. 서버가 다음 토트를 주면
+   * 곧바로 3-5 까지 실행한다 — 한 번 더 Enter 를 치게 하면 스캐너 흉내라는 목적이 반감된다.
+   * 그 라인에 남은 게 없으면 204 로 `null` 이 오고, 그때 버튼을 잠근다.
+   */
+  const handleNextTote = useCallback(() => {
+    if (effectiveLineId === null) return;
+    nextTote.mutate(effectiveLineId, {
+      onSuccess: (issued) => {
+        if (issued === null) {
+          setHasNextTote(false);
+          toast.info("이 라인은 포장할 토트를 모두 사용했습니다. 다른 라인을 골라 보세요.");
+          return;
+        }
+        setHasNextTote(issued.remaining > 0);
+        runScan(issued.toteBarcode);
+      },
+      onError: (error) => toast.error(error.message),
+    });
+  }, [effectiveLineId, nextTote, runScan]);
 
   const handleActualQtyChange = useCallback(
     (productId: number, qty: number) => {
@@ -226,6 +264,9 @@ export default function PackingV2Page() {
                 toteBarcode: shipment.tote?.barcode ?? null,
               }
         }
+        onNextTote={handleNextTote}
+        isNextPending={nextTote.isPending}
+        hasNextTote={hasNextTote && effectiveLineId !== null}
       />
 
       <div className="flex min-h-0 flex-1 gap-2">
@@ -247,7 +288,7 @@ export default function PackingV2Page() {
             lines={lines}
             linesLoading={linesQuery.isLoading}
             selectedLineId={effectiveLineId}
-            onSelectLine={setSelectedLineId}
+            onSelectLine={handleSelectLine}
             shipments={lineShipmentsQuery.data?.shipments ?? []}
             shipmentsLoading={lineShipmentsQuery.isLoading}
             shipmentsError={lineShipmentsQuery.isError}
