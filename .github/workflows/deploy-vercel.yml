@@ -1,0 +1,62 @@
+# develop 에 들어온 것을 Vercel 프로덕션으로 올린다.
+#
+# Vercel 의 Git 연동을 쓰지 않는다. Hobby 플랜에서는 조직 소유 저장소를 연결할 수 없어서,
+# 대신 CLI 가 소스를 직접 올리는 방식을 쓴다 — 이 경로에는 그 제한이 없다.
+name: deploy-vercel
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+# 배포가 겹치면 나중 것만 남긴다. 앞선 실행은 취소한다 — 먼저 끝난 옛 커밋이
+# 나중 커밋을 덮어쓰는 순서 뒤집힘을 막는다.
+concurrency:
+  group: deploy-vercel
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      # 빌드 설정과 환경변수를 Vercel 에서 받아 온다. 이 저장소에 값을 복제해 두지 않는다 —
+      # 두 곳에 같은 값이 있으면 한쪽만 바뀌어 어긋난다.
+      - name: Pull project settings
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      # --prebuilt 를 빼면 위에서 만든 결과를 버리고 Vercel 이 다시 빌드한다.
+      - name: Deploy
+        run: |
+          URL=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "배포 완료: $URL"
+          {
+            echo "### Vercel 배포 완료"
+            echo ""
+            echo "- 커밋: \`${GITHUB_SHA:0:7}\`"
+            echo "- 주소: $URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

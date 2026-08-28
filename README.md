@@ -115,3 +115,21 @@ sudo docker compose up -d --build
 
 > Basic 인증은 자격증명을 요청마다 보낸다. 시연 서버에 HTTPS 가 없으므로 같은 망을 엿볼 수
 > 있는 사람에게는 비밀번호가 노출된다. 시연 전용 비밀번호를 쓰고 끝나면 버린다.
+
+## 자동 배포 (Vercel)
+
+`develop` 에 머지되면 `.github/workflows/deploy-vercel.yml` 이 프로덕션으로 올린다.
+
+Vercel 의 Git 연동은 쓰지 않는다 — Hobby 플랜에서는 조직 소유 저장소를 연결할 수 없다.
+대신 CLI 가 소스를 직접 올리며, 이 경로에는 그 제한이 없다.
+
+필요한 저장소 시크릿 세 가지다.
+
+| 시크릿 | 값 |
+|---|---|
+| `VERCEL_TOKEN` | vercel.com/account/tokens 에서 발급 |
+| `VERCEL_ORG_ID` | `.vercel/project.json` 의 `orgId` |
+| `VERCEL_PROJECT_ID` | `.vercel/project.json` 의 `projectId` |
+
+환경변수는 저장소에 복제하지 않는다. 워크플로가 `vercel pull` 로 Vercel 에서 받아 오므로,
+값을 바꿀 때는 Vercel 쪽만 고치면 된다.
