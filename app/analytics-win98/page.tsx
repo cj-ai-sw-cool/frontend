@@ -134,7 +134,7 @@ export default function AnalyticsPage() {
             ★ 흐름도를 키우면서 이 폭도 **같이 늘렸다**(300 → 402). 위를 키우면 지도가 낮아지고,
               그러면 지도가 요구하는 폭도 함께 줄어든다 — 한쪽만 만지면 그만큼이 띠로 남는다.
               지도 축척은 31.24 → 28.94 로 7% 작아지지만 여백이 0 이라 실제 그림은 거의 같다. */}
-        <Panel title="Monthly — 월간 입출고 지표" className="min-h-0 w-[402px] shrink-0">
+        <Panel title="Monthly — 월간 물동량 · 박스 재고" className="min-h-0 w-[402px] shrink-0">
           <MonthlyPanel />
         </Panel>
       </div>
