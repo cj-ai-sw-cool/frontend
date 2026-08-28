@@ -23,8 +23,8 @@ import styles from "../_styles/win98.module.css";
 export const w98Toast = {
   /** 성공 — 다음 상품 바코드를 바로 받아야 하므로 짧게 지나간다 (사용자 지적) */
   success: { className: "win98-toast", duration: 1600 },
-  /** 실패·안내 — 읽을 시간이 필요해 기본 길이를 그대로 쓴다 */
-  notice: { className: "win98-toast" },
+  /** 실패·안내 — 성공보다는 길게 두되 기본 4 초는 화면을 오래 가린다 (사용자 지적) */
+  notice: { className: "win98-toast", duration: 2600 },
 } as const;
 
 /** CSS Module 클래스를 화면 파일에서도 쓸 수 있게 열어 둔다 (베벨을 직접 걸어야 하는 자리용) */
