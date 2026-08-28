@@ -24,7 +24,7 @@ import React, { useEffect, useRef, useState } from "react";
 /* 배치·재고는 `warehouse-data.js` 한 곳에서 온다 — 규격별 재고 패널과 **같은 숫자**를
    써야 해서 꺼내 놓았다. 그 파일 머리말 참고. */
 import {
-  REAL_INV, INV_PEAK, MAP_FONT, CORRIDOR, computeLayout,
+  REAL_INV, INV_PEAK, MAP_FONT, MAP_FLOOR, CORRIDOR, computeLayout,
 } from "./warehouse-data";
 /* ── 닫힌 경로 위의 한 점 ────────────────────────────────────────────────
    `t` 는 0~1. 변의 길이에 비례해 나눠 걷는다 — 꼭짓점마다 같은 시간을 주면 짧은 변에서
@@ -185,7 +185,7 @@ export default function WarehouseMap({ onOpen3D }) {
       ctx.fillRect(0, 0, w, h);
       const fx = X(-floorW / 2), fy = Y(zMin);
       const fw = floorW * scale, fh = worldD * scale;
-      ctx.fillStyle = "#DCDCDC";      // 바닥 — 누런 #D4D0C8 대신 중성 회색 (위 주의 참고)
+      ctx.fillStyle = MAP_FLOOR;    // 바닥 — 누런 #D4D0C8 대신 중성 회색 (위 주의 참고)
       ctx.fillRect(fx, fy, fw, fh);
       bevel(fx, fy, fw, fh, false);   // 화면 안쪽으로 들어간 판
 
