@@ -14,8 +14,8 @@
  * 에러는 `lib/api.ts` 가 계약 포맷(§0)을 `ApiError` 로 바꿔 던진다 — 화면은
  * `error.is("OUT_OF_STOCK")` 처럼 코드로 분기한다.
  *
- * ⚠️ 라인 목록(3-1 의 대상 라인을 고르는 조회)은 아직 백엔드에 없다. 그 조회는 이 화면이
- *    아직 붙이지 않은 부분이라 여기 없다 — 준비되면 별도 훅으로 추가하고 그 지점만 간다.
+ * 라인 목록(3-1 의 대상 라인을 고르는 조회)은 `use-lines.ts` 에 따로 있다 — 대응 API 가
+ * 다른 조회라 여기 섞지 않는다.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

@@ -3,13 +3,16 @@
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { BoxType } from "@/lib/types";
-import { Btn, Panel, Sunken, w98 } from "./_components/win98-ui";
+import { Btn, Panel, w98 } from "./_components/win98-ui";
 import { BoxRecommendationPanel } from "./_components/box-recommendation-panel";
 import { Box3DViewer } from "./_components/box-3d-viewer";
+import { LineShipmentsPanel } from "./_components/line-shipments-panel";
 import { PackActions } from "./_components/pack-actions";
 import { ProductImagePanel } from "./_components/product-image-panel";
 import { ShipmentItemsPanel } from "./_components/shipment-items-panel";
 import { ToteScanPanel } from "./_components/tote-scan-panel";
+import { useLines } from "./_data/use-lines";
+import { useLineShipments } from "./_data/use-line-shipments";
 import {
   useBoxTypes,
   useCompletePacking,
@@ -70,6 +73,11 @@ export default function PackingV2Page() {
    *    BOX_MODELS 에서 하나만 남기면 된다.
    */
   const [modelKey, setModelKey] = useState<BoxModelKey>("carton-v3");
+  /**
+   * "라인별 배송 내역" 패널의 LINE 탭이 지금 보고 있는 라인. 토트 스캔(3-5)과는 별개다 —
+   * 이 값은 그 패널만 바꾸고, 스캔된 배송단위가 실제로 어느 라인 소속인지와는 무관하다.
+   */
+  const [selectedLineId, setSelectedLineId] = useState<number | null>(null);
 
   /* ── 데이터 ────────────────────────────────────────────── */
   const scan = useToteScan(); // 3-5
@@ -78,12 +86,23 @@ export default function PackingV2Page() {
   const productImagesQuery = useProductImages(selectedProductId); // 1-6
   const overrideBox = useOverrideBox(); // 3-3
   const completePacking = useCompletePacking(); // 3-8
+  const linesQuery = useLines(); // 라인 목록 — LINE 탭
 
   const shipment = shipmentQuery.data;
   const boxes = useMemo<BoxType[]>(
     () => boxTypesQuery.data ?? [],
     [boxTypesQuery.data],
   );
+  const lines = useMemo(() => linesQuery.data?.lines ?? [], [linesQuery.data]);
+
+  /**
+   * 탭에서 아직 아무것도 안 골랐으면 첫 번째 활성 라인을 기본값으로 쓴다.
+   * 렌더에서 파생시킨다(effect 로 setState 하지 않는다) — 라인 목록이 아직 없거나
+   * 활성 라인이 하나도 없으면 계속 null 이고, 그 동안 3-1 조회는 나가지 않는다.
+   */
+  const effectiveLineId =
+    selectedLineId ?? lines.find((line) => line.status === "ACTIVE")?.lineId ?? null;
+  const lineShipmentsQuery = useLineShipments(effectiveLineId); // 3-1
 
   /** 지금 화면이 말하는 박스 — 방금 고른 것 > 서버가 준 finalBox 순이다 */
   const finalBox = useMemo<BoxType | null>(() => {
@@ -212,11 +231,10 @@ export default function PackingV2Page() {
       <div className="flex min-h-0 flex-1 gap-2">
         {/* ── 좌: 배송 내역 + 품목 ──────────────────────────── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-          {/* TODO(P2): 3-1 GET /lines/{lineId}/shipments?status=
-              배송단위 리스트를 대기중(TOTE_ASSIGNED)/진행중(PACKING)/완료(PACKED) 로 표시 (D-12).
-              ⚠️ lineId 출처(라우트 파라미터 vs 화면 셀렉터)가 정해져야 착수할 수 있다.
-              ⚠️ 구현할 때도 **이 안에서 리스트가 스크롤**되게 유지할 것. 리스트 길이만큼
-                 패널이 늘어나면 아래 품목 표가 잘린다. */}
+          {/* 3-1 GET /lines/{lineId}/shipments — LINE 탭으로 라인을 고르고, 그 라인의
+              배송단위를 대기중(TOTE_ASSIGNED)/진행중(PACKING)/완료(PACKED) 로 표시 (D-12).
+              라인 목록은 `GET /lines` — 탭은 이름을 서버가 준 그대로 쓰고, ACTIVE 가 아닌
+              라인은 탭에 남긴 채 고르지만 못하게 막는다(`line-shipments-panel.tsx`). */}
           {/* ★ 132 → **340px** (사용자 결정 — 라인별 배송 내역을 더 크게).
               이 칸은 라인의 배송단위가 **여러 줄로 쌓이는** 자리라 132px 로는 두세 줄이
               한계였다. 늘어난 208px 은 아래 품목 표(flex-1)가 내준다 — 품목은 보통 서너
@@ -225,16 +243,15 @@ export default function PackingV2Page() {
                  품목이 많아지면 표 안에서 스크롤된다(패널이 늘어나지 않는다).
               ⚠️ 이 숫자 하나만 바꾸면 두 칸의 비율이 정해진다. 왼쪽 열 높이가 약 764px 이라
                  340 이면 배송 내역 : 품목 = 340 : 416 이다. */}
-          <Panel
-            title="Line Shipments — 라인별 배송 내역"
-            className="h-[340px] shrink-0"
-          >
-            <Sunken
-              className={`${w98.small} flex flex-1 items-center justify-center p-3 text-center text-[color:var(--muted-foreground)]`}
-            >
-              라인 선택 · 상태별 배송단위 리스트 (3-1) — 아직 구현 전입니다
-            </Sunken>
-          </Panel>
+          <LineShipmentsPanel
+            lines={lines}
+            linesLoading={linesQuery.isLoading}
+            selectedLineId={effectiveLineId}
+            onSelectLine={setSelectedLineId}
+            shipments={lineShipmentsQuery.data?.shipments ?? []}
+            shipmentsLoading={lineShipmentsQuery.isLoading}
+            shipmentsError={lineShipmentsQuery.isError}
+          />
 
           {/* 3-2 items + 파생 취급속성. 실수량 입력·불일치 표시는 프론트 상태로만 (D-06) */}
           <ShipmentItemsPanel

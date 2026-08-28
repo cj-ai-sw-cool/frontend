@@ -147,6 +147,20 @@ export interface DashboardSummary {
   inbound: { todayConfirmed: number; pendingNew: number };
 }
 
+/** `GET /lines` 목록 항목 — 대시보드 집계(packedCount 등) 없이 라인 자체 정보만 */
+export interface Line {
+  lineId: number;
+  name: string;
+  regionCode: string;
+  /** "ACTIVE" 가 아니면 화면에서 고를 수 없게 막는다 — 값 자체는 서버가 정한다 */
+  status: string;
+}
+
+/** `GET /lines` */
+export interface LinesResponse {
+  lines: Line[];
+}
+
 /* ── 3. 출고 ─────────────────────────────────────────────── */
 
 /** TOTE_ASSIGNED=대기중, PACKING=진행중, PACKED=완료 (D-12) */

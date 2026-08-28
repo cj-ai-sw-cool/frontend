@@ -12,6 +12,7 @@ import type {
   DashboardSummary,
   DemoNextBarcode,
   DemoResetSummary,
+  LinesResponse,
   MeasurementResponse,
   ProductImagesResponse,
   ScanResponse,
@@ -49,6 +50,9 @@ export const inbound = {
 
 /* ── P2 출고 포장 ────────────────────────────────────────── */
 export const outbound = {
+  /** 라인 목록 — 활성 여부(status)로 골라 쓸 수 있는지 가른다. 이름은 서버가 준 그대로 쓴다 */
+  lines: () => api.get<LinesResponse>("/lines"),
+
   /** 3-1 라인별 배송 내역 (B안, D-12) */
   lineShipments: (lineId: number, status?: ShipmentStatus) =>
     api.get<{ shipments: ShipmentListItem[] }>(
@@ -117,6 +121,7 @@ export const dashboard = {
 export const queryKeys = {
   productImages: (id: number) => ["products", id, "images"] as const,
   dashboardSummary: ["dashboard", "summary"] as const,
+  lines: ["lines"] as const,
   boxTypes: ["box-types"] as const,
   lineShipments: (lineId: number, status?: ShipmentStatus) =>
     ["lines", lineId, "shipments", status ?? "ALL"] as const,
