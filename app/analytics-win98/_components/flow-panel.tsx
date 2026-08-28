@@ -49,7 +49,7 @@
 
 import type { ReactNode } from "react";
 
-import { FAINT, FILL, INK, MUTED, RULE, TRACK } from "./clean-ui";
+import { FAINT, FILL, INK, MUTED, TRACK } from "./clean-ui";
 import { w98 } from "./win98-ui";
 import { REAL_IN, REAL_OUT, REAL_STOCK, gradeStats } from "./warehouse-data";
 
@@ -62,8 +62,13 @@ const LINE_NAME = ["A", "B", "C"];
 const WIRE = "#7C848D";
 
 const BRANCH_H = 100;
-/** 갈래 선 하나의 y (셋). 아래 라인 줄 높이와 맞아야 선이 줄 가운데로 들어간다 */
-const BRANCH_Y = [16, 50, 84];
+/** 라인 상자 하나의 높이 */
+const LINE_H = 28;
+/** 갈래 선 하나의 y (셋) — **상자 셋의 한가운데**다.
+   ⚠️ 상자를 `justify-between` 으로 위·가운데·아래에 놓으므로 중심은 자동으로
+      LINE_H/2, BRANCH_H/2, BRANCH_H−LINE_H/2 가 된다. 이 값과 어긋나면 선이 상자
+      모서리에 가서 붙는다 — 셋을 따로 적지 말고 여기서 같이 구한다. */
+const BRANCH_Y = [LINE_H / 2, BRANCH_H / 2, BRANCH_H - LINE_H / 2];
 
 /**
  * 단계 하나 — 얇은 테두리 안에 번호 · 이름 · 큰 숫자 · 부연.
@@ -193,19 +198,20 @@ export function FlowPanel({ day = 29 }: { day?: number }) {
       <Branch split />
 
       {/* ── 포장 라인 셋 — 갈래의 한가운데 ──
-          ★ 면을 깔지 않는다. 줄과 줄 사이 **실선 한 줄**이면 충분하고, 갈래 선이 이미 이
-            셋을 한 묶음으로 보여 준다.
-          ⚠️ 높이를 `BRANCH_H` 로 못 박는다. 내용에 맡기면 세 줄의 높이가 글자에 따라 달라져
-             양옆 갈래 선이 줄 가운데를 못 맞춘다. */}
+          ★ 한 상자 안에 실선으로 나누던 것을 **상자 셋으로 떼어 놓았다** (사용자 요청 —
+            붙어 있지 말고 나뉘게). 갈래가 세 갈래로 갈라진다는 것이 요점인데, 도착지가
+            한 덩어리면 선만 셋이고 실제로는 한 곳으로 들어가는 그림이 된다.
+          ⚠️ 높이를 `BRANCH_H` 로 못 박는다. 내용에 맡기면 세 상자의 높이가 글자에 따라
+             달라져 양옆 갈래 선이 상자 가운데를 못 맞춘다. */}
       <div
-        className={`${w98.sunken} flex shrink-0 flex-col justify-between bg-white px-2`}
+        className="flex shrink-0 flex-col justify-between"
         style={{ height: BRANCH_H, width: 150 }}
       >
         {lines.map((v, i) => (
           <div
             key={LINE_NAME[i]}
-            className="flex flex-1 items-center justify-between gap-2 px-1"
-            style={{ borderBottom: i < lines.length - 1 ? `1px solid ${RULE}` : undefined }}
+            className={`${w98.sunken} flex items-center justify-between gap-2 bg-white px-2.5`}
+            style={{ height: LINE_H }}
           >
             <span className="text-[12px]" style={{ color: MUTED }}>라인 {LINE_NAME[i]}</span>
             <span className="font-mono text-[19px] leading-none font-bold tabular-nums" style={{ color: INK }}>

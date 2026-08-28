@@ -293,6 +293,42 @@ function makeFloorTexture(layout, floorW, floorD, floorCz) {
     }
   }
 
+  /* ── 안전 표시 ─────────────────────────────────────────────────────────────
+     ★ 구역 문자와 통로 화살표는 있었는데, **통로와 랙 사이가 아무 표시 없이** 만나고 있었다.
+       실제 창고에서 그 지점이 가장 위험한 자리라(지게차와 사람이 직각으로 마주친다) 늘
+       정지선과 횡단 표시가 그려져 있다. 그 한 줄이 바닥을 도면에서 현장으로 바꾼다.
+
+     ⚠️ 통로 입구를 **랙 사이 간격에서 찾아낸다.** 통로 x 를 따로 적어 두면 규격을 바꿔
+        랙이 늘거나 줄었을 때 정지선만 옛 자리에 남는다. 랙 좌표를 훑어 **깊이보다 넓게
+        벌어진 곳**을 통로로 본다 — 쌍 안쪽 간격(PAIR_GAP)은 좁아서 안 걸린다.
+     ⚠️ 구역 칠 **뒤에** 그린다. 앞서 그리면 구역 사각형이 정지선을 덮는다. */
+  for (const z of layout.zones) {
+    const mouth = z.row === 0 ? v(-CORRIDOR / 2 + 0.1) : v(CORRIDOR / 2 - 0.1);
+    const inward = z.row === 0 ? -1 : 1;   // 랙이 뻗어 나가는 쪽
+
+    for (let i = 0; i < z.racks.length - 1; i += 1) {
+      const gap = z.racks[i + 1] - z.racks[i];
+      if (gap < z.depth * 1.5) continue;   // 쌍 안쪽 — 통로가 아니다
+      const cx = (z.racks[i] + z.racks[i + 1]) / 2;
+      const half = (gap - z.depth) / 2 - 0.05;
+
+      /* 정지선 — 통로 입구를 가로지르는 굵은 노란 띠.
+         ⚠️ 두께를 픽셀로 적지 않고 **미터에서 환산한다**(`PPM`). 바닥 텍스처는 창고 폭에
+            맞춰 늘어나므로, 픽셀로 박아 두면 창고가 커질 때 선만 가늘어진다. */
+      c.fillStyle = "rgba(228,176,20,0.9)";
+      c.fillRect(u(cx - half), mouth, u(cx + half) - u(cx - half), PPM * 0.14);
+
+      /* 횡단 표시 — 통로 입구에서 랙 쪽으로 뻗는 흰 빗살.
+         ⚠️ 통로를 **가로질러** 긋지 않는다. 여기서 건너는 것은 통로가 아니라 랙 사이로
+            들어가는 길이고, 통로를 가로지르는 빗살은 지게차가 서야 할 자리를 덮는다. */
+      c.fillStyle = "rgba(240,244,250,0.55)";
+      for (let k = 0; k < 5; k += 1) {
+        const zz = (z.row === 0 ? -CORRIDOR / 2 : CORRIDOR / 2) + inward * (0.28 + k * 0.34);
+        c.fillRect(u(cx - half), v(zz), u(cx + half) - u(cx - half), PPM * 0.12);
+      }
+    }
+  }
+
   /* ── 출고 구역 (오른쪽 벽 안쪽) ──
      ⚠️ 주황은 이 화면에서 '강조' 자리에 쓰는 색이다(재생 버튼·슬라이더). 바닥을 그 색으로
         가득 칠하면 강조가 강조로 안 보이므로, 농도를 낮추고 테두리로만 또렷하게 남긴다. */
@@ -956,6 +992,44 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     scene.add(logo);
     wallSets.left.push(logo);
 
+    /* ── 포탈 옆 표지 ──────────────────────────────────────────────────
+       ★ 포탈이 무엇으로 통하는 문인지 벽에 적어 둔다 (사용자 요청). 현장 창고의 문에는
+         늘 그 문이 무엇인지가 적혀 있고, 그 한 줄이 "게임 속 포탈"을 "입고 게이트"로
+         읽히게 한다.
+       ⚠️ 자리는 포탈의 **+z 쪽**이다. 포탈은 z = 0 을 가운데로 폭 4m(z −2~+2)를 차지하고,
+          입고장(`IN_ZONE`)이 z 2.2 부터 시작한다 — 그쪽에 붙여야 표지와 그 표지가 가리키는
+          공간이 같은 편에 놓인다. 반대편(−z)은 창고 안쪽이라 아무 상관이 없다.
+       ⚠️ 로고와 같은 규칙을 따른다: `MeshBasicMaterial`(어두운 벽이라 램버트면 묻힌다),
+          흰색이 아닌 낮춘 색(칠해 둔 글자로 보이게), `wallSets.left` 에 넣어 벽과 함께
+          사라지게. 자세한 이유는 위 로고 주석 참고. */
+    const signCv = document.createElement("canvas");
+    signCv.width = 1024; signCv.height = 320;
+    {
+      const c = signCv.getContext("2d");
+      c.clearRect(0, 0, 1024, 320);
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      /* 한글을 크게, 영문을 그 아래 작게 — 현장 표지의 흔한 짜임이다 */
+      c.font = "700 150px 'Malgun Gothic', '맑은 고딕', sans-serif";
+      c.fillStyle = "#D3E2F2";
+      c.fillText("신규입고", 512, 118);
+      c.font = "700 54px 'Arial', sans-serif";
+      try { c.letterSpacing = "10px"; } catch { /* 지원 안 하면 자간 없이 */ }
+      c.fillStyle = "#FF8A2A";          // 창고 화면의 강조색
+      c.fillText("NEW INBOUND", 512, 232);
+    }
+    const signTex = new THREE.CanvasTexture(signCv);
+    signTex.colorSpace = THREE.SRGBColorSpace;
+    signTex.anisotropy = 8;
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.6, 1.44),
+      new THREE.MeshBasicMaterial({ map: signTex, transparent: true, opacity: 1, depthWrite: false }),
+    );
+    sign.position.set(-floorW / 2 + 0.16, 3.15, 4.3);
+    sign.rotation.y = Math.PI / 2;
+    scene.add(sign);
+    wallSets.left.push(sign);
+
     /* 랙 구조 (인스턴싱) */
     const posts = [], decks = [], bars = [];
     for (const z of layout.zones) {
@@ -1003,6 +1077,72 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     addInstanced(posts, new THREE.MeshLambertMaterial({ color: 0x2f66a8 }), true);
     addInstanced(decks, new THREE.MeshLambertMaterial({ color: 0x89929b }), true);
     addInstanced(bars, new THREE.MeshLambertMaterial({ color: 0xd96a26 }), true);
+
+    /* ── 랙 끝 로케이션 표지판 ────────────────────────────────────────
+       ★ 랙마다 끝면에 `A-01` 같은 번호판을 붙인다. 창고가 창고로 보이는 것은 규모가 아니라
+         이런 표시에서 온다 — 실제 현장은 통로에서 랙을 번호로 부르고, 그 번호가 없으면
+         "물건 쌓인 선반"이지 로케이션 관리가 되는 창고가 아니다.
+
+       ⚠️ **글자 26장을 한 장의 텍스처에 몰아 그린다.** 표지판마다 캔버스를 만들면 텍스처가
+          26개 생기고 그만큼 GPU 로 올라간다. 한 장에 세로로 쌓아 두고, 판마다 UV 의 v
+          범위만 제 줄로 옮기면 재질 하나를 26장이 나눠 쓴다.
+       ⚠️ 붙는 면은 **통로 쪽 끝**이다. 뒷줄(row 0)은 랙이 통로 앞에서 끝나므로 +z 끝에
+          붙이고 +z 를 보게, 앞줄(row 1)은 통로에서 시작하므로 -z 끝에 붙이고 -z 를 보게
+          돌린다. 반대로 달면 통로에서 안 보이고 랙 사이에서만 보인다.
+       ⚠️ 높이는 랙 높이에 맞춰 **깎는다.** 2.4m 로 못 박으면 F(특대형, 2.19m)에서는 랙보다
+          위에 떠서 허공에 번호가 걸린다. */
+    {
+      const plates = [];
+      for (const z of layout.zones) {
+        z.racks.forEach((rx, i) => {
+          plates.push({
+            label: `${z.g.code}-${String(i + 1).padStart(2, "0")}`,
+            x: rx,
+            /* 랙 높이 = 단수 x 피치 + 여유 (아래 골조 계산과 같은 식) */
+            y: Math.min(2.35, z.g.levels * (z.g.h + PITCH_PAD) + 0.12 - 0.3),
+            z: z.row === 0 ? z.zStart + z.len + 0.04 : z.zStart - 0.04,
+            face: z.row === 0 ? 0 : Math.PI,
+          });
+        });
+      }
+
+      const ROW_H = 64, CVW = 256;
+      const cv = document.createElement("canvas");
+      cv.width = CVW;
+      cv.height = ROW_H * plates.length;
+      const c = cv.getContext("2d");
+      plates.forEach((p, i) => {
+        const y0 = i * ROW_H;
+        c.fillStyle = "#141A21";                    // 판 — 어두운 회청색
+        c.fillRect(0, y0, CVW, ROW_H);
+        c.fillStyle = "#FF8A2A";                    // 왼쪽 강조 띠
+        c.fillRect(0, y0, 10, ROW_H);
+        c.fillStyle = "#E8EEF6";
+        c.font = "700 38px 'JetBrains Mono', 'Consolas', monospace";
+        c.textAlign = "center";
+        c.textBaseline = "middle";
+        c.fillText(p.label, CVW / 2 + 5, y0 + ROW_H / 2 + 1);
+      });
+      const plateTex = new THREE.CanvasTexture(cv);
+      plateTex.colorSpace = THREE.SRGBColorSpace;
+      plateTex.anisotropy = 8;
+      /* ⚠️ 어두운 벽·랙 사이에 놓이므로 `MeshBasicMaterial` 이다. 램버트로 두면 통로 조명이
+         닿지 않는 각도에서 번호가 안 읽힌다 — 표지판은 늘 읽혀야 표지판이다. */
+      const plateMat = new THREE.MeshBasicMaterial({ map: plateTex, transparent: true });
+
+      plates.forEach((p, i) => {
+        const geo = new THREE.PlaneGeometry(0.62, 0.16);
+        /* 이 판이 쓸 줄만 UV 로 잘라 낸다. `PlaneGeometry` 의 uv 는 (0,1)(1,1)(0,0)(1,0) 순 */
+        const v0 = 1 - (i + 1) / plates.length, v1 = 1 - i / plates.length;
+        const uv = geo.attributes.uv;
+        uv.setY(0, v1); uv.setY(1, v1); uv.setY(2, v0); uv.setY(3, v0);
+        uv.needsUpdate = true;
+        const m = new THREE.Mesh(geo, plateMat);
+        m.position.set(p.x, p.y, p.z);
+        m.rotation.y = p.face;
+        scene.add(m);
+      });
+    }
 
     /* 박스 (규격별 InstancedMesh) */
     /* 입고 적재 시뮬레이션. 아래에서 만들지만 `applyDay` 가 먼저 참조하므로 여기서 선언한다
