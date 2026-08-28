@@ -70,6 +70,17 @@ export const api = {
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
 
+  /**
+   * 본문이 없을 수도 있는 POST. 서버가 204 를 주면 `null` 이다.
+   * "더 줄 게 없다"를 에러가 아니라 값으로 받는 자리에 쓴다.
+   */
+  postOrNull: async <T>(path: string, body?: unknown, init?: RequestInit) =>
+    (await request<T | undefined>(path, {
+      ...init,
+      method: "POST",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })) ?? null,
+
   put: <T>(path: string, body?: unknown, init?: RequestInit) =>
     request<T>(path, {
       ...init,

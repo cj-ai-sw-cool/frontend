@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import { CaveEntrance } from "./cave-entrance";
 import { ClockWindow } from "./clock-window";
+import { demo } from "@/lib/endpoints";
 import { w98, Btn, Etched, TrayBox } from "./win98-ui";
 import { Minesweeper } from "@/components/common/minesweeper";
 
@@ -152,6 +155,28 @@ const SCREENS: Screen[] = [
 
 export function Win98Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+
+  /**
+   * 태스크바 Start = 시연 초기화. 주문·측정 세션·재고 원장을 비우고 상품과 대기열을 다시 만든다.
+   *
+   * 누르기 쉬운 자리라 시연 중 실수로 닿으면 진행 중이던 작업이 사라진다. 그래서 화면에
+   * 들어올 때 쓰는 것과 같은 비밀번호를 한 번 더 받는다 (사용자 결정). 맞는지는 서버가 보고,
+   * 화면은 입력값을 넘기기만 한다.
+   *
+   * 화면을 새로 그리지는 않는다 — 각 화면의 상태는 바코드를 다시 잡는 순간 새로 채워진다.
+   */
+  const reset = useMutation({
+    mutationFn: (password: string) => demo.reset(password),
+    onSuccess: (summary) => toast.success(summary.summary.split("\n")[0] ?? "시연을 초기화했습니다."),
+    onError: (error) => toast.error(error.message),
+  });
+
+  const askAndReset = () => {
+    const password = window.prompt("시연을 처음 상태로 되돌립니다. 비밀번호를 입력하세요.");
+    // 취소하면 아무 일도 없다. 빈 문자열은 서버가 거절한다.
+    if (password === null) return;
+    reset.mutate(password);
+  };
   const active = SCREENS.find((screen) => pathname.startsWith(screen.href)) ?? SCREENS[0];
 
   /** 시계 팝업이 열려 있는가. 태스크바 트레이의 시계를 누르면 토글된다 */
@@ -275,7 +300,14 @@ export function Win98Shell({ children }: { children: ReactNode }) {
         className={`flex h-7 w-full shrink-0 items-center justify-between border-t-2 border-white bg-[color:var(--surface)] px-2`}
       >
         <div className="flex h-full items-center gap-2">
-          <Btn disabled aria-hidden className={`${w98.titleText} flex h-6 items-center gap-1 px-3`}>
+          {/* 시연 초기화 — 주문·측정·재고를 비우고 상품과 대기열을 처음 상태로 되돌린다.
+              화면마다 따로 두지 않고 태스크바에 하나만 둔다 (사용자 결정). */}
+          <Btn
+            disabled={reset.isPending}
+            onClick={askAndReset}
+            title="시연을 처음 상태로 되돌립니다"
+            className={`${w98.titleText} flex h-6 items-center gap-1 px-3`}
+          >
             <LayoutGrid className="size-3.5 text-[color:var(--primary)]" aria-hidden />
             Start
           </Btn>

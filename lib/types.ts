@@ -79,10 +79,11 @@ export interface MeasurementInferred {
   /** 저울 연동 실측값. 추론 아님 → 게이트 무관. 미수신 시 null */
   weightKg: number | null;
   /**
-   * 모델이 신뢰도를 주면 0~1. 현재 배포된 모델은 표본 부족으로 제외해 null 이다 (D-24).
-   * null 이면 서버도 신뢰도 게이트 판정을 건너뛰므로 `gateFailReasons` 에 LOW_CONFIDENCE 가 없다.
+   * 모델이 신뢰도를 주면 0~1 (D-24). 현재 배포된 모델은 주지 않는다.
+   * 서버 응답이 `NON_NULL` 이라 **없을 때는 필드 자체가 빠진다** — null 이 아니라 undefined 다.
+   * 없으면 서버도 신뢰도 게이트 판정을 건너뛰므로 `gateFailReasons` 에 LOW_CONFIDENCE 가 없다.
    */
-  confidence: number | null;
+  confidence?: number | null;
   gatePassed: boolean;
   gateFailReasons: string[];
   images: MeasurementImage[];
@@ -211,4 +212,25 @@ export interface CompleteResponse {
   packedAt: string;
   /** 대시보드 처리량 +1 즉시 반영값 */
   line: { lineId: number; packedCount: number };
+}
+
+/**
+ * 시연용 다음 바코드 (`POST /admin/demo/inbound/next-barcode`).
+ * 시연장에 스캐너가 없어 화면 버튼이 이 값을 받아 스캔 칸을 채운다.
+ * 다 쓰면 서버가 204 를 주고, 그때는 `null` 이 된다.
+ */
+export interface DemoNextBarcode {
+  barcode: string;
+  name: string;
+  /** 이 건을 빼고 남은 입고 시연 상품 수 */
+  remaining: number;
+}
+
+/** 시연 초기화 결과 (`POST /admin/demo/reset`). 요약 한 줄만 읽어도 상태를 알 수 있다. */
+export interface DemoResetSummary {
+  products: { inbound: number; outbound: number };
+  queuedBatches: number;
+  totes: { idle: number; assigned: number };
+  boxTypes: { count: number; stockQty: number };
+  summary: string;
 }
