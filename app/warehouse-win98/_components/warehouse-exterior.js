@@ -156,6 +156,9 @@ function buildYard(THREE, dispose, { floorW, floorD, floorCz, dockX }) {
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
   m.position.set(0, -0.03, floorCz);
+  /* 야적장은 그림자를 **받기만** 한다. 평평한 판이라 드리울 것이 없는데, 켜 두면
+     그림자 맵에 창고만 한 사각형이 한 장 더 그려진다 */
+  m.receiveShadow = true;
   dispose.push(geo, mat, tex);
   return m;
 }
@@ -525,84 +528,165 @@ function buildLoading(THREE, dispose, { truckZ, dockTop, makePiglin }) {
   }
   dispose.push(railGeo, rollGeo);
 
-  /* ── 흘러오는 상자 ──
-     ⚠️ 앞차와의 **간격을 지킨다.** 각자 같은 속도로만 가게 두면 맨 앞 상자가 인계 지점에서
-        기다리는 동안 뒤차가 그대로 파고들어 겹친다. */
+  /* ── 상자 ───────────────────────────────────────────────────────────
+     ★ 상자 하나가 **끝까지 같은 상자**다 (사용자 지적 — 시늉만 하지 말고 진짜 옮기게).
+       전에는 벨트의 상자가 사라지는 순간 손에 **다른** 상자가 나타나고, 더미도 미리 숨겨
+       둔 또 다른 상자를 하나씩 켜는 식이었다. 세 자리에 세 벌이 있었으니 옮긴 것이 아니라
+       세 군데서 따로 연기한 셈이다.
+       지금은 하나가 **줄 → 손 → 더미**로 옮겨 다닌다. 그래서 상자를 셀 수 있다.
+     ⚠️ 들 때 상자를 **피글린의 자식으로 넣는다**(`pig.grp.add`). 좌표를 매 프레임 계산해
+        따라붙이면 몸이 돌 때 상자가 한 박자 늦게 따라와 손에서 떨어져 보인다. 자식으로
+        넣으면 회전·이동이 공짜로 따라온다.
+     ⚠️ 내려놓을 때는 **월드 자리를 지키며** 다시 그룹으로 옮긴다. 그냥 부모만 바꾸면 손에
+        있던 상자가 그 순간 원점으로 튄다.
+     ⚠️ 지오메트리·재질은 **한 벌만** 만들어 열두 상자가 나눠 쓴다. */
+  const CARTON = new THREE.BoxGeometry(0.44, 0.30, 0.34);
+  dispose.push(CARTON);
   const FEED_Y = dockTop + 0.15;
   const HOLD = door - 0.36;          // 인계 지점 — 뒷문 바로 앞
   const GAP = 0.62;
-  const feedGeo = new THREE.BoxGeometry(0.44, 0.30, 0.34);
-  dispose.push(feedGeo);
-  const feed = [];
-  for (let i = 0; i < 4; i += 1) {
-    const m = new THREE.Mesh(feedGeo, carton);
-    m.position.set(0, FEED_Y, HOLD - i * GAP);
-    g.add(m);
-    feed.push(m);
-  }
+  const ON_BELT = 5;                 // 벨트에 한 번에 보이는 수
+  const SLOTS = 8;                   // 짐칸 더미 — 2열 x 4단
 
-  /* ── 짐칸 안의 상자 더미 — 2열 x 4단 ──
-     ⚠️ 미리 만들어 두고 **감췄다 보인다.** 한 개씩 만들면 그때마다 지오메트리가 생기고,
-        더미를 비울 때 버릴 것이 쌓인다. */
-  const STACK_GEO = new THREE.BoxGeometry(0.44, 0.30, 0.34);
-  dispose.push(STACK_GEO);
-  const stack = [];
-  for (let i = 0; i < 8; i += 1) {
-    const m = new THREE.Mesh(STACK_GEO, carton);
-    m.position.set(((i % 2) - 0.5) * 0.52, floor + 0.16 + Math.floor(i / 2) * 0.32, door + 1.95);
+  /** 더미의 i 번째 자리 */
+  const slotAt = (i) => [
+    ((i % 2) - 0.5) * 0.52,
+    floor + 0.16 + Math.floor(i / 2) * 0.32,
+    /* ⚠️ 더미를 뒷문에서 2.6m 안쪽에 둔다. 든 상자는 몸 앞으로 0.67m 나가므로, 피글린이
+       서는 자리(door+1.55)에서 상자 앞면이 door+2.22 다 — 더미 앞면(door+2.43)과 21cm
+       뜬다. 예전 값(1.95)에서는 든 상자가 더미를 그대로 파고들었다. */
+    door + 2.6,
+  ];
+
+  const boxes = [];
+  /* ⚠️ 벨트(5) + 더미(8) + 손(1) = 14 개가 동시에 나와 있을 수 있다. 풀이 그보다 작으면
+     더미가 다 차기 직전에 벨트가 비어, 상자가 안 오는 몇 초가 생긴다 */
+  for (let i = 0; i < 15; i += 1) {
+    const m = new THREE.Mesh(CARTON, carton);
     m.visible = false;
     g.add(m);
-    stack.push(m);
+    boxes.push(m);
   }
+  /** 벨트 위 (앞이 먼저) / 아직 안 쓴 것 / 짐칸에 쌓인 것 */
+  const queue = [];
+  const spare = boxes.slice();
+  const piled = [];
+  let carried = null;
+
+  /** 벨트 뒤쪽에 한 개 올린다 */
+  const feedOne = () => {
+    const m = spare.pop();
+    if (!m) return;
+    const last = queue[queue.length - 1];
+    m.position.set(0, FEED_Y, (last ? last.position.z : HOLD) - GAP);
+    m.rotation.set(0, 0, 0);
+    m.visible = true;
+    queue.push(m);
+  };
+  for (let i = 0; i < ON_BELT; i += 1) feedOne();
 
   /* ── 피글린 — 짐칸 안에서 문과 더미 사이를 오간다 ── */
   const pig = makePiglin();
   pig.grp.position.set(0, floor, door + 0.55);
   g.add(pig.grp);
-  const held = new THREE.Mesh(STACK_GEO, carton);
-  held.visible = false;
-  g.add(held);
 
   /* 한 개를 싣는 데 걸리는 시간과, 그 안에서 각 동작이 끝나는 지점(초).
-     ⚠️ 합이 `T` 와 같아야 한다 — 어긋나면 주기가 넘어갈 때 자세가 튄다. */
+     ⚠️ 순서대로 커져야 한다 — 어긋나면 손이 비었는데 놓는 동작이 나온다. */
   const T = 3.6;
-  const t1 = 0.9, t2 = 1.1, t3 = 2.1, t4 = 2.45;   // 대기 / 집기 / 나르기 / 놓기
-  const Z_DOOR = door + 0.55, Z_STACK = door + 1.5;
-  let t = 0, placed = 0;
+  const t1 = 0.9, t2 = 1.15, t3 = 2.1, t4 = 2.55;  // 대기 / 집기 / 나르기 / 놓기
+  const Z_DOOR = door + 0.55, Z_STACK = door + 1.55;
+  let t = 0, stage = -1;
 
   const ease = (u) => u * u * (3 - 2 * u);          // 시작·끝이 느린 보간
+  /** 집거나 놓는 동안의 짧은 이동. 부모가 무엇이든 **그 부모 안에서의** 자리로 옮긴다 */
+  let tween = null;
+  const tmp = new THREE.Vector3();
+
+  const stageOf = (x) =>
+    (x < t1 ? 0 : x < t2 ? 1 : x < t3 ? 2 : x < t4 ? 3 : 4);
+
+  /* 상자가 놓일 **손 자리** (피글린 로컬).
+     ★ 눈대중으로 (0, 0.75, 0.32) 에 두었더니 상자가 몸통을 파고들고 손은 상자 밖에 있었다
+       (사용자 지적 — 피글린과 상자가 겹친다). 팔 끝을 실제로 계산해서 맞춘 값이다.
+     ── 계산 ──────────────────────────────────────────────────────────
+       1픽셀 P = 0.0625, 피글린 스케일 0.86 → 1픽셀이 0.05375m
+       어깨 y = 23px, 팔 길이 12px, 나를 때 팔 각도 1.3rad
+       손 y = (23 − 12·cos1.3)px = 19.8px = 1.064m
+       손 z = (12·sin1.3)px      = 11.6px = 0.621m
+       몸통 앞면 z = 2.15px = 0.116m
+     → 상자(깊이 0.34) 중심을 z 0.50 에 두면 0.33~0.67 을 차지해 **손이 그 안에** 들어오고,
+       몸통 앞면과는 0.21m 뜬다. 높이 1.00 이면 손이 상자 윗부분을 잡은 모양이 된다. */
+  const HAND = new THREE.Vector3(0, 1.00, 0.50);
+
+  /** 벨트 맨 앞 상자를 손으로 옮긴다 */
+  const grab = () => {
+    if (carried || queue.length === 0) return;
+    const m = queue.shift();
+    /* ⚠️ 있던 자리에서 **미끄러져** 손으로 온다. 곧바로 손 자리에 꽂으면 40cm 를 순간이동해
+       벨트에서 손으로 튄다 — 집는 것이 아니라 바뀌는 것으로 보인다. */
+    pig.grp.updateMatrixWorld(true);
+    m.getWorldPosition(tmp);
+    pig.grp.add(m);
+    m.position.copy(pig.grp.worldToLocal(tmp.clone()));
+    m.rotation.set(0, 0, 0);
+    carried = m;
+    tween = { m, from: m.position.clone(), to: HAND.clone(), u: 0, dur: t2 - t1 };
+    feedOne();
+  };
+
+  /** 손의 상자를 더미에 내려놓는다 */
+  const place = () => {
+    if (!carried) return;
+    const m = carried;
+    carried = null;
+    /* ⚠️ 세계 좌표를 먼저 읽고, 부모를 바꾼 뒤 그 자리로 되돌린다. 순서가 바뀌면 상자가
+       한 프레임 원점에 나타난다. */
+    pig.grp.updateMatrixWorld(true);
+    m.getWorldPosition(tmp);
+    g.add(m);
+    g.updateMatrixWorld(true);
+    m.position.copy(g.worldToLocal(tmp));
+    m.rotation.set(0, 0, 0);
+    tween = { m, from: m.position.clone(), to: new THREE.Vector3(...slotAt(piled.length)), u: 0, dur: t4 - t3 };
+    piled.push(m);
+
+    /* 다 실었다 — 한 차 나간 것으로 치고 더미를 비워 벨트로 돌려보낸다 */
+    if (piled.length >= SLOTS) {
+      for (const b of piled) { b.visible = false; spare.push(b); }
+      piled.length = 0;
+    }
+  };
 
   return {
     group: g,
     update(dt) {
       t += dt;
-      if (t >= T) {
-        t -= T;
-        /* 한 칸 채운다. 다 차면 비운다 — 실려 나간 것으로 친다.
-           ⚠️ 더미를 다 채운 뒤에 비워야지, 채우면서 비우면 마지막 한 개가 안 보인다. */
-        if (placed >= stack.length) {
-          for (const b of stack) b.visible = false;
-          placed = 0;
-        }
-        stack[placed].visible = true;
-        placed += 1;
+      if (t >= T) t -= T;
+
+      const st = stageOf(t);
+      if (st !== stage) {
+        /* ⚠️ **바뀌는 순간에만** 집고 놓는다. 매 프레임 부르면 상자가 프레임마다 부모를
+           오가며 깜빡인다. */
+        if (st === 1) grab();
+        if (st === 3) place();
+        stage = st;
       }
 
       for (const r of rollers) r.rotation.x += dt * 4.4;
 
-      /* 상자 흐름 — 맨 앞은 인계 지점에서 멈추고, 뒤는 앞차 간격을 지킨다 */
+      /* 벨트 — 맨 앞은 인계 지점에서 멈추고, 뒤는 앞차 간격을 지킨다.
+         ⚠️ 각자 같은 속도로만 가게 두면 맨 앞이 기다리는 동안 뒤차가 파고들어 겹친다. */
       let ahead = HOLD;
-      for (const b of feed) {
-        const want = Math.min(ahead, b.position.z + 0.55 * dt);
-        b.position.z = want;
-        b.visible = t < t2;                        // 집는 순간 사라진다 (피글린 손으로 옮겨간다)
+      for (const b of queue) {
+        b.position.z = Math.min(ahead, b.position.z + 0.55 * dt);
         ahead = b.position.z - GAP;
       }
-      if (t < dt) {
-        /* 새 주기 — 맨 앞 상자를 줄 맨 뒤로 돌려보낸다 */
-        const lead = feed.shift();
-        lead.position.z = feed[feed.length - 1].position.z - GAP;
-        feed.push(lead);
+
+      /* 집기·놓기 — 있던 자리에서 목표 자리까지 짧게 미끄러진다 */
+      if (tween) {
+        tween.u = Math.min(1, tween.u + dt / tween.dur);
+        tween.m.position.lerpVectors(tween.from, tween.to, ease(tween.u));
+        if (tween.u >= 1) tween = null;
       }
 
       /* 피글린 — 문 ↔ 더미 왕복 */
@@ -639,12 +723,6 @@ function buildLoading(THREE, dispose, { truckZ, dockTop, makePiglin }) {
       const sw = walk ? Math.sin(t * 11) * 0.55 : 0;
       pig.lLeg.rotation.x = sw;
       pig.rLeg.rotation.x = -sw;
-
-      /* 들고 있는 상자 — 가슴 앞에. 놓는 순간 더미로 넘어간다 */
-      held.visible = t >= t2 && t < t4;
-      if (held.visible) {
-        held.position.set(0, floor + 0.72, z - 0.42 * Math.cos(face));
-      }
     },
   };
 }
@@ -654,33 +732,37 @@ function buildDock(THREE, dispose, { width, bays }) {
   const g = new THREE.Group();
   const conc = new THREE.MeshLambertMaterial({ color: 0x9aa2ac });
   const rubber = new THREE.MeshLambertMaterial({ color: 0x1a1e24 });
-  const doorMat = new THREE.MeshLambertMaterial({ color: 0x6d7a8a });
 
   /* 단을 3.2m 에서 1.5m 로 줄였다. 길게 빼면 트럭이 벽에서 그만큼 멀어져, 후진해
      붙은 게 아니라 마당에 세워 둔 것처럼 보인다 */
   const DOCK_H = 1.15, DOCK_D = 1.5;
   const slab = new THREE.Mesh(new THREE.BoxGeometry(width, DOCK_H, DOCK_D), conc);
   slab.position.set(0, DOCK_H / 2, DOCK_D / 2);
+  slab.receiveShadow = true;   // 트럭·상자 그림자가 이 단 위에 진다
+  slab.castShadow = true;
   g.add(slab);
   dispose.push(slab.geometry);
 
-  const bayGeo = new THREE.BoxGeometry(2.9, 3.2, 0.16);
+  /* ★ 베이마다 세워 두던 **셔터 문을 없앴다** (사용자 지적).
+     창고 벽이 통짜였을 때는 그 문이 바깥에서 도크를 도크로 보이게 하는 유일한 표시였다.
+     지금은 벽에 문틀이 뚫려 있어서, 그 셔터가 열린 문 **바로 뒤에 서서** 트럭 짐칸을
+     가린다 — 안을 보라고 뚫어 놓고 그 앞을 막고 선 꼴이다. 문 노릇은 벽의 문틀이 하고,
+     여기 남는 것은 단·범퍼뿐이다.
+     ⚠️ 되살릴 때는 **열린 자세**로 세워야 한다. 닫힌 셔터를 그대로 두면 같은 문제가
+        다시 생긴다. */
   const bumpGeo = new THREE.BoxGeometry(0.4, 0.5, 0.26);
   const span = width - 5;
   const xs = [];
   for (let i = 0; i < bays; i++) {
     const x = bays === 1 ? 0 : -span / 2 + (i * span) / (bays - 1);
     xs.push(x);
-    const door = new THREE.Mesh(bayGeo, doorMat);
-    door.position.set(x, DOCK_H + 1.6, 0.1);
-    g.add(door);
     for (const sx of [-1.6, 1.6]) {
       const bump = new THREE.Mesh(bumpGeo, rubber);
       bump.position.set(x + sx, DOCK_H - 0.2, DOCK_D - 0.05);
       g.add(bump);
     }
   }
-  dispose.push(bayGeo, bumpGeo, conc, rubber, doorMat);
+  dispose.push(bumpGeo, conc, rubber);
   return { group: g, xs, face: DOCK_D, top: DOCK_H };
 }
 
@@ -751,16 +833,26 @@ export function createExterior(THREE, { floorW, floorD, floorCz }, { makePiglin 
     bay.add(slot);
 
     const t = buildTruck(THREE, dispose, { open });
+    /* 트럭이 마당에 그림자를 드리운다 — 이게 없으면 8m 짜리 차가 떠 보인다.
+       ⚠️ 짐칸 안쪽 껍데기는 `BackSide` 라 그림자 맵에서 앞뒤가 뒤집힌다. 그래도 겉면
+          상자가 이미 같은 자리를 덮고 있어 결과는 같으므로 따로 빼지 않는다. */
+    t.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     slot.add(t);
     if (!open) return;
     loading = buildLoading(THREE, dispose, {
       truckZ: 0, dockTop: dock.top, makePiglin,
     });
+    loading.group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     slot.add(loading.group);
   });
 
   return {
     group,
+    /* 도크 베이의 **월드 z**. 창고 오른쪽 벽에 문을 뚫는 자리다.
+       ⚠️ 벽 쪽에서 다시 계산하지 않게 여기서 내준다. 도크는 `bay` 안에 살고 그 그룹은
+          +90° 돌아 있어서 로컬 x 가 월드 **-z** 로 간다 — 이 변환을 두 곳에 적어 두면
+          도크를 옮겼을 때 문만 제자리에 남는다. */
+    doorZs: dock.xs.map((x) => floorCz - x),
     update(dt) {
       loading?.update(dt);
     },
