@@ -47,6 +47,12 @@ type Screen = {
   windowTitle: string;
   /** 목차·태스크바에 그릴 아이콘. 아래 픽셀 아이콘 셋 참고 */
   icon: (props: { className?: string }) => ReactNode;
+  /**
+   * 목차와 태스크바에서 **감춘다.** 목록에서 아예 빼지 않는 이유가 있다 — 이 배열은
+   * 지금 어느 화면인지(`active`)와 창 제목을 찾는 데도 쓰인다. 빼 버리면 그 주소로 직접
+   * 들어왔을 때 첫 화면으로 잘못 짚어, 창고 화면이 "INBOUND" 라는 제목을 달고 뜬다.
+   */
+  hidden?: boolean;
 };
 
 /* ── 목차 아이콘 ─────────────────────────────────────────────────────────────
@@ -131,9 +137,13 @@ const SCREENS: Screen[] = [
   },
   {
     /* 창고 — 슬롯 점유를 2D 지도와 3D 로 본다.
+       ★ **목차에서 뺐다** (사용자 결정). 분석 화면의 실시간 창고 맵을 누르면 같은 3D 가
+         전체 화면으로 열리므로, 같은 곳으로 가는 문이 둘일 이유가 없다. 주소로는 그대로
+         열린다 — 화면 자체를 지운 것이 아니라 목차에서만 감춘 것이다.
        ⚠️ 이 화면만 three.js 를 쓴다. 3D 판이 `display:none` 일 때도 시뮬레이션은 계속
           돌아야 2D 지도가 실시간이라, 안 보이는 판도 DOM 에 남겨 둔다
           (`_components/warehouse-slot-3d.jsx` 주석 참고). */
+    hidden: true,
     href: "/warehouse-win98",
     label: "Warehouse",
     windowTitle: "WAREHOUSE — 슬롯 창고 현황",
@@ -285,7 +295,7 @@ export function Win98Shell({ children }: { children: ReactNode }) {
 
           {/* 실행 중인 창 = 화면 전환 */}
           <nav aria-label="열려 있는 창" className="flex h-full items-center gap-1">
-            {SCREENS.map((screen) => {
+            {SCREENS.filter((s) => !s.hidden).map((screen) => {
               const isActive = screen.href === active.href;
               return (
                 <Link
@@ -370,7 +380,7 @@ function SideNav({ activeHref }: { activeHref: string }) {
         <Etched className="mt-2" />
       </div>
 
-      {SCREENS.map((screen) => {
+      {SCREENS.filter((s) => !s.hidden).map((screen) => {
         const isActive = screen.href === activeHref;
         return (
           <Link

@@ -125,6 +125,9 @@ export function createInboundSim(THREE, deps) {
   bot.grp.rotation.y = Math.PI / 2;
   /* 처음부터 보인다 — 시뮬레이션을 안 돌려도 포탈 앞에 서 있는 로봇이 "여기서 시작한다"를
      말한다. 눌러야 나타나면 그 전까지는 아무 단서가 없다 */
+  /* 배송 로봇도 그림자를 드리운다 — 시뮬레이션에서 가장 오래 보는 것이라 여기서
+     빠지면 로봇만 떠서 간다 */
+  bot.grp.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   scene.add(bot.grp);
 
   /* ── 로봇이 싣고 나오는 짐 ────────────────────────────────────────────
@@ -137,6 +140,7 @@ export function createInboundSim(THREE, deps) {
   const cargoGeo = new THREE.BoxGeometry(1, 1, 1);
   const cargoes = DEMO_ITEMS.map(() => {
     const m = new THREE.Mesh(cargoGeo, cargoMat);
+    m.castShadow = true;   // 실려 가는 짐도 (위 로봇과 같은 이유)
     m.visible = false;
     scene.add(m);
     return m;

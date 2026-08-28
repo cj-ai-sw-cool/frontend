@@ -709,6 +709,13 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
          여기뿐이라(생성 시도를 해 봐야 안다) 상태를 여기서 세운다. 렌더마다 도는 것도
          아니고 실패했을 때 한 번뿐이라 되풀이될 여지가 없다. */
     } catch { setWebglOk(false); return; }
+    /* ── 그림자 ────────────────────────────────────────────────────────
+       ★ 그림자를 켰다. 그전에는 로봇·지게차·트럭이 전부 바닥에 **떠 보였다** — 물건이
+         땅에 놓여 있다는 것을 말해 주는 것은 조명이 아니라 그림자다.
+       ⚠️ `PCFSoft` 를 쓴다. 기본(`BasicShadowMap`)은 계단이 그대로 보여서, 이 정도
+          해상도에서는 그림자가 톱니로 보인다. */
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     renderer.setSize(Math.max(2, mount.clientWidth), Math.max(2, mount.clientHeight));
     /* ⚠️ 원본은 three r128 기준이라 `outputEncoding = sRGBEncoding` 이었다. r152 에서
@@ -763,12 +770,35 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     const dir = new THREE.DirectionalLight(0xfff6e2, 1.85);
     dir.position.set(28, 44, 20);
     scene.add(dir);
+    /* ★ **이 빛만** 그림자를 만든다. 나머지(채움·천장등)까지 켜면 그림자가 여러 방향으로
+         겹쳐 지저분해지고, 그림자 맵을 그 수만큼 더 그려야 한다.
+       ⚠️ 그림자 카메라는 **직교**이고 범위를 손으로 잡아 줘야 한다. 기본값(±5m)은 창고
+          한가운데 몇 미터만 덮어서, 나머지에서는 그림자가 뚝 끊긴다. 창고 바닥에 마당
+          까지 더한 크기로 잡는다.
+       ⚠️ 범위를 넓힐수록 같은 맵에 더 넓은 땅이 들어가 그림자가 흐려진다. 2048 로 약
+          25px/m — 접지 그림자로는 이 정도가 한계다. 더 키우면 프레임을 깎아먹는다.
+       ⚠️ `bias` 를 음수로 조금 준다. 안 주면 평평한 바닥이 자기 그림자에 얼룩진다
+          (shadow acne). 너무 키우면 이번엔 그림자가 물체에서 떨어져 뜬다. */
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(2048, 2048);
+    dir.shadow.bias = -0.0009;
+    dir.shadow.normalBias = 0.02;
     const fill = new THREE.DirectionalLight(0xcfe0f5, 0.45);   // 태양 반대편 채움
     fill.position.set(-20, 18, -16);
     scene.add(fill);
     const warmA = new THREE.PointLight(0xffdfae, 0.3, 52); warmA.position.set(-8, 6.4, -2); scene.add(warmA);
     const warmB = new THREE.PointLight(0xffdfae, 0.28, 52); warmB.position.set(9, 6.4, 3); scene.add(warmB);
     const corrL = new THREE.PointLight(0xfff6e0, 0.26, 36); corrL.position.set(0, 5.2, 0); scene.add(corrL);
+
+    /** 이 가지 아래 모든 메시가 그림자를 드리우게 한다.
+     *  ★ 그림자를 드리우는 것은 **움직이는 것들과 랙 골조뿐**이다. 씬 전체에 켜면 슬롯
+     *    상자 4천 개까지 그림자 맵에 한 번 더 그려야 하는데, 그 상자들은 랙 안에 있어
+     *    바닥까지 닿지도 않는다 — 값은 다 치르고 보이는 것은 없다.
+     *  ⚠️ 만든 **직후에** 부른다. 나중에 자식이 더 붙으면 그것들은 안 걸린다. */
+    const castAll = (root) => {
+      root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      return root;
+    };
 
     const layout = computeLayout();
     const zMin = -CORRIDOR / 2 - layout.backLen - 3.0;
@@ -798,7 +828,22 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.z = floorCz;
+    floor.receiveShadow = true;
     scene.add(floor);
+
+    /* 그림자 카메라를 바닥에 맞춘다 (위 `dir.castShadow` 주의 참고).
+       ⚠️ 빛의 **목표**도 창고 가운데로 옮긴다. 기본 목표는 원점인데, 바닥이 z 로 치우쳐
+          있어서 그대로 두면 그림자 범위가 창고 한쪽으로 쏠린다.
+       ⚠️ 목표는 씬에 넣어야 행렬이 갱신된다. 넣지 않으면 위치를 바꿔도 빛이 안 돈다. */
+    dir.target.position.set(0, 0, floorCz);
+    scene.add(dir.target);
+    {
+      const r = Math.max(floorW, floorD) / 2 + 8;   // 마당까지 덮는다
+      const c = dir.shadow.camera;
+      c.left = -r; c.right = r; c.top = r; c.bottom = -r;
+      c.near = 1; c.far = 140;
+      c.updateProjectionMatrix();
+    }
 
     /* ── 바깥 배경 (해질녘 산업단지) ──────────────────────────────────
        ⚠️ 바닥을 만든 **뒤에** 세운다. 야적장 판이 창고 바닥 치수를 받아 그 둘레에
@@ -826,8 +871,51 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     addWall("back", new THREE.BoxGeometry(floorW, 1.3, 0.34), 0x232b35, 0, 0.65, zMin);
     addWall("left", new THREE.BoxGeometry(0.3, 5.4, floorD), 0x1a2028, -floorW / 2, 4.0, floorCz);
     addWall("left", new THREE.BoxGeometry(0.34, 1.3, floorD), 0x232b35, -floorW / 2, 0.65, floorCz);
-    addWall("right", new THREE.BoxGeometry(0.3, 5.4, floorD), 0x1a2028, floorW / 2, 4.0, floorCz);
-    addWall("right", new THREE.BoxGeometry(0.34, 1.3, floorD), 0x232b35, floorW / 2, 0.65, floorCz);
+    /* ── 오른쪽 벽 — 도크 문을 뚫는다 ──────────────────────────────────
+       ★ 통짜 벽이 도크를 정면으로 가로막고 있었다 (사용자 지적). 각도를 낮추면 트럭 짐칸이
+         보여야 하는데, 벽이 딱 그 사이에 서 있었다. 확대하면 벽이 사라지긴 하지만 그건
+         "벽을 지운" 것이지 창고가 아니다 — 실제 물류창고는 베이마다 문이 뚫려 있다.
+       ⚠️ 벽을 **구간으로 쪼개** 세운다. 뚫는 것이 아니라 문 자리를 비우고 나머지만 세우는
+          것이다. 박스 지오메트리에서 구멍을 파려면 CSG 가 필요한데, 그 한 벌을 들이는 것보다
+          구간 서넛으로 나누는 편이 싸고 결과도 같다.
+       ⚠️ 문 위에는 **인방**을 남긴다. 천장까지 통째로 비우면 벽이 끊긴 것으로 보이고,
+          건물이 두 동으로 갈라진다.
+       ⚠️ 문 자리는 `exterior` 가 알려 준다. 도크 좌표를 여기서 다시 계산하면 도크를 옮겼을 때
+          문만 제자리에 남는다. */
+    const DOOR_W = 3.4, DOOR_H = 3.7;   // 트럭 뒷문(2.5m)과 짐칸이 함께 들어오는 크기
+    const WALL_TOP = 6.7;               // 본체 벽 윗변 (아래 5.4 짜리 판의 y 4.0 기준)
+    const wz0 = floorCz - floorD / 2, wz1 = floorCz + floorD / 2;
+    const doorZs = (exterior.doorZs ?? [])
+      .filter((z) => z - DOOR_W / 2 > wz0 + 0.3 && z + DOOR_W / 2 < wz1 - 0.3)
+      .sort((a, b) => a - b);
+
+    /* 문 사이에 남는 벽 구간 */
+    let cursor = wz0;
+    const solids = [];
+    for (const dz of doorZs) {
+      if (dz - DOOR_W / 2 > cursor) solids.push([cursor, dz - DOOR_W / 2]);
+      cursor = dz + DOOR_W / 2;
+    }
+    if (cursor < wz1) solids.push([cursor, wz1]);
+
+    for (const [a, b] of solids) {
+      const len = b - a, cz = (a + b) / 2;
+      addWall("right", new THREE.BoxGeometry(0.3, 5.4, len), 0x1a2028, floorW / 2, 4.0, cz);
+      addWall("right", new THREE.BoxGeometry(0.34, 1.3, len), 0x232b35, floorW / 2, 0.65, cz);
+    }
+
+    for (const dz of doorZs) {
+      const lintel = WALL_TOP - DOOR_H;
+      addWall("right", new THREE.BoxGeometry(0.3, lintel, DOOR_W), 0x1a2028,
+        floorW / 2, DOOR_H + lintel / 2, dz);
+      /* 문틀 — 옆기둥 둘과 위 인방. 벽보다 밝게 둬야 구멍이 아니라 **문**으로 읽힌다 */
+      for (const sz of [-1, 1]) {
+        addWall("right", new THREE.BoxGeometry(0.36, DOOR_H, 0.16), 0x33404f,
+          floorW / 2, DOOR_H / 2, dz + sz * (DOOR_W / 2 - 0.08));
+      }
+      addWall("right", new THREE.BoxGeometry(0.36, 0.18, DOOR_W), 0x33404f,
+        floorW / 2, DOOR_H - 0.09, dz);
+    }
 
     /* ── 팀 로고 (왼쪽 벽 위쪽) ────────────────────────────────────────
        ★ 벽에 페인트로 쓴 사인이다 (사용자 요청 — 심플하게). 창고 벽의 사인은 회사 로고를
@@ -893,8 +981,12 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     }
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const dummy = new THREE.Object3D();
-    const addInstanced = (list, mat) => {
+    /* @param cast 그림자를 드리울까. 랙 골조는 켜고 **슬롯 상자 4천 개는 끈다** —
+       상자는 대부분 랙 안에 있어 바닥까지 닿지도 않는데, 그림자 맵에 4천 개를 한 번 더
+       그리는 값은 그대로 든다. 골조(기둥·선반)만으로도 통로에 줄무늬가 진다. */
+    const addInstanced = (list, mat, cast = false) => {
       const im = new THREE.InstancedMesh(boxGeo, mat, list.length);
+      im.castShadow = cast;
       list.forEach((it, i) => {
         dummy.position.set(...it.p); dummy.rotation.set(0, 0, 0);
         dummy.scale.set(...it.s); dummy.updateMatrix();
@@ -908,9 +1000,9 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
          셰이더에서 **뚫어**(`discard`) 보았다. 둘 다 되돌렸다 (사용자 지적).
          전부 비치면 창고가 유령처럼 되고, 뚫으면 그 경계가 번진 얼룩으로 보인다.
        ⚠️ 시야가 막히는 문제는 **카메라 각도로** 푼다 — 재질을 건드리지 않는다. */
-    addInstanced(posts, new THREE.MeshLambertMaterial({ color: 0x2f66a8 }));
-    addInstanced(decks, new THREE.MeshLambertMaterial({ color: 0x89929b }));
-    addInstanced(bars, new THREE.MeshLambertMaterial({ color: 0xd96a26 }));
+    addInstanced(posts, new THREE.MeshLambertMaterial({ color: 0x2f66a8 }), true);
+    addInstanced(decks, new THREE.MeshLambertMaterial({ color: 0x89929b }), true);
+    addInstanced(bars, new THREE.MeshLambertMaterial({ color: 0xd96a26 }), true);
 
     /* 박스 (규격별 InstancedMesh) */
     /* 입고 적재 시뮬레이션. 아래에서 만들지만 `applyDay` 가 먼저 참조하므로 여기서 선언한다
@@ -1160,7 +1252,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
            창고 안 작업자와 같은 함수로 만든다 (`packing-station` 주석 참고) */
         makePiglin: i === 1 ? () => buildPiglin({ cart: false }) : undefined,
       });
-      scene.add(st.group);
+      scene.add(castAll(st.group));
       return st;
     });
 
@@ -1215,8 +1307,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     const worker2 = buildPiglin({ cart: false, device: true });
     worker1.grp.position.set(-patrolBound * 0.5, 0, -0.72);
     worker2.grp.position.set(patrolBound * 0.55, 0, 0.72);
-    scene.add(worker1.grp);
-    scene.add(worker2.grp);
+    scene.add(castAll(worker1.grp));
+    scene.add(castAll(worker2.grp));
     const workers = [
       { m: worker1, s: { x: -patrolBound * 0.5, z: -0.72, dir: 1, head: Math.PI / 2, mode: "walk", timer: 3.5, pickT: 0, swing: 0, phase: 0, speed: 1.05, rng: mulberry32(555) } },
       { m: worker2, s: { x: patrolBound * 0.55, z: 0.72, dir: -1, head: -Math.PI / 2, mode: "walk", timer: 5.2, pickT: 0, swing: 0, phase: 1.7, speed: 0.9, rng: mulberry32(910) } },
@@ -1234,7 +1326,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     const fkZ = CORRIDOR / 2 + layout.frontLen + 1.5;
     fk.grp.position.set(fkBound * 0.4, 0, fkZ);
     fk.grp.rotation.y = -Math.PI / 2;
-    scene.add(fk.grp);
+    scene.add(castAll(fk.grp));   // 운전석 피글린도 함께 걸린다
     const fkS = {
       x: fkBound * 0.4, dir: -1, head: -Math.PI / 2,
       mode: "drive", timer: 6, liftT: 0, t: 0, rng: mulberry32(777),
@@ -1247,8 +1339,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     const backLane = -(CORRIDOR / 2 + layout.backLen + 0.7);
     const agv1 = buildAGV({ tote: true });   // 토트 적재 — 앞줄 시계 방향
     const agv2 = buildAGV({ tote: false }); // 공차 — 뒷줄 반시계 방향
-    scene.add(agv1.grp);
-    scene.add(agv2.grp);
+    scene.add(castAll(agv1.grp));
+    scene.add(castAll(agv2.grp));
     const agvs = [
       {
         u: agv1, speed: 1.35, seg: 0, prog: 1.5, pauseT: 0, nextPause: 7, t: 0, rng: mulberry32(2024),
@@ -1307,7 +1399,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
 
       const crane = new THREE.Group();
       crane.position.set(craneX, 0, zone.zStart + zone.len * 0.35);
-      scene.add(crane);
+      scene.add(castAll(crane));
 
       const mastH = rackH + 0.4;
       // 백색 트윈 마스트 + 수평 리브 + 하부 블루 액센트
@@ -1441,6 +1533,19 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
 
     /* ── 카메라 궤도 컨트롤 ── */
     const OVERVIEW = { az: 0.62, pol: 1.00, r: 28.5, tx: 0, ty: 1.3, tz: 0.6 };
+    /* 출고 구역 한 발 앞 — Enter 를 처음 눌렀을 때 서는 자리.
+       ★ 전에는 Enter 한 번에 포스기 화면까지 **바로** 날아갔다 (사용자 지적). 시연에서
+         그 사이가 통째로 빠지니, 어디를 확대한 것인지가 안 보이고 화면만 갈아 낀 것
+         같았다. 한 정거장을 둬서 출고 구역 전체를 먼저 보여 준다 — 작업대·피글린·
+         상자, 그리고 열린 문 너머의 트럭까지 한 화면에 든다.
+       ⚠️ 거리를 **15 아래**로 잡는다. 오른쪽 벽이 그 거리에서 사라지도록 되어 있어서,
+          이 값이 그보다 크면 벽이 그대로 서서 트럭을 가린다 — 이 장면의 요점이 사라진다.
+       ⚠️ 시선은 작업대와 도크 문 **사이**에 둔다. 작업대에 맞추면 트럭이 화면 밖으로
+          밀리고, 문에 맞추면 작업 장면이 구석으로 간다. */
+    const OUTBOUND = {
+      az: -0.95, pol: 1.08, r: 13.5,
+      tx: floorW / 2 - 1.0, ty: 1.7, tz: floorCz + 6.0,
+    };
     const cur = { ...OVERVIEW }, des = { ...OVERVIEW };
 
     /* ── 입고 적재 시뮬레이션 ──────────────────────────────────────────
@@ -1453,6 +1558,10 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
        ⚠️ 화면을 끌거나 확대하면 따라가기를 끈다. 사용자가 손을 댔는데 카메라가 계속
           제자리로 끌고 가면 "고장난 화면"이 된다. */
     let followSim = false;
+    /* Enter 한 바퀴에서 **출고 구역 정거장**에 서 있는가 (위 `OUTBOUND` 주석 참고).
+       ⚠️ 카메라를 전체 보기로 되돌리는 곳에서는 이 값도 함께 내려야 한다. 안 그러면
+          더블클릭으로 물러난 뒤 Enter 를 눌렀을 때 그 정거장을 건너뛰고 포스기로 간다. */
+    let outboundStage = false;
     /* 배송 로봇이 통로를 쓰는 중인가. 작업자·AGV 가 이 값을 보고 비켜선다 */
     let corridorBusy = false;
     /* 시뮬레이션 카메라가 쓰는 값들. 궤도 값(`cur`/`des`)과 따로 두는 이유는 아래 틱의
@@ -1682,7 +1791,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
          onWindowContextMenu 가 먼저 플래그를 읽고 소비할 시간을 번다. */
       setTimeout(() => { rightDragActive = false; }, 0);
     };
-    const onDbl = () => { Object.assign(des, OVERVIEW); focusedStation = null; };
+    const onDbl = () => { Object.assign(des, OVERVIEW); focusedStation = null; outboundStage = false; };
     /* 우클릭 드래그로 카메라를 돌리므로, 네이티브 컨텍스트 메뉴는 방해만 된다 */
     const onContextMenu = (e) => e.preventDefault();
     /* el 밖(오버레이 패널 더 바깥, 3D 탭 wrapper 바깥 등)에서 드래그가 끝나는 극단적인
@@ -1736,21 +1845,36 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         inboundSim?.finish();
         followSim = false;
         focusedStation = null;
+        outboundStage = false;   // 시뮬레이션에서 나오면 한 바퀴를 처음부터
         Object.assign(des, OVERVIEW);
         return;
       }
 
       if (tag === "BUTTON") return;   // 평소에는 버튼이 Enter 를 먼저 가진다
       e.preventDefault();
-      const order = [...stations].reverse();   // 앞쪽(+z)이 배열 뒤에 있다
-      const at = order.indexOf(focusedStation);
-      const next = order[at + 1];
-      if (next) {
-        focusedStation = next;
-        focusStation(next);
+
+      /* ── Enter 한 바퀴 ─────────────────────────────────────────────
+           전체 보기 → **출고 구역** → 앞 포스기 → 전체 보기
+         ★ 출고 구역 한 정거장을 앞에 끼웠다 (사용자 요청). 바로 포스기로 날아가면
+           무엇을 확대한 것인지 안 보인다 — 먼저 그 구역을 보여 주고 나서 들어간다.
+         ★ 포스기는 **앞쪽 한 대만** 들른다 (사용자 결정). 뒤쪽 작업대는 같은 화면을 띄운
+           같은 설비라 두 번 볼 것이 없고, 시연에서 그 한 정거장이 늘어지는 만큼 흐름이
+           끊긴다. 작업자(피글린)가 서 있는 쪽도 앞쪽이다.
+         ⚠️ `stations` 는 z 가 [-4.5, +4.5] 순서라 **앞쪽이 배열 뒤에 있다.** 앞의 것을
+            집으면 화면에서 먼 쪽으로 날아간다. */
+      if (!outboundStage && focusedStation === null) {
+        outboundStage = true;
+        Object.assign(des, OUTBOUND);
+        return;
+      }
+      const front = stations[stations.length - 1];
+      if (focusedStation === null && front) {
+        focusedStation = front;
+        focusStation(front);
       } else {
         Object.assign(des, OVERVIEW);
         focusedStation = null;
+        outboundStage = false;   // 한 바퀴 돌았다 — 다음 Enter 는 다시 출고 구역부터
       }
     };
     window.addEventListener("keydown", onKey);
@@ -2500,7 +2624,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         .ws-stat { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.06); border-radius: 8px; padding: 6px 9px; }
         .ws-stat span { font-size: 10px; color: #6E8398; }
         .ws-stat b { display: block; font: 700 15px 'JetBrains Mono', monospace; margin-top: 1px; color: #E8EDF4; }
-        .ws-chip { display:flex; align-items:stretch; gap:9px; padding:6px 8px; border-radius:8px; cursor:pointer; border:1px solid transparent; transition: background .15s, border-color .15s; user-select:none; }
+        .ws-chip { display:flex; align-items:stretch; gap:10px; padding:9px 10px; border-radius:8px; cursor:pointer; border:1px solid transparent; transition: background .15s, border-color .15s; user-select:none; }
         .ws-chip:hover { background: rgba(255,255,255,.05); }
         .ws-chip.on { border-color: rgba(255,255,255,.26); background: rgba(255,255,255,.075); }
         /* 접힌 타임라인 버튼 */
@@ -2596,33 +2720,50 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
             전체 보기 ✕
           </button>
         </div>
-        <div style={{ fontSize: 10, color: "#5F7186", marginTop: 2, marginBottom: 8 }}>클릭 시 해당 구역만 강조</div>
+        <div style={{ fontSize: 11, color: "#66788C", marginTop: 3, marginBottom: 10 }}>클릭 시 해당 구역만 강조</div>
 
+        {/* ── 규격 목록 ────────────────────────────────────────────────
+            ★ 글씨를 키우고 **색을 걷어냈다** (사용자 요청 — 크고 직관적이고, 색이 많은 건
+              별로다). 예전에는 줄마다 규격 색이 세 군데(세로 막대·코드 글자·진행 막대)에
+              쓰여서, 여섯 줄이면 색이 열여덟 번 나왔다. 그러니 어느 줄이 찬 줄인지가 색에
+              묻혔다.
+            ★ 지금은 **채움 정도만** 색을 쓴다: 임계를 넘긴 줄은 주황, 나머지는 흐린 청회색.
+              한 화면에서 색이 뜻하는 것이 하나뿐이라 그 색이 곧 경고로 읽힌다.
+            ⚠️ 규격 색은 **왼쪽 세로 막대 하나에만** 남긴다. 지도와 3D 가 같은 색으로
+               구역을 그리고 있어서, 이걸 지우면 목록과 창고를 잇는 고리가 끊긴다.
+            ⚠️ 숫자는 고정폭으로 찍는다. 자릿수마다 폭이 달라지면 여섯 줄의 오른쪽 끝이
+               들쭉날쭉해 목록이 흔들려 보인다. */}
         {GRADES.map((g) => {
           const pg = stats?.perGrade?.[g.id];
           const col = "#" + g.color.toString(16).padStart(6, "0");
           const pct = pg ? (pg.filled / pg.total) * 100 : 0;
+          const hot = pct >= 90;
           return (
             <div key={g.id} className={`ws-chip ${sel === g.id ? "on" : ""}`} onClick={() => toggleSel(g.id)}
               role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && toggleSel(g.id)}>
-              {/* 색 표식을 점이 아니라 **세로 막대**로 바꿨다. 줄마다 왼쪽 끝이 색으로
-                  정렬되어, 여섯 줄이 목록 하나로 묶여 보인다 */}
+              {/* 색 표식 — 줄마다 왼쪽 끝이 색으로 정렬되어 여섯 줄이 목록 하나로 묶인다 */}
               <div style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: col, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700 }}>
-                    <span style={{ color: col, fontFamily: "'JetBrains Mono',monospace", marginRight: 5 }}>{g.code}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: -0.2 }}>
+                    <span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#8FA3B8", marginRight: 6 }}>{g.code}</span>
                     {g.name}
                   </span>
-                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10.5, color: "#9FB0C3" }}>
-                    {pg ? `${pg.filled}/${pg.total}` : "—"}
+                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 14, fontWeight: 600, color: "#E4EBF3", fontVariantNumeric: "tabular-nums" }}>
+                    {pg ? pg.filled.toLocaleString() : "—"}
+                    <span style={{ fontSize: 11, color: "#66788C" }}>{pg ? `/${pg.total.toLocaleString()}` : ""}</span>
                   </span>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                  <div style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255,255,255,.07)" }}>
-                    <div style={{ width: `${pct}%`, height: "100%", borderRadius: 2, background: col }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                  <div style={{ flex: 1, height: 5, borderRadius: 3, background: "rgba(255,255,255,.08)" }}>
+                    <div style={{ width: `${pct}%`, height: "100%", borderRadius: 3, background: hot ? "#FF8A2A" : "#6E86A0" }} />
                   </div>
-                  <span style={{ fontSize: 9.5, color: "#5F7186", fontFamily: "'JetBrains Mono',monospace", width: 34, textAlign: "right" }}>{g.share}</span>
+                  {/* 채움 비율을 적는다. 예전에는 전체 재고에서 그 규격이 차지하는 몫(`share`)을
+                      적었는데, 바로 옆 막대는 **그 구역이 얼마나 찼나**를 말하고 있어서 둘이
+                      서로 다른 것을 가리켰다 */}
+                  <span style={{ fontSize: 12, fontWeight: 600, color: hot ? "#FFB27A" : "#8FA3B8", fontFamily: "'JetBrains Mono',monospace", width: 42, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {pg ? `${pct.toFixed(0)}%` : "—"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -2715,7 +2856,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       {/* ── 우하단 힌트 ── */}
       <div style={{ position: "absolute", bottom: 14, right: 14, fontSize: 10.5, color: "#5F7186", textAlign: "right", lineHeight: 1.6, pointerEvents: "none", fontFamily: "'Noto Sans KR', sans-serif" }}>
         드래그 회전 · 스크롤/핀치 확대 · 클릭 → 지점 줌인<br />
-        <b style={{ color: "#FFC978" }}>Enter → 출고 포스기 확대</b> · 더블클릭 → 전체 보기 · 범례 클릭 → 구역 하이라이트
+        <b style={{ color: "#FFC978" }}>Enter → 출고 구역 → 포스기 확대</b> · 더블클릭 → 전체 보기 · 범례 클릭 → 구역 하이라이트
       </div>
             </div>
           </div>
