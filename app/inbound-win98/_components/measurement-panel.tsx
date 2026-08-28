@@ -49,22 +49,17 @@ export function MeasurementPanel({
   const isManualWinning = manualDims != null;
   const inferred = !isManualWinning && data?.status === "INFERRED" ? data : null;
 
-  /* 스캔 전 화면을 목업과 같은 모습으로 두기 위한 표시용 값이다(목업에 찍혀 있던 숫자 그대로).
-     실제 흐름에서는 목 데이터가 들어오는 즉시 밀려나고, 그동안 배지가 `PREVIEW` 라
-     실측값과 헷갈리지 않는다. 시연이 끝나면 DESIGN_PREVIEW 와 아래 `?? preview…` 를 지운다. */
-  const preview = !isManualWinning && data === undefined ? DESIGN_PREVIEW : null;
-
-  const widthCm = inferred?.inferred.widthCm ?? preview?.widthCm;
-  const lengthCm = inferred?.inferred.lengthCm ?? preview?.lengthCm;
-  const heightCm = inferred?.inferred.heightCm ?? preview?.heightCm;
-  const weightKg = isManualWinning ? undefined : (data?.weightKg ?? preview?.weightKg);
+  const widthCm = inferred?.inferred.widthCm;
+  const lengthCm = inferred?.inferred.lengthCm;
+  const heightCm = inferred?.inferred.heightCm;
+  const weightKg = isManualWinning ? undefined : data?.weightKg;
 
   const isDimsAlert =
     !isManualWinning && data !== undefined && (data.status === "MEASURE_FAILED" || !data.gatePassed);
   const isWeightAlert = data !== undefined && data.weightKg == null && manualWeightKg == null;
 
   const notice = describeNotice({ data, error, manualDims, manualWeightKg });
-  const status = describeStatus(data, isManualWinning, isLoading, preview !== null);
+  const status = describeStatus(data, isManualWinning, isLoading);
 
   return (
     <Panel
@@ -243,9 +238,7 @@ function describeStatus(
   data: MeasurementResponse | undefined,
   isManualWinning: boolean,
   isLoading: boolean,
-  isPreview: boolean,
 ): { tone: "ok" | "error" | "idle"; label: string } {
-  if (isPreview) return { tone: "idle", label: "PREVIEW" };
   if (isLoading) return { tone: "idle", label: "MEASURING…" };
   if (isManualWinning) return { tone: "ok", label: "MANUAL" };
   if (data === undefined) return { tone: "idle", label: "STANDBY" };
@@ -274,11 +267,3 @@ function formatKg(value: number | null | undefined): string {
   if (value === undefined || value === null) return EMPTY;
   return String(Number(value.toFixed(3)));
 }
-
-/** 목업에 찍혀 있던 값 그대로 — 스캔 전 화면이 목업과 같은 모습이 된다 */
-const DESIGN_PREVIEW = {
-  widthCm: 120,
-  lengthCm: 85.5,
-  heightCm: 45,
-  weightKg: 12.5,
-} as const;
