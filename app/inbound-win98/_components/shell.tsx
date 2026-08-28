@@ -17,7 +17,7 @@ import {
 import { CaveEntrance } from "./cave-entrance";
 import { ClockWindow } from "./clock-window";
 import { demo } from "@/lib/endpoints";
-import { w98, Btn, Etched, TrayBox } from "./win98-ui";
+import { w98, w98Toast, Btn, Etched, TrayBox } from "./win98-ui";
 import { Minesweeper } from "@/components/common/minesweeper";
 
 /**
@@ -177,8 +177,9 @@ export function Win98Shell({ children }: { children: ReactNode }) {
    */
   const reset = useMutation({
     mutationFn: (password: string) => demo.reset(password),
-    onSuccess: (summary) => toast.success(summary.summary.split("\n")[0] ?? "시연을 초기화했습니다."),
-    onError: (error) => toast.error(error.message),
+    onSuccess: (summary) =>
+      toast.success(summary.summary.split("\n")[0] ?? "시연을 초기화했습니다.", w98Toast.success),
+    onError: (error) => toast.error(error.message, w98Toast.notice),
   });
 
   const askAndReset = () => {

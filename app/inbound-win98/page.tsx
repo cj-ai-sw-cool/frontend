@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import { w98Toast } from "./_components/win98-ui";
 import { ApiError } from "@/lib/api";
 import type {
   ConfirmRequest,
@@ -141,12 +142,11 @@ export default function InboundPage() {
 
   /**
    * `DB 입력` 이 최대 3단계(1-3 → 1-4 → 1-5)를 연쇄하므로, 지금 어느 단계인지를 버튼이
-   * 직접 말한다. 통째로 "처리 중…" 하나로 두면 1-3 의 8초 동안 작업자가 멈춘 줄 안다 —
-   * 세 단계 중 **1-3 만** 오래 걸리는데(기대 3초·상한 8초, §1-3) 그게 어느 단계인지
-   * 알면 기다릴 수 있다. 나머지 둘은 mock 0.35초씩이라 사실상 스쳐 지나간다.
+   * 직접 말한다. 통째로 "처리 중…" 하나로 두면 그게 어느 단계인지 알 수 없다.
+   * 상한 시간은 라벨에 쓰지 않는다 — 실측 0.8초라 숫자가 실제와 어긋난다.
    */
   const busyLabel = measure.isPending
-    ? "촬영 중… (최대 8초)"
+    ? "촬영 중…"
     : confirm.isPending
       ? "치수 확정 중…"
       : stockIn.isPending
@@ -287,13 +287,13 @@ export default function InboundPage() {
       onSuccess: (issued) => {
         if (issued === null) {
           setHasNextBarcode(false);
-          toast.info("입고 시연 상품을 모두 사용했습니다. 리셋하면 처음부터 다시 나옵니다.");
+          toast.info("입고 시연 상품을 모두 사용했습니다. 리셋하면 처음부터 다시 나옵니다.", w98Toast.notice);
           return;
         }
         setHasNextBarcode(issued.remaining > 0);
         runScan(issued.barcode);
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, w98Toast.notice),
     });
   }, [nextBarcode, runScan]);
 
@@ -345,12 +345,13 @@ export default function InboundPage() {
         { productId: product.productId, qty },
         {
           onSuccess: () => {
-            toast.success(`입고 완료`);
+            toast.success("입고 완료", w98Toast.success);
             // 한 건이 끝나면 처음 상태로 돌아간다 (사용자 결정). 다음 상품의 바코드를
             // 바로 받을 수 있어야 하고, 남아 있는 값이 다음 건의 것으로 오해되면 안 된다.
             clearScreen();
           },
-          onError: (error) => toast.error("입고에 실패했습니다", { description: error.message }),
+          onError: (error) =>
+            toast.error("입고에 실패했습니다", { ...w98Toast.notice, description: error.message }),
         },
       );
     };
@@ -374,7 +375,7 @@ export default function InboundPage() {
           onSuccess: runStockIn,
           onError: (error) => {
             const { title, detail } = describeConfirmFailure(error);
-            toast.error(title, { description: detail });
+            toast.error(title, { ...w98Toast.notice, description: detail });
           },
         },
       );
@@ -400,6 +401,7 @@ export default function InboundPage() {
       // 이유만 알린다 — 다시 누르면 곧 재시도이고, 촬영 버튼으로 가도 된다.
       onError: (error) =>
         toast.error("측정 세션을 만들지 못해 확정할 수 없습니다", {
+          ...w98Toast.notice,
           description: `${error.message} 수기 입력값은 그대로 남아 있습니다. 다시 DB 입력을 누르거나 촬영을 실행하세요.`,
         }),
     });

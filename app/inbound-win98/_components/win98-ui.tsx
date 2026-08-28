@@ -14,6 +14,19 @@ import styles from "../_styles/win98.module.css";
  * ⚠️ 이 파일에는 **모양만** 있다. 데이터도 계약도 모른다.
  */
 
+/**
+ * win98 화면의 알림(sonner) 옵션.
+ *
+ * 기본 토스트는 둥근 모서리에 흐린 그림자라 이 화면의 각진 베벨과 어긋난다. 모양은
+ * globals.css 의 `.win98-toast` 규칙이 잡고 여기서는 표시 시간만 정한다.
+ */
+export const w98Toast = {
+  /** 성공 — 다음 상품 바코드를 바로 받아야 하므로 짧게 지나간다 (사용자 지적) */
+  success: { className: "win98-toast", duration: 1600 },
+  /** 실패·안내 — 읽을 시간이 필요해 기본 길이를 그대로 쓴다 */
+  notice: { className: "win98-toast" },
+} as const;
+
 /** CSS Module 클래스를 화면 파일에서도 쓸 수 있게 열어 둔다 (베벨을 직접 걸어야 하는 자리용) */
 export const w98 = {
   theme: styles.theme,
