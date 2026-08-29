@@ -691,6 +691,12 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
      ⚠️ 진행 상황을 **글자로도** 내보낸다. 로봇이 30m 를 가는 동안 눈이 그것을 놓치면
         화면이 멈춘 것처럼 보이는데, 글자가 따라가면 무슨 일이 일어나는지 계속 읽힌다. */
   const [simLine, setSimLine] = useState(null);
+  /* 시뮬레이션이 화면을 잡고 있는가. 참이면 대시보드 패널을 다 감춘다.
+     ★ 시연에서 이 화면은 **영상**이다 (사용자 요청). 양옆 패널과 아래 타임라인이 3D 를
+       사방에서 잘라 먹고 있어서, 정작 보여 주려는 창고가 가운데 창문만큼만 남았다.
+     ⚠️ `simLine` 으로 대신하지 않는다. 자막은 구간에 따라 잠깐씩 비는데(넘겨주는 사이),
+        그때마다 패널이 깜빡이며 돌아온다. 시작과 끝에서만 바뀌는 값이 따로 있어야 한다. */
+  const [simActive, setSimActive] = useState(false);
   const simRunRef = useRef(null);      // 시뮬레이션을 시작하는 손잡이 (씬이 채운다)
   /* ⚠️ 원본의 시계(`clock`)를 뺐다. 작업표시줄에만 쓰던 값인데 그 표시줄을 걷어냈으니,
      남겨 두면 아무도 안 보는 값을 위해 인터벌만 돈다. */
@@ -1709,6 +1715,17 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     const camPos = new THREE.Vector3();
     const camLook = new THREE.Vector3();
     const wantPos = new THREE.Vector3();
+    /* 조준점 — 시뮬레이션이 주는 `focus` 를 **한 번 걸러 낸 값**.
+       ★ 화면이 어지러웠던 진짜 원인이 여기 있었다. `focus` 는 짐 그 자체인데, 포크가
+         뻗고 크레인이 승강할 때마다 짐이 잔떨림을 갖는다. 그것을 그대로 바라보면
+         **떨림이 곧 화면 회전**이 된다 — 사람의 눈은 위치 변화보다 각도 변화에
+         훨씬 예민해서, 몇 cm 의 떨림도 멀미로 온다.
+       ★ 그래서 카메라가 아니라 **보는 대상을 먼저** 안정시킨다. 이 값이 짐을 느리게
+         따라가고, 카메라는 이 값만 본다. 사람이 물건을 눈으로 좇을 때 머리가 물건의
+         잔떨림까지 따라가지 않는 것과 같다.
+       ⚠️ 카메라 **자리를 잡는 기준도 이 값**이어야 한다. 자리는 짐 기준, 시선은 걸러 낸
+         값 기준으로 두면 둘이 어긋나 화면이 미끄러지듯 흔들린다. */
+    const aim = new THREE.Vector3();
     let filmAz = 0, filmPol = 1.18, filmDist = 3.4;
 
     inboundSim = createInboundSim(THREE, {
@@ -1741,11 +1758,13 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       /* ⚠️ 지금 보고 있던 각을 넘겨준다. 도입부가 그 각을 붙들고 시작해야 버튼을 누른
          순간 화면이 홱 돌지 않는다 (`inbound-sim` 의 `introAz` 참고). */
       inboundSim.start(items, cur.az);
+      setSimActive(true);
       followSim = true;
       /* 촬영 시작 — 지금 카메라 자리에서 이어 받는다. 0 에서 시작하면 첫 프레임에 카메라가
          창고 원점으로 순간이동했다가 날아온다 */
       camPos.copy(camera.position);
       camLook.set(cur.tx, cur.ty, cur.tz);
+      aim.copy(camLook);   // 0 에서 시작하면 첫 프레임에 창고 원점을 본다
       filmAz = cur.az;
       filmPol = cur.pol;
       filmDist = cur.r;
@@ -1984,6 +2003,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         e.preventDefault();
         inboundSim?.finish();
         followSim = false;
+        setSimActive(false);
         focusedStation = null;
         outboundStage = false;   // 시뮬레이션에서 나오면 한 바퀴를 처음부터
         Object.assign(des, OVERVIEW);
@@ -2022,7 +2042,9 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       e.preventDefault();
       /* ⚠️ 확대도 따라가기를 끈다. 시뮬레이션이 거리를 매 프레임 잡고 있어서, 켜 둔 채
          휠을 돌리면 두 값이 서로 밀며 화면이 떤다. 손을 대면 카메라를 넘겨주는 쪽이 맞다. */
+      /* 손을 대면 조작이 필요해진다 — 감춰 둔 패널을 돌려준다 */
       followSim = false;
+      setSimActive(false);
       des.r = Math.min(58, Math.max(6, des.r * (1 + e.deltaY * 0.0011)));
     };
     el.addEventListener("pointerdown", onDown);
@@ -2327,22 +2349,39 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
              동작으로 읽힌다 — 빠르면 그냥 순간이동이고, 이 화면의 어지러움이 거기서 왔다.
            ⚠️ 각도를 거리보다 조금 더 느리게 옮긴다(1.0 : 1.1). 방향이 먼저 홱 돌면 장면이
               바뀐 게 아니라 카메라가 튄 것처럼 보인다. */
-        filmAz += wrapAngle(cam.az - filmAz) * (1 - Math.exp(-1.0 * dt));
-        filmDist += (cam.dist - filmDist) * (1 - Math.exp(-1.1 * dt));
-        filmPol += (cam.pol - filmPol) * (1 - Math.exp(-1.1 * dt));
+        /* ★ 짐이 빨라진 만큼(`inbound-sim` 의 속도 주석) 계수를 함께 올렸다: 1.0/1.1 → 1.3/1.4.
+             짐만 빨라지면 카메라가 뒤처진 채 끌려가고, 그 어긋남이 곧 어지러움이다. */
+        filmAz += wrapAngle(cam.az - filmAz) * (1 - Math.exp(-1.3 * dt));
+        filmDist += (cam.dist - filmDist) * (1 - Math.exp(-1.4 * dt));
+        filmPol += (cam.pol - filmPol) * (1 - Math.exp(-1.4 * dt));
+
+        /* 짐의 잔떨림을 먼저 걸러 낸다 (위 `aim` 주석 참고). 카메라 자리와 시선이 **둘 다**
+           이 값을 기준으로 잡혀야 어긋나지 않는다 */
+        aim.lerp(f, 1 - Math.exp(-2.4 * dt));
 
         const sinP = Math.sin(filmPol);
         wantPos.set(
-          f.x + filmDist * sinP * Math.sin(filmAz),
-          f.y + filmDist * Math.cos(filmPol),
-          f.z + filmDist * sinP * Math.cos(filmAz),
+          aim.x + filmDist * sinP * Math.sin(filmAz),
+          aim.y + filmDist * Math.cos(filmPol),
+          aim.z + filmDist * sinP * Math.cos(filmAz),
         );
         /* ⚠️ 카메라가 내려갈 수 있는 **바닥 높이**를 지킨다. 각을 낮추면 화면이 훨씬
            현장 같아지지만, 구역 통로(폭 1.7m, 양쪽이 랙) 옆에서는 그대로 선반을 뚫는다.
            얼마까지 내려가도 되는지는 지금 무엇을 보는지 아는 쪽이 안다 — `cam.minY` 다. */
         if (wantPos.y < cam.minY) wantPos.y = cam.minY;
-        camPos.lerp(wantPos, 1 - Math.exp(-3.0 * dt));
-        camLook.lerp(f, 1 - Math.exp(-6.0 * dt));
+        /* ★ 골목에서 빠져나오는 동안은 **x 를 붙든다** (`inbound-sim` 의 `EXIT_HOLD` 참고).
+             카메라 자리를 직선으로 당기다 보니, 골목에서 통로로 나오는 것과 다음 구역으로
+             x 를 옮기는 것이 겹쳐 그 대각선이 사이의 랙을 관통했다. x 를 잠깐 묶어 두면
+             통로로 먼저 나온 다음에 통로를 타고 옮겨 간다 — 사람이 걷는 길과 같다. */
+        if (cam.corridorFirst) wantPos.x = camPos.x;
+        /* ★ 자리와 시선의 감쇠를 **거의 같게** 맞췄다 (3.0 / 6.0 → 2.0 / 2.6). 시선이
+             자리보다 두 배 빠르면, 카메라가 아직 옮겨 가는 중에 고개만 먼저 홱 돌아간다
+             — 그 어긋남이 "화면이 미끄러진다"는 느낌의 정체다. 사람이 걸으며 무엇을 볼
+             때 머리와 몸은 거의 같은 속도로 돈다.
+           ⚠️ 느리게 잡을수록 부드럽지만 그만큼 뒤처진다. 2.0 이면 90% 따라잡는 데
+              1.15초 — 짐이 6.2m/s 로 가도 화면 안에 남는다. */
+        camPos.lerp(wantPos, 1 - Math.exp(-2.0 * dt));
+        camLook.lerp(aim, 1 - Math.exp(-2.6 * dt));
         camera.position.copy(camPos);
         camera.lookAt(camLook);
 
@@ -2729,6 +2768,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
             </div>
             {/* ── 3D PANE ── */}
             <div
+              className={simActive ? "ws-film" : undefined}
               style={{ display: tab === "3d" ? "block" : "none", position: "absolute", inset: 0 }}
               onContextMenu={(e) => e.preventDefault()}
             >
@@ -2755,6 +2795,12 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         /* 유리판 - 위에서 아래로 아주 옅게 밝아지는 바탕 + 윗변 하이라이트 한 줄.
            평평한 반투명 사각형보다 한 겹 더 얹혀 있어 보인다. 바깥이 한낮으로 바뀌어
            배경이 밝아진 만큼 그림자를 키워야 패널이 배경에 묻히지 않는다. */
+        /* 시뮬레이션이 도는 동안은 대시보드를 감춘다 (위 simActive 주석 참고).
+           ⚠️ 이 블록은 JS 템플릿 리터럴 안이라 **백틱을 쓰면 안 된다** — 리터럴이 거기서
+              끊겨 빌드가 깨진다. 자막만 남긴다: 그건 화면을 가리는 것이 아니라 화면의
+              일부다. */
+        .ws-film .ws-left, .ws-film .ws-legend, .ws-film .ws-timeline,
+        .ws-film .ws-bottombar, .ws-film .ws-hint { display: none !important; }
         .ws-panel { background: linear-gradient(180deg, rgba(19,26,36,.90), rgba(11,16,23,.86)); border: 1px solid rgba(150,180,215,.18); border-radius: 12px; backdrop-filter: blur(14px) saturate(1.15); box-shadow: 0 10px 30px rgba(0,0,0,.40), inset 0 1px 0 rgba(255,255,255,.07); color: #E8EDF4; }
         /* 머리글 - 작고 넓게 벌린 대문자. 제목이 아니라 '분류표'로 읽히게 한다 */
         .ws-eyebrow { font: 700 9.5px/1 'JetBrains Mono', monospace; letter-spacing: 1.8px; color: #6E8398; }
@@ -2918,7 +2964,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
           ⚠️ 접혔을 때도 재생 버튼은 남긴다. 자동 재생은 자주 쓰는 기능이라, 그것까지
              펼쳐야 닿게 하면 접은 이득이 사라진다. */}
       {!timelineOpen ? (
-        <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 6, fontFamily: "'Noto Sans KR', sans-serif" }}>
+        <div className="ws-bottombar" style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 6, fontFamily: "'Noto Sans KR', sans-serif" }}>
           <button className="ws-pill" onClick={() => setTimelineOpen(true)}>
             <span style={{ color: "#7E90A5" }}>물동량 타임라인</span>
             <span style={{ fontFamily: "'JetBrains Mono',monospace", color: over ? "#FF8A8A" : "#FFC978" }}>
@@ -2978,23 +3024,69 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       {/* ── 입고 적재 진행 줄 ──
           ⚠️ 화면 **아래 가운데**에 둔다. 로봇이 어디에 있든 눈이 한 번은 지나는 자리이고,
              좌우 패널을 가리지 않는다. 타임라인 알약과는 세로로 어긋나게 띄운다. */}
+      {/* ── 적재 자막 ─────────────────────────────────────────────────
+          ★ 한 줄짜리 작은 띠였다. 시연에서 **읽히지 않는** 크기라 키웠는데, 그냥 키우면
+            화면 밖으로 나가므로 **세 줄로 나눴다**: 회차 / 상품 / 치수·목적지.
+          ★ 말풍선으로 물건 옆에 매달지 않았다 (사용자와 의논). 카메라가 계속 움직이고 짐에
+            바짝 붙어서, 매달면 화면 밖으로 나가거나 랙에 파묻힌다 — 가림 처리를 따로 해야
+            한다. 게다가 이만큼 긴 글을 옆에 띄우면 정작 봐야 할 물건을 가린다. 중계 자막이
+            늘 아래에 있는 이유와 같다: 눈은 가운데(동작)에 두고 글은 곁눈으로 읽는다.
+          ⚠️ 폭을 못 박지 않고 `max-width` 만 준다. 상품명 길이가 제각각이라 고정 폭이면
+             짧은 이름에서 휑하고 긴 이름에서 넘친다.
+          ⚠️ `pointerEvents: none` — 자막이 3D 판 위에 떠 있어서, 안 끄면 이 자리에서
+             드래그·클릭이 먹히지 않는다. */}
       {simLine && (
         <div
           className="ws-panel"
           style={{
-            position: "absolute", bottom: 62, left: "50%", transform: "translateX(-50%)",
-            padding: "9px 16px", fontFamily: "'Noto Sans KR', sans-serif",
-            fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap",
-            display: "flex", alignItems: "center", gap: 10,
+            position: "absolute", bottom: 58, left: "50%", transform: "translateX(-50%)",
+            padding: "12px 22px", fontFamily: "'Noto Sans KR', sans-serif",
+            maxWidth: 720, pointerEvents: "none",
           }}
         >
-          <span style={{ color: "#7FD49A" }}>▲ 입고 적재</span>
-          <span style={{ color: "#DCE5EF" }}>{simLine}</span>
+          {simLine.note ? (
+            <div style={{ fontSize: 17, fontWeight: 700, color: "#FFC978", whiteSpace: "nowrap" }}>
+              {simLine.note}
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 9, fontSize: 12, fontWeight: 700 }}>
+                <span style={{ color: "#7FD49A" }}>▲ 입고 적재</span>
+                <span style={{ color: "#5F7186", fontFamily: "'JetBrains Mono',monospace" }}>
+                  {simLine.step} / {simLine.total}
+                </span>
+              </div>
+
+              {/* 상품명 — 이 자막에서 가장 큰 글자. 무엇이 들어가는지가 요점이다 */}
+              <div style={{ marginTop: 4, fontSize: 21, fontWeight: 700, color: "#F2F6FB", lineHeight: 1.2 }}>
+                {simLine.name}
+              </div>
+
+              <div style={{ marginTop: 6, display: "flex", alignItems: "baseline", gap: 12, fontSize: 13.5, flexWrap: "wrap" }}>
+                <span style={{ color: "#9FB0C3", fontFamily: "'JetBrains Mono',monospace" }}>
+                  {simLine.l}×{simLine.w}×{simLine.h}
+                  <span style={{ color: "#5F7186" }}> mm</span>
+                </span>
+                {/* 세 변 합이 등급을 정한 근거다 — 그래서 목적지 **바로 앞**에 둔다 */}
+                <span style={{ color: "#9FB0C3" }}>
+                  세 변 합{" "}
+                  <b style={{ color: "#DCE5EF", fontFamily: "'JetBrains Mono',monospace" }}>
+                    {simLine.sumCm.toFixed(1)}cm
+                  </b>
+                </span>
+                <span style={{ color: "#5F7186" }}>→</span>
+                <span style={{ color: "#FFC978", fontWeight: 700 }}>
+                  {simLine.grade}
+                  {simLine.slot ? <span style={{ color: "#C9A46A" }}> · {simLine.slot}</span> : " · 갈 곳 없음"}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       )}
 
       {/* ── 우하단 힌트 ── */}
-      <div style={{ position: "absolute", bottom: 14, right: 14, fontSize: 10.5, color: "#5F7186", textAlign: "right", lineHeight: 1.6, pointerEvents: "none", fontFamily: "'Noto Sans KR', sans-serif" }}>
+      <div className="ws-hint" style={{ position: "absolute", bottom: 14, right: 14, fontSize: 10.5, color: "#5F7186", textAlign: "right", lineHeight: 1.6, pointerEvents: "none", fontFamily: "'Noto Sans KR', sans-serif" }}>
         드래그 회전 · 스크롤/핀치 확대 · 클릭 → 지점 줌인<br />
         <b style={{ color: "#FFC978" }}>Enter → 출고 구역 → 포스기 확대</b> · 더블클릭 → 전체 보기 · 범례 클릭 → 구역 하이라이트
       </div>
