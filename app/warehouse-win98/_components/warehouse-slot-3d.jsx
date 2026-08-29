@@ -795,6 +795,9 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
   const SIM_SOUND = false;
   const [audio] = useState(() =>
     (!SIM_SOUND || typeof window === "undefined" ? null : createSimAudio()));
+  /* 방금 넣은 칸 — 자막 아래 열 게이지가 쓴다. 다음 건이 시작되면 시뮬레이션이 null 을
+     보내 스스로 내려간다 (`inbound-sim` 의 `startNext` 참고) */
+  const [placed, setPlaced] = useState(null);
   const simRunRef = useRef(null);      // 시뮬레이션을 시작하는 손잡이 (씬이 채운다)
 
   /* ── 입고 화면에서 넘어온 자동 시작 ──────────────────────────────
@@ -2032,7 +2035,13 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       makeAGV: () => buildAGV({ tote: false }),
       onStatus: (line) => setSimLine(line),
       onPlaced: (p) => {
+        setPlaced(p);
         if (p) audio?.stow();   // 칸에 들어간 그 순간에만 (지울 때는 말고)
+        /* ── 슬롯 반짝임 ────────────────────────────────────────────
+           ★ 물건이 들어간 칸이 잠깐 밝아졌다 가라앉는다 (사용자 요청). 글자 없이도
+             "여기 들어갔다"가 읽힌다.
+           ⚠️ **3D 안에서** 일어난다. 예전 팝업은 화면에 붙어 있어서 카메라가 움직이면
+              겉돌았는데, 인스턴스 색은 그 칸에 붙어 있으므로 카메라를 그대로 따라간다. */
       },
       /* 마지막에 카메라가 향할 곳 — 출고 구역 한가운데 (`outZone` 이 정한 자리) */
       outboundAt: [
@@ -2409,6 +2418,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     let raf;
     const tick = () => {
       const dt = Math.min(0.05, clock.getDelta());
+
 
       /* 작업자 2명 상태 기계 (공통 갱신기) */
       for (const w of workers) {
@@ -3535,6 +3545,87 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
           <div style={{ marginTop: 12, fontSize: 13, color: "#7E90A5" }}>{simLine.note}</div>
         </div>
       )}
+
+      {/* ── 랙 면 격자 (오른쪽 위) ────────────────────────────────────
+          ★ 세로 막대 하나였던 것을 **랙 한 면을 그대로 그린 격자**로 바꿨다 (사용자 요청 —
+            구역을 2D 로 그려서 칸에 색칠하는 식이 세련되고 귀엽겠다). 막대는 "몇 단인가"만
+            말하지만, 격자는 그 물건이 **랙 어디쯤**에 꽂혔는지를 한 그림에 담는다.
+          ★ 레트로 픽셀 격자로 그린다 — 칸 사이를 1px 씩 띄우고 98 의 들어간 테두리를 두르면,
+            이 화면의 나머지(창틀·베벨)와 같은 말투가 된다.
+          ⚠️ 칸 크기를 **폭에 맞춰 나눈다.** 등급마다 열 수가 다르다(A는 26열, E는 9열) —
+             한 크기로 못 박으면 A는 넘치고 E는 휑하다.
+          ⚠️ 아래부터 위로 쌓는다(`column-reverse`). 랙은 1단이 바닥이라, 배열 순서 그대로
+             그리면 위아래가 뒤집힌 그림이 된다.
+          ⚠️ 찼는지는 **여기서** 판정한다. 시뮬레이션은 순위만 넘기고(`faceRanks`), 그날의
+             채움 수(`stats`)는 화면 쪽에만 있다.
+          ⚠️ `.ws-film` 이 감추는 목록에 넣지 않는다 — 시뮬레이션이 도는 동안 보라고 만든
+             판이라, 대시보드와 같이 숨으면 존재 이유가 없어진다.
+          ⚠️ 다만 **마무리 카드가 뜨면 내린다.** 마무리는 세 건을 통째로 정리해 보여 주는
+             자리인데, 그 옆에 마지막 한 건짜리 판이 남아 있으면 어느 쪽을 읽어야 할지
+             갈린다 (사용자 지적). 끝났다는 화면에는 끝난 이야기만 있어야 한다. */}
+      {placed?.faceRanks && !simLine?.outro && (() => {
+        const pg = stats?.perGrade?.[placed.gradeId];
+        if (!pg) return null;
+        const n = pg.filled;
+        const W = 236;                                   // 격자가 쓸 수 있는 폭
+        const cw = Math.max(4, Math.floor((W - (placed.cols - 1)) / placed.cols));
+        const gridW = cw * placed.cols + (placed.cols - 1);
+        const used = placed.faceRanks.flat().filter((r) => r < n).length + 1;
+        const totalCells = placed.cols * placed.levels;
+        return (
+          <div
+            className="ws-panel"
+            style={{
+              position: "absolute", top: 46, right: 14, width: gridW + 32,
+              padding: "13px 16px 14px", fontFamily: "'Noto Sans KR', sans-serif",
+              pointerEvents: "none", zIndex: 30,
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#7FD49A", letterSpacing: 0.6 }}>
+              직전 적재
+            </div>
+            <div style={{ marginTop: 6, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+              <span style={{ fontSize: 16, fontWeight: 800, color: "#F2F6FB" }}>{placed.grade}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#57C8FF", fontFamily: "'JetBrains Mono',monospace" }}>
+                {placed.slot}
+              </span>
+            </div>
+
+            {/* 랙 한 면 — 들어간 테두리 안에 픽셀 격자 */}
+            <div
+              style={{
+                marginTop: 11, padding: 4, borderRadius: 2,
+                background: "rgba(0,0,0,.30)",
+                boxShadow: "inset 1px 1px 0 rgba(0,0,0,.55), inset -1px -1px 0 rgba(255,255,255,.10)",
+                display: "flex", flexDirection: "column-reverse", gap: 1, width: gridW + 8,
+              }}
+            >
+              {placed.faceRanks.map((row, k) => (
+                <div key={k} style={{ display: "flex", gap: 1 }}>
+                  {row.map((r, c) => {
+                    const now = k + 1 === placed.level && c + 1 === placed.col;
+                    return (
+                      <div
+                        key={c}
+                        style={{
+                          width: cw, height: cw,
+                          background: now ? "#57C8FF" : r < n ? "#5A7A9E" : "rgba(255,255,255,.07)",
+                          boxShadow: now ? "0 0 9px rgba(87,200,255,.95)" : undefined,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#9FB0C3", fontFamily: "'JetBrains Mono',monospace" }}>
+              <span>이 랙 <b style={{ color: "#F2F6FB" }}>{used}/{totalCells}</b></span>
+              <span>구역 <b style={{ color: "#F2F6FB" }}>{(((pg.filled + placed.bump) / pg.total) * 100).toFixed(1)}%</b></span>
+            </div>
+          </div>
+        );
+      })()}
 
       {simLine && !simLine.outro && (
         <div

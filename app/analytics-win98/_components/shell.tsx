@@ -154,7 +154,7 @@ const SCREENS: Screen[] = [
        그래도 목록에 넣는 이유: 잠긴 버튼으로 두면 "언젠가 생긴다"는 뜻이 되는데, 실제로는
        이미 열 수 있는 화면이고 안에서 스스로 `준비 중` 이라고 말한다. 그쪽이 정직하다. */
     href: "/analytics-win98",
-    label: "Analytics",
+    label: "Storage",
     windowTitle: "ANALYTICS — 분석",
     icon: AnalyticsIcon, // 목업: analytics
   },
@@ -362,7 +362,8 @@ function clamp(value: number, min: number, max: number): number {
 
    ⚠️ 항목 이름은 목업의 Dashboard / Inventory / Analytics 대신 **실제 화면 이름**이다.
       이 목차는 장식이 아니라 진짜로 화면을 오가는 수단이라, 없는 화면 이름을 달면 눌렀을 때
-      갈 곳이 없다. 세 번째 자리(Analytics)만 목업 이름을 그대로 뒀다 — 이 스킨에 아직
+      갈 곳이 없다. 세 번째 자리도 목업 이름(Analytics)을 버리고 하는 일로 바꿨다 — 입고 → 보관 → 포장이라
+      세 탭이 물류 흐름 순서가 된다. 이 화면의 중심이 실시간 창고 맵과 3D 창고 입구라서다 — 이 스킨에 아직
       대시보드가 없어서 잠근 자리이기 때문이다. */
 function SideNav({ activeHref }: { activeHref: string }) {
   return (
@@ -392,7 +393,7 @@ function SideNav({ activeHref }: { activeHref: string }) {
                올린 세로 배치 + py-5**. 한 칸이 약 92px 이다.
 
                ★ 가로 배치를 버린 이유는 높이가 아니라 **글자가 잘려서**다. 아이콘과 글자가
-                 한 줄에 서면 w-32 안에서 글자가 쓸 수 있는 폭이 70px 남짓이라 `Analytics` 가
+                 한 줄에 서면 w-32 안에서 글자가 쓸 수 있는 폭이 70px 남짓이라 `Storage` 가
                  `Analyt…` 로 잘렸다. 세로로 쌓으면 글자가 칸 폭을 통째로 쓰므로 잘릴 일이
                  없다 — "가독성"에서 제일 먼저 고칠 것은 크기가 아니라 잘림이었다.
                ⚠️ 그래서 `truncate` 도 뗐다. 폭이 충분한데 truncate 를 남겨 두면, 나중에
