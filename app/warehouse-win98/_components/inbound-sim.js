@@ -99,11 +99,15 @@ export const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
  *   clearCorridor: (busy: boolean) => void,
  *   makeAGV: () => { grp: object },
  *   onStatus: (s: {note?: string, step?: number, ...} | null) => void,   // 자막 내용 (위 `setStatus` 참고)
+ *   onPlaced: (p: {x,y,z, gradeId, grade, slot, name, bump} | null) => void,  // 슬롯에 넣은 직후
  * }} deps
  */
 export function createInboundSim(THREE, deps) {
   const { scene, gradeMeshes, cranes, portalPos, zeroMatrix, makeAGV, onStatus,
-          clearCorridor } = deps;
+          clearCorridor, onPlaced } = deps;
+  /* 이번 주기에 등급별로 몇 개를 넣었나. 팝업의 사용률이 **실제로 오르게** 하려고 센다 —
+     그날의 기준 재고(`stats`)는 적재해도 다시 계산되지 않기 때문이다 */
+  const placedPerGrade = new Map();
 
   /* ── 예약 슬롯 ────────────────────────────────────────────────────────
      구역마다 크레인 통로 쪽 랙에서 **점유 순위가 가장 늦은 칸**을 몇 개 빼 둔다. */
@@ -204,11 +208,13 @@ export function createInboundSim(THREE, deps) {
        1.15초인데 동작이 0.4초에 끝나면, 카메라가 도착하기도 전에 상황이 끝나 있다.
      ★ 그래서 **이 구간만** 느리게 한다. 통로 주행이나 P&D 집기까지 늦추면 시연 전체가
        늘어진다 — 느려야 하는 것은 "물건이 칸에 들어가는 그 순간" 하나다.
+     ★ 한 번 더 늦췄다 (사용자 요청 — 통로는 빠르되 적재는 천천히 줌 하며 보여 달라).
+       겨냥 0.8→1.4 · 뻗기 0.85→0.55m/s · 유지 0.9→1.5. 넣는 장면이 2.9 → **4.7초** 다.
      ⚠️ `AIM` 은 포크가 뻗기 **전에** 멈춰 서는 시간이다. 카메라가 자리를 잡을 틈을 주지
         않으면, 느리게 뻗어도 화면은 여전히 따라오는 중이다. */
-  const STORE_AIM = 0.8;        // 겨냥 — 멈춰 서서 카메라를 기다린다
-  const STORE_FORK = 0.85;      // 넣는 포크 속도 (m/s) — 1m 에 약 1.2초
-  const STORE_HOLD = 0.9;       // 놓고 나서 그대로 보여 주는 시간
+  const STORE_AIM = 1.4;        // 겨냥 — 멈춰 서서 카메라가 자리 잡기를 기다린다
+  const STORE_FORK = 0.55;      // 넣는 포크 속도 (m/s) — 1m 에 약 1.8초
+  const STORE_HOLD = 1.5;       // 놓고 나서 그대로 보여 주는 시간
   const STORE_BACK = 1.9;       // 빼는 포크 속도 — 넣을 때보다는 빠르게
 
   /* ── 카메라가 볼 것 ──
@@ -223,7 +229,7 @@ export function createInboundSim(THREE, deps) {
      ★ 각을 낮추면(=`pol` 을 키우면) 훨씬 현장 같아 보이지만, 낮아진 카메라가 랙을 뚫는다.
        통로 안(중앙 작업 통로)은 비어 있어 낮아도 되고, 구역 통로 옆은 양쪽이 랙이라 안 된다.
        그래서 장면마다 최소 높이를 따로 준다. */
-  const state = { az: 0, pol: 0.62, dist: 15, minY: 8, corridorFirst: false };
+  const state = { az: 0, pol: 0.62, dist: 15, minY: 8, corridorFirst: false, alignFirst: false };
   /* 이동 구간에서 쓸 각도. **일감이 정해질 때 한 번 잡고 그대로 둔다.**
      ★ 예전에는 매 프레임 진행 방향에서 다시 구했다. 로봇이 조금만 방향을 틀어도 카메라가
        따라 돌았고, 그 끊임없는 회전이 화면을 정신없게 만든 진짜 원인이었다. 통로를 따라
@@ -270,6 +276,16 @@ export function createInboundSim(THREE, deps) {
        걸어간다. `corridorFirst` 가 참인 동안은 창고 쪽에서 x 이동을 막아 둔다. */
   const EXIT_HOLD = 0.9;
   let exitT = 0;
+  /* 골목으로 **들어가는** 동안 통로를 먼저 타는 시간(초).
+     ★ 나오는 쪽만 고쳐 두었더니 들어가는 쪽에 같은 문제가 남았다 (사용자 지적 — 마지막
+       적재 전에 시야가 슬롯을 통과한다). 카메라는 로봇 뒤 통로에 있는데 목표가 갑자기
+       골목 깊숙한 곳이 되니, 그 대각선이 랙 줄을 관통했다.
+     ⚠️ 나올 때는 **x 를** 붙들었지만 들어갈 때는 **z 를** 붙든다. 통로를 따라 그 골목의
+       x 까지 먼저 가고, 거기서 옆으로 꺾어 들어가야 한다 — 사람이 걷는 길과 같다. */
+  /* ⚠️ 통로를 따라 그 골목 앞까지 x 로 6~7m 를 가야 한다. 자리 감쇠가 90% 따라잡는 데
+     1.15초이므로 그보다 넉넉해야 다 가고 나서 꺾는다 */
+  const ENTER_HOLD = 1.6;
+  let enterT = 0;
 
   /* 마지막에 카메라가 향할 곳 — 출고 구역이다. 창고 쪽에서 좌표를 받는다 */
   const outroAt = deps.outboundAt ? new THREE.Vector3(...deps.outboundAt) : null;
@@ -416,6 +432,7 @@ export function createInboundSim(THREE, deps) {
       clearCorridor(false);   // 통로를 돌려준다 (위 `clearCorridor` 주의 참고)
       for (const cg of cargoes) cg.visible = false;
       onStatus(null);
+      onPlaced?.(null);
     },
 
     /** @param fromAz 지금 궤도 카메라가 서 있는 각 (도입부가 이어받는다) */
@@ -495,6 +512,8 @@ export function createInboundSim(THREE, deps) {
       phase = "intro";
       timer = INTRO_HOLD + INTRO_PUSH;
       onStatus({ note: "입고 문 — 상품 3건 도착" });
+      placedPerGrade.clear();
+      onPlaced?.(null);
     },
 
     update(dt) {
@@ -552,6 +571,9 @@ export function createInboundSim(THREE, deps) {
       } else if (c !== null) {
         c.carried.getWorldPosition(focus);
         if (!c.carried.visible) focus.setY(focus.y + 0.2);
+        if (enterT > 0) enterT -= dt;
+        /* 아직 통로를 타고 오는 중이면 창고 쪽에 **z 는 붙들라**고 알린다 */
+        state.alignFirst = enterT > 0;
 
         /* ── 넘겨받기부터 적재까지 — **한 시점으로 이어 간다** ──────────────
            ★ 예전에는 넘겨주는 순간 12m 뒤로 물러나 로봇과 크레인을 한 화면에 담았다가,
@@ -614,6 +636,7 @@ export function createInboundSim(THREE, deps) {
       }
 
       state.corridorFirst = false;
+      state.alignFirst = false;
 
       if (phase === "outro") {
         /* 출고 구역을 비추며 천천히 물러난다. 다 물러나면 그 자리에서 멈춘다 —
@@ -664,6 +687,7 @@ export function createInboundSim(THREE, deps) {
               onStatus(null);
               return;
             }
+            enterT = ENTER_HOLD;   // 통로를 따라 골목 앞까지 먼저 간다 (위 `ENTER_HOLD` 참고)
             phase = "handoff";
             timer = GRAB_TIME;
           }
@@ -775,6 +799,21 @@ export function createInboundSim(THREE, deps) {
           gm.im.setMatrixAt(j.target, gm.mats[j.target]);
           gm.im.instanceMatrix.needsUpdate = true;
           filled.add(j.target);
+          /* 방금 넣은 칸을 화면에 알린다 — 슬롯 옆에 작은 팝업이 뜬다.
+             ⚠️ 슬롯에는 x 가 없다(`slotInfo` 참고). 크레인 축에서 포크가 뻗은 만큼
+                더한 자리가 실제로 상자가 놓인 곳이다. */
+          const bump = (placedPerGrade.get(c.id) ?? 0) + 1;
+          placedPerGrade.set(c.id, bump);
+          onPlaced?.({
+            x: c.craneX + j.slot.dir * c.reach,
+            y: j.slot.y,
+            z: j.slot.z,
+            gradeId: c.id,
+            grade: `${j.grade.code} ${j.grade.name}`,
+            slot: `${j.slot.col}열 ${j.slot.level}단`,
+            name: j.item.name,
+            bump,
+          });
           phase = "storeRetract";
         }
         return;

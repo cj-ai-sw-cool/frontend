@@ -313,22 +313,35 @@ function liveryTexture(THREE, flip) {
 }
 
 /** 뒷문 — 알루미늄 셔터. 가로 골이 촘촘히 잡혀 있다 */
-function rearDoorTexture(THREE) {
+/**
+ * 적재함 뒷문(셔터) 무늬.
+ * @param {boolean} blue 파란 문으로 그릴까. **닫힌 채 서 있는 차**에 쓴다 (사용자 지적 —
+ *   문이 닫혀 있으면 뒷면도 차체와 같은 파란색이어야 한다). 열린 차의 문짝은 안쪽 면과
+ *   경첩이 보이는 자리라 회색 셔터 그대로 둔다.
+ */
+function rearDoorTexture(THREE, blue = false) {
   const W = 256, H = 256;
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
   const c = cv.getContext("2d");
   for (let y = 0; y < H; y += 10) {
-    const g = 176 + ((y / 10) % 2 === 0 ? 14 : 0);
-    c.fillStyle = `rgb(${g},${g + 3},${g + 8})`;
+    const alt = (y / 10) % 2 === 0;
+    if (blue) {
+      /* 파란 문도 **골이 보여야** 셔터로 읽힌다. 단색으로 칠하면 차 뒤를 잘라 낸 것처럼
+         평평해져서, 닫힌 문이 아니라 파란 벽이 된다 */
+      c.fillStyle = alt ? "#1668c4" : "#1a75d8";
+    } else {
+      const g = 176 + (alt ? 14 : 0);
+      c.fillStyle = `rgb(${g},${g + 3},${g + 8})`;
+    }
     c.fillRect(0, y, W, 10);
-    c.fillStyle = "rgba(90,98,108,0.5)";
+    c.fillStyle = blue ? "rgba(9,54,106,0.55)" : "rgba(90,98,108,0.5)";
     c.fillRect(0, y + 9, W, 1);
   }
-  // 위쪽 파란 띠 + 손잡이 봉 두 개
-  c.fillStyle = CJ_BLUE;
+  // 위쪽 띠 + 손잡이 봉 두 개
+  c.fillStyle = blue ? "#0F4E96" : CJ_BLUE;
   c.fillRect(0, 0, W, 34);
-  c.fillStyle = "#8A939E";
+  c.fillStyle = blue ? "#7E9DC4" : "#8A939E";
   c.fillRect(W * 0.3, 40, 7, H - 60);
   c.fillRect(W * 0.68, 40, 7, H - 60);
 
@@ -351,6 +364,11 @@ const CAB_L = 2.05;
 /* 적재함 뒷면(뒷문)의 z. `buildTruck` 주석대로 뒷문이 원점 쪽이고 차체가 +z 로 뻗는다 */
 const REAR_Z = 0.1;
 
+/* 출차 주행 — 속도(m/s) · 직진 구간(m) · 90° 를 도는 데 쓰는 거리(m) · 총 주행(m).
+   ⚠️ `TURN_AT` 은 **차 길이(8m 남짓)보다 짧아도 된다.** 회전축이 뒷문이라 6.5m 만 나가도
+      차체는 이미 도크 밖이다. 더 늘리면 90° 를 다 돌기 전에 화면 밖으로 나간다. */
+const DEPART_V = 3.4, TURN_AT = 6.5, TURN_LEN = 9.0, DEPART_LEN = 26;
+
 /**
  * @param {{open?: boolean}} opt `open` 이면 뒷문 면을 지우고 짐칸 안쪽을 만들어 둔다 —
  *   문짝과 상차 장면은 `buildLoading` 이 따로 얹는다.
@@ -366,7 +384,7 @@ function buildTruck(THREE, dispose, { open = false } = {}) {
 
   const liveryR = liveryTexture(THREE, false);   // +x 면: u=0 이 차 앞
   const liveryL = liveryTexture(THREE, true);    // -x 면: u=0 이 차 뒤 → 배치를 되짚는다
-  const doorTex = rearDoorTexture(THREE);
+  const doorTex = rearDoorTexture(THREE, !open);   // 닫힌 차는 파란 문 (위 주석)
   const sideR = new THREE.MeshLambertMaterial({ map: liveryR });
   const sideL = new THREE.MeshLambertMaterial({ map: liveryL });
   const doorMat = new THREE.MeshLambertMaterial({ map: doorTex });
@@ -817,6 +835,7 @@ export function createExterior(THREE, { floorW, floorD, floorCz }, { makePiglin 
   /* ★ **앞쪽 한 대만 문을 연다** (사용자 요청 — 상차 중인 차). 두 대 다 열어 두면
      상차 장면이 둘로 늘어 화면이 산만하고, 도크가 늘 만차인 창고로 보인다. */
   let loading = null;
+  let depart = null;   // 두 번째(닫힌) 트럭 — 출고 시점에서만 배송을 나간다
   dock.xs.forEach((x, i) => {
     const open = i === 0 && typeof makePiglin === "function";
     /* ★ 상차 중인 차는 **비스듬히** 세운다 (사용자 요청 — 안이 잘 안 보인다).
@@ -838,7 +857,13 @@ export function createExterior(THREE, { floorW, floorD, floorCz }, { makePiglin 
           상자가 이미 같은 자리를 덮고 있어 결과는 같으므로 따로 빼지 않는다. */
     t.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     slot.add(t);
-    if (!open) return;
+    if (!open) {
+      /* ⚠️ 움직일 대상은 트럭(`t`)이 아니라 **`slot`** 이다. 트럭만 옮기면 회전축이 차
+         한가운데가 되어 도크에 붙어 있던 뒷문이 옆으로 쓸려 나간다. slot 은 뒷문 자리에
+         원점이 있어(위 주석) 그대로 차량 좌표계로 쓸 수 있다. */
+      depart = { slot, on: false, x0: slot.position.x, z0: slot.position.z, px: slot.position.x, pz: slot.position.z, d: 0, v: 0, head: 0 };
+      return;
+    }
     loading = buildLoading(THREE, dispose, {
       truckZ: 0, dockTop: dock.top, makePiglin,
     });
@@ -853,8 +878,46 @@ export function createExterior(THREE, { floorW, floorD, floorCz }, { makePiglin 
           +90° 돌아 있어서 로컬 x 가 월드 **-z** 로 간다 — 이 변환을 두 곳에 적어 두면
           도크를 옮겼을 때 문만 제자리에 남는다. */
     doorZs: dock.xs.map((x) => floorCz - x),
+
+    /* ── 두 번째 트럭 출차 ────────────────────────────────────────
+       ★ Enter 로 출고 구역에 섰을 때만 닫힌 차가 배송을 나간다 (사용자 요청). 도크에 늘
+         두 대가 붙어 있으면 정지 화면이라, 한 대가 천천히 빠져나가는 것만으로 "지금
+         돌아가는 센터"가 된다.
+       ⚠️ **평소 창고 화면에서는 움직이지 않는다.** 그래서 스스로 도는 애니메이션이 아니라
+          시점 쪽에서 켜고 끄는 스위치다.
+       ⚠️ 끌 때 **제자리로 되돌린다.** 안 그러면 Enter 를 한 바퀴 더 돌았을 때 도크 한 칸이
+          빈 채로 남고, 마당 저편에 트럭이 서 있게 된다. */
+    setDeparting(on) {
+      if (!depart || depart.on === on) return;
+      depart.on = on;
+      if (!on) {
+        depart.d = 0; depart.v = 0; depart.head = 0;
+        depart.px = depart.x0; depart.pz = depart.z0;
+        depart.slot.position.set(depart.x0, 0, depart.z0);
+        depart.slot.rotation.y = 0;
+      }
+    },
+
     update(dt) {
       loading?.update(dt);
+
+      /* 출차 주행 — 천천히 붙는 속도로 도크를 빠져나가 왼쪽으로 90° 돌아 사라진다.
+         ⚠️ 진행 방향으로 **적분**한다. 목표 지점을 잡고 그리로 보간하면 차가 옆으로
+            미끄러지는 그림이 된다 — 차는 제 코가 향한 쪽으로만 간다.
+         ⚠️ 조향은 시간이 아니라 **거리**에 비례한다. 시간에 걸면 붙는 속도 구간에서
+            제자리 회전처럼 팽이가 돈다. */
+      if (depart?.on && depart.d < DEPART_LEN) {
+        depart.v = Math.min(DEPART_V, depart.v + 1.6 * dt);
+        const step = depart.v * dt;
+        depart.d += step;
+        if (depart.d > TURN_AT && depart.head < Math.PI / 2) {
+          depart.head = Math.min(Math.PI / 2, depart.head + (Math.PI / 2) * (step / TURN_LEN));
+        }
+        depart.px += Math.sin(depart.head) * step;   // head 0 = 도크 밖으로 (local +z)
+        depart.pz += Math.cos(depart.head) * step;
+        depart.slot.position.set(depart.px, 0, depart.pz);
+        depart.slot.rotation.y = depart.head;
+      }
     },
     dispose() {
       for (const d of dispose) d?.dispose?.();
