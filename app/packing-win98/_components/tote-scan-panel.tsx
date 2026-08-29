@@ -39,6 +39,8 @@ export function ToteScanPanel({
   linesLoading,
   selectedLineId,
   onSelectLine,
+  onLoad,
+  isLoadPending,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -56,6 +58,9 @@ export function ToteScanPanel({
   linesLoading: boolean;
   selectedLineId: number | null;
   onSelectLine: (lineId: number) => void;
+  /** 대기 중인 주문 한 묶음을 투입하고 고른 라인의 배송 내역을 채운다 */
+  onLoad: () => void;
+  isLoadPending: boolean;
 }) {
   const isBusy = isPending || isNextPending;
   const isManualEntry = value.trim().length > 0;
@@ -141,6 +146,14 @@ export function ToteScanPanel({
             ))}
           </select>
         )}
+        <Btn
+          disabled={isBusy || isLoadPending || selectedLineId === null}
+          onClick={onLoad}
+          title="대기 중인 주문 한 묶음을 투입하고 이 라인의 배송 내역을 불러옵니다"
+          className="h-9 shrink-0 px-3 text-[14px]"
+        >
+          {isLoadPending ? "투입 중…" : "Load"}
+        </Btn>
       </div>
 
       {/* 실패 · 요약이 같은 자리를 쓴다. 스캔 전에는 비워 둔다 — 높이는 고정폭 컨테이너가 잡는다.

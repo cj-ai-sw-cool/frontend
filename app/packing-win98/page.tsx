@@ -14,6 +14,7 @@ import { ToteScanPanel } from "./_components/tote-scan-panel";
 import { useLines } from "./_data/use-lines";
 import { useLineShipments } from "./_data/use-line-shipments";
 import { useNextTote } from "./_data/use-next-tote";
+import { useReleaseOrders } from "./_data/use-release-orders";
 import {
   useBoxTypes,
   useCompletePacking,
@@ -94,6 +95,7 @@ export default function PackingV2Page() {
   const completePacking = useCompletePacking(); // 3-8
   const linesQuery = useLines(); // 라인 목록 — LINE 탭
   const nextTote = useNextTote(); // 시연용 다음 토트 발급
+  const releaseOrders = useReleaseOrders(); // 시연용 주문 투입
 
   const shipment = shipmentQuery.data;
   const boxes = useMemo<BoxType[]>(
@@ -172,6 +174,25 @@ export default function PackingV2Page() {
     setSelectedLineId(lineId);
     setHasNextTote(true);
   }, []);
+
+  /**
+   * 시연 주문 투입 — 리셋 직후에는 주문이 대기열에만 있어 화면에 아무것도 없다. 한 묶음을
+   * 풀면 그 라인의 배송 내역이 생긴다. 더 넣을 게 없으면 서버가 빈 응답을 주므로 그대로 알린다.
+   */
+  const handleLoad = useCallback(() => {
+    releaseOrders.mutate(undefined, {
+      onSuccess: (result) => {
+        if (result === null) {
+          toast.info("더 투입할 주문이 없습니다.");
+          return;
+        }
+        toast.success(
+          `주문 ${result.orders}건이 들어왔습니다. 배송단위 ${result.shipments}건, 남은 묶음 ${result.remaining}개.`,
+        );
+      },
+      onError: (error) => toast.error(error.message),
+    });
+  }, [releaseOrders]);
 
   /**
    * 시연장에 스캐너가 없어 이 버튼이 스캐너를 대신한다. 서버가 다음 토트를 주면
@@ -271,6 +292,8 @@ export default function PackingV2Page() {
         linesLoading={linesQuery.isLoading}
         selectedLineId={effectiveLineId}
         onSelectLine={handleSelectLine}
+        onLoad={handleLoad}
+        isLoadPending={releaseOrders.isPending}
       />
 
       <div className="flex min-h-0 flex-1 gap-2">
