@@ -111,9 +111,9 @@ export function ToteScanPanel({
         </Btn>
       </form>
 
-      {/* LINE 선택 — 배송 내역 조회(3-1)·다음 토트 발급이 여기서 고른 라인을 함께 쓴다.
-          ACTIVE 가 아닌 라인은 탭에 남긴 채 누르지만 못하게 막는다 — 사라지면 탭이
-          세 개에서 두 개로 줄어 헷갈린다. */}
+      {/* LINE 선택 — 목업의 `TEST:` 셀렉트 자리를 그대로 잇는다. 배송 내역 조회와 다음 토트
+          발급이 여기서 고른 라인을 함께 쓴다. 운영 중이 아닌 라인도 목록에 남기되 고를 수 없게
+          둔다 — 사라지면 세 줄이 두 줄로 줄어 헷갈린다. */}
       <div
         className={`${w98.sunken} flex shrink-0 items-center gap-1.5 bg-[color:var(--surface)] px-1.5 py-1.5`}
       >
@@ -123,23 +123,23 @@ export function ToteScanPanel({
         ) : lines.length === 0 ? (
           <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>라인 없음</span>
         ) : (
-          <span className="flex gap-1">
-            {lines.map((line) => {
-              const isActive = line.status === "ACTIVE";
-              return (
-                <Btn
-                  key={line.lineId}
-                  pressed={line.lineId === selectedLineId}
-                  disabled={!isActive}
-                  onClick={() => onSelectLine(line.lineId)}
-                  title={isActive ? line.name : `${line.name} — 지금 고를 수 없음 (${line.status})`}
-                  className={`${w98.small} h-7 px-2.5 font-normal disabled:opacity-40`}
-                >
-                  {line.name}
-                </Btn>
-              );
-            })}
-          </span>
+          <select
+            aria-label="포장 라인"
+            value={selectedLineId === null ? "" : String(selectedLineId)}
+            disabled={isPending}
+            onChange={(event) => onSelectLine(Number(event.target.value))}
+            className={`${w98.input} ${w98.sunken} h-9 w-56 min-w-0 text-[14px]`}
+          >
+            {lines.map((line) => (
+              <option
+                key={line.lineId}
+                value={String(line.lineId)}
+                disabled={line.status !== "ACTIVE"}
+              >
+                {line.name}
+              </option>
+            ))}
+          </select>
         )}
       </div>
 
