@@ -46,20 +46,17 @@ const W = {
    ★ 화면·모형·라벨이 같은 한 벌의 숫자를 본다. 모니터에 352 라고 떠 있는데 모형 상자는
      아무 크기나 되어 있으면, 보는 사람이 둘을 못 잇는다. mm → m 로만 바꿔 쓴다. */
 const ITEM = {
-  name: "햇반 210g × 6입",
+  name: "스팸 1.81kg",
   maker: "CJ제일제당",
-  /* 흰 용기(지름 128mm) 3개 x 2줄 한 층 + 인쇄 슬리브 기준 실측 */
-  lengthMm: 412, // x — 용기 3개 나란히 + 포장 여유
-  heightMm: 58,  // y — 트레이 6 + 용기 43 + 필름·여유
-  widthMm: 275,  // z — 용기 2줄 + 포장 여유
-  realKg: 1.5,
-  volKg: 1.4,    // 체적 / 5000 (택배 부피중량 관행)
-  volCm3: 6571,
-  sku: "CJ-8801007-0426",
-  /* 세 변 합 41.2 + 27.5 + 5.8 = 74.5cm → 상한 80cm 인 A(극소형) 구역.
-     ⚠️ 창고 쪽 등급 규칙(`GRADES` 의 "세 변 합 = 등급 상한")을 그대로 따른 값이다.
-        길이 41cm 가 A 슬롯 한 변(30cm)보다 길다는 모순이 있지만, 그건 이 화면이 아니라
-        등급 규칙 자체의 단순화다. 여기서 임의로 B 로 올리면 두 화면이 서로 다른 말을 한다. */
+  /* 대형 사각 캔 실측 — 시연 입고 1회차 상품과 같은 값이다 (demo/data/products.json) */
+  lengthMm: 101, // x
+  heightMm: 198, // y
+  widthMm: 101,  // z
+  realKg: 2.0,
+  volKg: 0.4,    // 체적 / 5000 (택배 부피중량 관행)
+  volCm3: 2020,
+  sku: "CJ-SPM-01",
+  /* 세 변 합 10.1 + 10.1 + 19.8 = 40.0cm → 상한 80cm 인 A(극소형) 구역 */
   grade: "A",
   gradeName: "극소형 구역",
 };
@@ -629,113 +626,38 @@ function hetbanSleeveTexture(long) {
   return tex;
 }
 
-/**
- * 햇반 6개입 한 팩. **바닥이 y = 0** 이 되게 만들어 돌려준다 —
- * 계량판 위에 올릴 때 판 높이만 넘기면 되도록.
- */
-function buildHetbanPack(dispose) {
+/* 계량판 위 물건 — 스팸 1.81kg 한 캔.
+   ★ 모니터에 뜨는 치수와 같은 값으로 만든다. 화면은 101 x 198 이라고 하는데 모형이
+     아무 크기나 되어 있으면 보는 사람이 둘을 못 잇는다.
+   ⚠️ 원점은 **바닥**이다. 부르는 쪽이 판 높이만 넘기면 되도록 맞춰 둔다. */
+function buildSpamCan(dispose) {
   const g = new THREE.Group();
-  const L = ITEM.lengthMm * MM, WD = ITEM.widthMm * MM;
+  const W = ITEM.lengthMm * MM, H = ITEM.heightMm * MM, D = ITEM.widthMm * MM;
 
-  /* 실측 기준 (mm)
-     용기: 지름 128, 높이 43. 뚜껑 테두리는 지름 134 로 살짝 넓다(실링 플랜지).
-     트레이 6 + 용기 43 + 필름 = 약 52. 나머지가 포장 여유. */
-  const TRAY_H = 0.006;
-  const BOWL_H = 0.043, BOWL_RT = 0.064, BOWL_RB = 0.055;
-  const FLANGE_R = 0.067;
-  const SLEEVE_H = TRAY_H + BOWL_H * 0.72;   // 뚜껑을 덮지 않는 높이까지만
+  const cv = document.createElement("canvas");
+  cv.width = 384; cv.height = 512;
+  const c = cv.getContext("2d");
+  c.fillStyle = "#123C86"; c.fillRect(0, 0, 384, 512);
+  c.fillStyle = "#F2C230"; c.fillRect(0, 154, 384, 133);
+  c.fillStyle = "#123C86";
+  c.textAlign = "center"; c.textBaseline = "middle";
+  c.font = "700 92px sans-serif"; c.fillText("SPAM", 192, 220);
+  c.fillStyle = "rgba(255,255,255,0.85)";
+  c.font = "700 44px sans-serif"; c.fillText("1.81kg", 192, 348);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
 
-  // 받침 트레이
-  const trayMat = new THREE.MeshLambertMaterial({ color: 0xe8e0d2 });
-  const tray = new THREE.Mesh(new THREE.BoxGeometry(L, TRAY_H, WD), trayMat);
-  tray.position.y = TRAY_H / 2;
-  g.add(tray);
-  dispose.push(tray.geometry, trayMat);
+  const bodyMat = new THREE.MeshLambertMaterial({ map: tex });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), bodyMat);
+  body.position.y = H / 2;
+  g.add(body);
+  dispose.push(body.geometry, bodyMat);
 
-  /* 용기 6개 (3 × 2)
-     ⚠️ 옆면 분할을 28 로 올렸다. 12~16 이면 위에서 내려다볼 때 원이 아니라 다각형으로
-        보이는데, 측정기 카메라 구도가 정확히 그 각도다. */
-  const bowlMat = new THREE.MeshLambertMaterial({ color: 0xf7f6f2 });
-  const flangeMat = new THREE.MeshLambertMaterial({ color: 0xefece4 });
-  const bowlGeo = new THREE.CylinderGeometry(BOWL_RT, BOWL_RB, BOWL_H, 28);
-  const flangeGeo = new THREE.CylinderGeometry(FLANGE_R, BOWL_RT, 0.004, 28);
-  const lidGeo = new THREE.CircleGeometry(FLANGE_R - 0.001, 28);
-
-  /* 뚜껑 인쇄는 여섯 개가 **같은 텍스처 한 장을 나눠 쓴다.** 여섯 장을 따로 만들면
-     같은 그림을 여섯 번 GPU 에 올리게 된다 */
-  const lidTex = hetbanLidTexture();
-  const lidMat = new THREE.MeshLambertMaterial({ map: lidTex });
-
-  for (let i = 0; i < 3; i++) {
-    for (let j = 0; j < 2; j++) {
-      const bx = (i - 1) * 0.133;
-      const bz = (j - 0.5) * 0.136;
-
-      const bowl = new THREE.Mesh(bowlGeo, bowlMat);
-      bowl.position.set(bx, TRAY_H + BOWL_H / 2, bz);
-      g.add(bowl);
-
-      const flange = new THREE.Mesh(flangeGeo, flangeMat);
-      flange.position.set(bx, TRAY_H + BOWL_H + 0.002, bz);
-      g.add(flange);
-
-      const lid = new THREE.Mesh(lidGeo, lidMat);
-      lid.rotation.x = -Math.PI / 2;
-      lid.position.set(bx, TRAY_H + BOWL_H + 0.0045, bz);
-      /* 공장에서 찍어 붙인 필름이라 여섯 개가 거의 같은 방향이지만, 완전히 똑같으면
-         복사-붙여넣기로 보인다. 2도 남짓만 흔든다 */
-      lid.rotation.z = ((i * 2 + j) % 4 - 1.5) * 0.035;
-      g.add(lid);
-    }
-  }
-  dispose.push(bowlGeo, flangeGeo, lidGeo, bowlMat, flangeMat, lidMat, lidTex);
-
-  /* 인쇄 슬리브 — 판 네 장 (위 주의 참고).
-     ⚠️ 긴 면과 짧은 면은 가로세로 비가 달라서 텍스처를 따로 만든다. 한 장을 늘여 쓰면
-        짧은 면에서 글자가 뚱뚱해진다. */
-  const longTex = hetbanSleeveTexture(true);
-  const shortTex = hetbanSleeveTexture(false);
-  const longMat = new THREE.MeshLambertMaterial({ map: longTex, side: THREE.DoubleSide });
-  const shortMat = new THREE.MeshLambertMaterial({ map: shortTex, side: THREE.DoubleSide });
-  const longGeo = new THREE.PlaneGeometry(L, SLEEVE_H);
-  const shortGeo = new THREE.PlaneGeometry(WD, SLEEVE_H);
-  const sy = SLEEVE_H / 2;
-  for (const sz of [-1, 1]) {
-    const p = new THREE.Mesh(longGeo, longMat);
-    p.position.set(0, sy, sz * (WD / 2 + 0.001));
-    if (sz < 0) p.rotation.y = Math.PI;
-    g.add(p);
-  }
-  for (const sx of [-1, 1]) {
-    const p = new THREE.Mesh(shortGeo, shortMat);
-    p.position.set(sx * (L / 2 + 0.001), sy, 0);
-    p.rotation.y = sx > 0 ? Math.PI / 2 : -Math.PI / 2;
-    g.add(p);
-  }
-  dispose.push(longGeo, shortGeo, longMat, shortMat, longTex, shortTex);
-
-  /* 수축 필름 — 슬리브 위, 뚜껑 높이까지 감싸는 투명 띠.
-     ⚠️ 팩 전체를 덮는 상자로 만들면 안 된다. 뚜껑 인쇄 위에 반투명 판이 한 겹 얹혀
-        인쇄가 뿌예지는데, 그 뚜껑이 이 모형에서 가장 중요한 면이다. 옆면만 두른다. */
-  const filmMat = new THREE.MeshLambertMaterial({
-    color: 0xdce6f0, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide,
-  });
-  const filmH = TRAY_H + BOWL_H + 0.008 - SLEEVE_H;
-  const filmLong = new THREE.PlaneGeometry(L, filmH);
-  const filmShort = new THREE.PlaneGeometry(WD, filmH);
-  const fy = SLEEVE_H + filmH / 2;
-  for (const sz of [-1, 1]) {
-    const p = new THREE.Mesh(filmLong, filmMat);
-    p.position.set(0, fy, sz * (WD / 2 + 0.0015));
-    g.add(p);
-  }
-  for (const sx of [-1, 1]) {
-    const p = new THREE.Mesh(filmShort, filmMat);
-    p.position.set(sx * (L / 2 + 0.0015), fy, 0);
-    p.rotation.y = Math.PI / 2;
-    g.add(p);
-  }
-  dispose.push(filmLong, filmShort, filmMat);
+  const lidMat = new THREE.MeshLambertMaterial({ color: 0xb9bcc0 });
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.30, W * 0.30, 0.004, 20), lidMat);
+  lid.position.y = H + 0.002;
+  g.add(lid);
+  dispose.push(lid.geometry, lidMat);
 
   return g;
 }
@@ -883,7 +805,7 @@ function buildRig(scene, dispose) {
 
   /* ── 측정 대상 ── */
   const L = ITEM.lengthMm * MM, H = ITEM.heightMm * MM, WD = ITEM.widthMm * MM;
-  const pack = buildHetbanPack(dispose);
+  const pack = buildSpamCan(dispose);
   pack.position.set(0, PLATE_TOP, 0);   // 팩은 바닥이 원점이라 판 높이만 넘기면 된다
   pack.scale.setScalar(PROP_SCALE);     // 보이라고 키운다 (위 `PROP_SCALE` 주의 참고)
   g.add(pack);

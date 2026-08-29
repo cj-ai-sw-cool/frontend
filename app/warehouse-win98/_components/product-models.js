@@ -403,8 +403,139 @@ export function makeOtteCase(THREE) {
   return g;
 }
 
+
+/* 실제 제품 사진을 상표로 쓴다.
+   ★ 손으로 그린 무늬는 "무슨 물건인지" 까지만 말한다. 시연에서 보는 사람이 아는 것은
+     실제 포장이므로 코리안넷 제품 사진을 그대로 붙인다 (사용자 지적).
+   ⚠️ 사진은 흰 배경 정면 컷이라 여백을 미리 잘라 두었다. 여백째 쓰면 상품이 면 가운데
+      조그맣게만 들어가 무엇인지 안 보인다. */
+function photo(THREE, file) {
+  const tex = new THREE.TextureLoader().load(`/products/${file}`);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+/* 사진을 옆 네 면에 입힌 상자.
+   ★ 처음에는 둥근 기둥을 만들고 그 앞에 얇은 상표판을 세웠는데, 판이 몸통 면을 덮지
+     못해 화면에서는 색 덩어리로만 보였다 (사용자 지적). 상자의 각 면은 UV 가 0~1 로
+     딱 떨어지므로, 재질을 면마다 따로 주면 사진이 면을 정확히 채운다.
+   ⚠️ BoxGeometry 의 재질 순서는 [+x, -x, +y, -y, +z, -z] 다. 위·아래만 민색으로 두고
+      옆 네 면에 사진을 준다 — 위에서 내려다보는 각도에서 사진이 눕지 않게. */
+function photoBox(THREE, w, h, d, tex, topColor, keep) {
+  const side = new THREE.MeshLambertMaterial({ map: tex });
+  const cap = new THREE.MeshLambertMaterial({ color: topColor });
+  const geo = new THREE.BoxGeometry(w, h, d);
+  keep.push(side, cap, geo);
+  return new THREE.Mesh(geo, [side, side, cap, cap, side, side]);
+}
+
+/* ── 스팸 1.81kg — 6개입 케이스 ──────────────────────────────────────────────
+   단품: 101 x 101 x 198 mm 의 대형 사각 캔. 뚜껑은 단면 전체를 덮는 은박이다.
+   케이스: 3 x 2 로 세워 담아 303 x 202 x 198 mm — 세 변 합 70.3cm → A 극소형 */
+export function makeSpamCase(THREE) {
+  const g = new THREE.Group();
+  const keep = [];
+  const M = (o) => { const m = new THREE.MeshLambertMaterial(o); keep.push(m); return m; };
+  const G = (geo) => { keep.push(geo); return geo; };
+
+  const CASE_H = 0.198, TRAY_H = 0.006;
+  const CAN_W = 0.101, CAN_H = CASE_H - TRAY_H;
+  const BODY = CAN_W * 0.95;
+  const yBottom = -CASE_H / 2;
+  const tex = photo(THREE, "spam-1810g.jpg");
+
+  const tray = new THREE.Mesh(G(new THREE.BoxGeometry(0.303, TRAY_H, 0.202)), M({ color: 0xc59a63 }));
+  tray.position.y = yBottom + TRAY_H / 2;
+  g.add(tray);
+
+  for (let i = 0; i < 6; i += 1) {
+    const x = ((i % 3) - 1) * CAN_W;
+    const z = (Math.floor(i / 3) - 0.5) * CAN_W;
+    const can = photoBox(THREE, BODY, CAN_H, BODY, tex, 0xc9ccd1, keep);
+    can.position.set(x, yBottom + TRAY_H + CAN_H / 2, z);
+    g.add(can);
+  }
+  g.userData.dispose = keep;
+  return g;
+}
+
+/* ── 비비고 사골곰탕 500g — 10개입 케이스 ────────────────────────────────────
+   단품: 58 x 156 x 218 mm 의 스탠딩 파우치. 납작해서 앞뒤 면이 넓다.
+   케이스: 2열 5줄로 세워 담아 312 x 290 x 218 mm — 세 변 합 82.0cm → B 소형 */
+export function makeGomtangCase(THREE) {
+  const g = new THREE.Group();
+  const keep = [];
+  const M = (o) => { const m = new THREE.MeshLambertMaterial(o); keep.push(m); return m; };
+  const G = (geo) => { keep.push(geo); return geo; };
+
+  const CASE_H = 0.218, TRAY_H = 0.006;
+  const P_W = 0.058, P_L = 0.156, P_H = CASE_H - TRAY_H;
+  const yBottom = -CASE_H / 2;
+  const tex = photo(THREE, "gomtang-500g.jpg");
+
+  const tray = new THREE.Mesh(G(new THREE.BoxGeometry(0.312, TRAY_H, 0.290)), M({ color: 0xc59a63 }));
+  tray.position.y = yBottom + TRAY_H / 2;
+  g.add(tray);
+
+  /* 파우치는 앞뒤가 넓고 옆이 얇다. 사진은 넓은 앞뒤(±z)에 오도록 상자를 세운다 */
+  const side = new THREE.MeshLambertMaterial({ map: tex });
+  const edge = new THREE.MeshLambertMaterial({ color: 0xEDE6D8 });
+  const geo = new THREE.BoxGeometry(P_L * 0.96, P_H, P_W * 0.9);
+  keep.push(side, edge, geo);
+  for (let i = 0; i < 10; i += 1) {
+    const x = ((i % 2) - 0.5) * P_L;
+    const z = (Math.floor(i / 2) - 2) * P_W;
+    const m = new THREE.Mesh(geo, [edge, edge, edge, edge, side, side]);
+    m.position.set(x, yBottom + TRAY_H + P_H / 2, z);
+    g.add(m);
+  }
+  g.userData.dispose = keep;
+  return g;
+}
+
+/* ── 백설 고추장삼겹살구이양념 2450G — 12개입 케이스 ──────────────────────────
+   단품: 114 x 114 x 281 mm 의 대용량 통. 몸통 위에 넓은 검정 뚜껑이 앉는다.
+   케이스: 4 x 3 으로 세워 담아 456 x 342 x 281 mm — 세 변 합 107.9cm → C 중형 */
+export function makeSauceCase(THREE) {
+  const g = new THREE.Group();
+  const keep = [];
+  const M = (o) => { const m = new THREE.MeshLambertMaterial(o); keep.push(m); return m; };
+  const G = (geo) => { keep.push(geo); return geo; };
+
+  const CASE_H = 0.281, TRAY_H = 0.008;
+  const J_W = 0.114, J_H = CASE_H - TRAY_H;
+  const BODY = J_W * 0.94, BODY_H = J_H * 0.88, CAP_H = J_H * 0.10;
+  const yBottom = -CASE_H / 2;
+  const tex = photo(THREE, "sauce-2450g.jpg");
+
+  const tray = new THREE.Mesh(G(new THREE.BoxGeometry(0.456, TRAY_H, 0.342)), M({ color: 0xc59a63 }));
+  tray.position.y = yBottom + TRAY_H / 2;
+  g.add(tray);
+
+  const capMat = M({ color: 0x2A2320 });
+  const capGeo = G(new THREE.CylinderGeometry(BODY * 0.34, BODY * 0.34, CAP_H, 16));
+  for (let i = 0; i < 12; i += 1) {
+    const x = ((i % 4) - 1.5) * J_W;
+    const z = (Math.floor(i / 4) - 1) * J_W;
+    const foot = yBottom + TRAY_H;
+    const jar = photoBox(THREE, BODY, BODY_H, BODY, tex, 0x6B2118, keep);
+    jar.position.set(x, foot + BODY_H / 2, z);
+    g.add(jar);
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.set(x, foot + BODY_H + CAP_H / 2, z);
+    g.add(cap);
+  }
+  g.userData.dispose = keep;
+  return g;
+}
+
 /** 이름 → 만드는 함수. `DEMO_ITEMS` 의 `model` 이 이 열쇠를 가리킨다 */
 export const PRODUCT_MODELS = {
+  spam: makeSpamCase,
+  gomtang: makeGomtangCase,
+  sauce: makeSauceCase,
+  /* 지난 시연 상품. DEMO_ITEMS 가 더는 안 부르지만, 상품이 다시 바뀔 때 참고로 남긴다 */
   kaguri: makeKaguriCase,
   otte: makeOtteCase,
   terra: makeTerraCase,
