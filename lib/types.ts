@@ -261,3 +261,19 @@ export interface DemoResetSummary {
   boxTypes: { count: number; stockQty: number };
   summary: string;
 }
+
+/** 시연 주문 한 묶음 투입 결과 (`POST /admin/demo/orders/next`) */
+export interface DemoReleasedOrders {
+  /** 몇 번째 묶음인지 */
+  seq: number;
+  /** 아직 대기 중인 묶음 수 */
+  remaining: number;
+  batchId: string;
+  /** 이번에 만들어진 주문 수 */
+  orders: number;
+  /** 이번에 만들어진 배송단위 수 */
+  shipments: number;
+  /** 박스가 여러 개로 나뉜 주문 수 */
+  splitOrders: number;
+  rejected: { receiptNo: string; reason: string }[];
+}
