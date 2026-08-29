@@ -16,6 +16,9 @@ import { CaveEntrance } from "./cave-entrance";
 import { ClockWindow } from "./clock-window";
 import { w98, Btn, Etched, TrayBox } from "./win98-ui";
 import { Minesweeper } from "@/components/common/minesweeper";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { demo } from "@/lib/endpoints";
 
 /**
  * 데스크톱 셸 — 목업 HTML 의 header / main / footer 세 덩어리를 그대로 옮긴 것이다.
@@ -29,7 +32,7 @@ import { Minesweeper } from "@/components/common/minesweeper";
  *   그 자리가 그대로 네비게이션이 된다 — win98 에서 창을 오가는 방식 그 자체이고,
  *   장식을 기능으로 바꾼 것이라 목업의 생김새를 하나도 잃지 않는다.
  *
- * ⚠️ 최소화·최대화·닫기와 Start 는 **동작이 없다.** 목업에 있으니 자리는 만들지만
+ * ⚠️ 최소화·최대화·닫기는 **동작이 없다.** 목업에 있으니 자리는 만들지만
  *    창 관리 기능이 명세에 없다. disabled + aria-hidden + cursor-default 로 두는 것은
  *    앱 공용 헤더(app/layout.tsx)가 같은 상황에서 쓰는 처리 그대로다 —
  *    없는 기능을 있는 것처럼 만들지 않는다.
@@ -162,6 +165,34 @@ const SCREENS: Screen[] = [
 
 export function Win98Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+
+  /**
+   * 태스크바 Start = 시연 초기화. 주문·배송단위·측정 세션·재고 원장을 비우고 상품과 대기열을
+   * 처음 상태로 되돌린다. 입고 화면의 Start 와 같은 동작이다 — 포장 시연 도중에도 되돌릴 수
+   * 있어야 해서 여기에도 둔다.
+   *
+   * 누르기 쉬운 자리라 실수로 닿으면 진행 중이던 작업이 사라진다. 그래서 비밀번호를 한 번 더
+   * 받는다. 맞는지는 서버가 본다.
+   *
+   * 되돌린 뒤에는 화면이 들고 있던 라인·배송단위 조회를 다시 읽게 한다 — 안 그러면 방금 지운
+   * 배송 내역이 화면에 남는다.
+   */
+  const queryClient = useQueryClient();
+  const reset = useMutation({
+    mutationFn: (password: string) => demo.reset(password),
+    onSuccess: (summary) => {
+      void queryClient.invalidateQueries();
+      toast.success(summary.summary.split("\n")[0] ?? "시연을 초기화했습니다.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const askAndReset = () => {
+    const password = window.prompt("시연을 처음 상태로 되돌립니다. 비밀번호를 입력하세요.");
+    // 취소하면 아무 일도 없다. 빈 문자열은 서버가 거절한다.
+    if (password === null) return;
+    reset.mutate(password);
+  };
   const active = SCREENS.find((screen) => pathname.startsWith(screen.href)) ?? SCREENS[0];
 
   /** 시계 팝업이 열려 있는가. 태스크바 트레이의 시계를 누르면 토글된다 */
@@ -282,7 +313,13 @@ export function Win98Shell({ children }: { children: ReactNode }) {
         className={`flex h-7 w-full shrink-0 items-center justify-between border-t-2 border-white bg-[color:var(--surface)] px-2`}
       >
         <div className="flex h-full items-center gap-2">
-          <Btn disabled aria-hidden className={`${w98.titleText} flex h-6 items-center gap-1 px-3`}>
+          {/* 시연 초기화 — 입고 화면 태스크바의 Start 와 같은 동작이다. */}
+          <Btn
+            disabled={reset.isPending}
+            onClick={askAndReset}
+            title="시연을 처음 상태로 되돌립니다"
+            className={`${w98.titleText} flex h-6 items-center gap-1 px-3`}
+          >
             <LayoutGrid className="size-3.5 text-[color:var(--primary)]" aria-hidden />
             Start
           </Btn>
