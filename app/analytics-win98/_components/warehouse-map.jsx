@@ -205,7 +205,7 @@ export default function WarehouseMap({ onOpen3D }) {
       ctx.setLineDash([]);
       ctx.fillStyle = W98.ink;
       ctx.font = `700 ${FS_NOTE}px ${MAP_FONT}`; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-      ctx.fillText("작업 통로", fx + 6, Y(0) - 4);
+      const noteCorridor = [fx + 6, Y(0) - 4];
 
       /* ── 하역 라인 ── */
       ctx.strokeStyle = "#7A3A00"; ctx.setLineDash([7, 5]); ctx.lineWidth = 1;
@@ -215,12 +215,17 @@ export default function WarehouseMap({ onOpen3D }) {
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = "#5A4030";
-      ctx.fillText("UNLOADING 하역 라인", fx + 6, Y(unloadZ + 0.2) - 4);
+      const noteUnload = [fx + 6, Y(unloadZ + 0.2) - 4];
 
       /* ── 구역 ──
          뒷줄(A·B·C)은 라벨을 사각형 **위**에, 앞줄(D·E·F)은 아래에 붙인다. 둘 다 아래에
          붙이면 뒷줄 라벨이 작업 통로 한가운데에 떠서 통로 표시와 서로를 가린다 */
       ctx.textAlign = "center";
+      /* ⚠️ 라벨과 눈금은 **여기서 그리지 않고 목록에 쌓아 두었다가 맨 마지막에** 그린다.
+         앞서 그리면 그 위로 AGV·지게차·작업자가 지나가며 글자를 덮는다 (사용자 지적).
+         움직이는 것들의 경로를 비트는 방법도 있지만, 그러면 "살아 있는 창고"를 글자
+         자리에 맞춰 구부리는 셈이다 — 순서만 바꾸면 경로는 그대로 두고 글자가 산다. */
+      const labels = [];
       for (const z of layout.zones) {
         const col = z.g.color;
         const occ = Math.min(0.99, Math.max(0.015,
@@ -256,50 +261,7 @@ export default function WarehouseMap({ onOpen3D }) {
           ctx.setLineDash([]);
         }
 
-        /* ── 라벨 + 점유 눈금 ──
-           ⚠️ 좁을 때는 이름을 버리고 숫자만 남긴다. 이름보다 채움 수가 정보다. */
-        const above = z.row === 0;
-        const total = z.racks.length * z.g.levels * z.g.cols;
-        const filled = Math.round(occ * total);
-        /* ── 라벨과 눈금이 설 자리 ──
-           ⚠️ 기준선(baseline)은 글자의 **아랫변이 아니다.** 17px 글자는 기준선 아래로
-              5px 남짓 더 내려간다(디센더). 기준선과 눈금 사이를 5px 로 두었더니 글자
-              아랫부분이 눈금에 덮여 **잘려 보였다** (사용자 지적). 디센더 + 여유로
-              9px 를 준다.
-           ⚠️ 앞줄은 글자가 네모 **아래**에 붙으므로 윗변(기준선 - 어센더 약 14px)이
-              네모를 파고들지 않아야 한다 — 기준선을 17 아래에 둬서 3px 를 띄운다.
-           라벨 자리로 위아래 2.6m(≈78px)를 비워 두었다. 뒷줄 44px / 앞줄 36px 이니
-           둘 다 그 안에 들어간다. */
-        const codeY = above ? ry - 27 : ry + rh + 17;
-        const barY = above ? ry - 18 : ry + rh + 27;
-
-        ctx.fillStyle = W98.ink;
-        ctx.font = `700 ${FS_ZONE}px ${MAP_FONT}`;
-        const head = `${z.g.code} · ${z.g.name}`;
-        const num = `${filled}/${total}`;
-        /* 이름을 버릴지 정하는 기준 폭.
-           ★ `rw + 8` 이었다. 글자를 키우고 나니 C·D·E·F 가 전부 이름을 잃고 숫자만
-             남았다 — 그래서 화면이 "내용이 잘린" 것처럼 보였다.
-           ⚠️ 라벨은 구역 네모 밖으로 조금 나와도 된다. 구역 사이가 2.3m(≈69px) 벌어져
-              있으므로, 양쪽으로 28px 씩 빌려도 옆 구역 라벨과 부딪히지 않는다. */
-        const room = rw + 56;
-        ctx.fillText(
-          ctx.measureText(`${head}  ${num}`).width <= room ? `${head}  ${num}` : num,
-          rx + rw / 2, codeY,
-        );
-
-        /* 점유 눈금 — 98 진행 막대. 칸이 몇 개 찼는지로 점유율을 읽는다 */
-        const pw = Math.min(rw, 86), phh = 9;
-        const pxx = rx + (rw - pw) / 2;
-        ctx.fillStyle = "#CFCFCF";
-        ctx.fillRect(pxx, barY, pw, phh);
-        bevel(pxx, barY, pw, phh, false);
-        const cells = 10;
-        const cw = (pw - 4) / cells;
-        ctx.fillStyle = occ > 0.85 ? "#A00000" : W98.navy;
-        for (let i = 0; i < Math.round(occ * cells); i += 1) {
-          ctx.fillRect(pxx + 2 + i * cw, barY + 2, cw - 1.5, phh - 4);
-        }
+        labels.push({ z, occ, rx, ry, rw, rh });
       }
 
       /* ── 움직이는 것들 ── */
@@ -359,6 +321,66 @@ export default function WarehouseMap({ onOpen3D }) {
       ctx.lineTo(X(zoneA.center), Y(zoneA.zStart + zoneA.len));
       ctx.stroke();
       chip(X(zoneA.center), Y(cz), SZ.crane, "#FFFFFF");
+
+      /* ── 글자는 맨 마지막에 ────────────────────────────────────────────
+         움직이는 것들 **위에** 얹는다 (위 `labels` 주의 참고).
+         ⚠️ 글자 뒤에 바탕을 깔지 않는다. 98 의 지도는 판이 겹치지 않는 것이 문법이고,
+            칠해 두면 그 사각형이 또 하나의 구역처럼 보인다. 순서만으로 충분하다. */
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.font = `700 ${FS_NOTE}px ${MAP_FONT}`;
+      ctx.fillStyle = "rgba(48,56,68,0.62)";
+      ctx.fillText("작업 통로", noteCorridor[0], noteCorridor[1]);
+      ctx.fillStyle = "#5A4030";
+      ctx.fillText("UNLOADING 하역 라인", noteUnload[0], noteUnload[1]);
+
+      ctx.textAlign = "center";
+      for (const { z, occ, rx, ry, rw, rh } of labels) {
+        /* ── 라벨 + 점유 눈금 ──
+           ⚠️ 좁을 때는 이름을 버리고 숫자만 남긴다. 이름보다 채움 수가 정보다. */
+        const above = z.row === 0;
+        const total = z.racks.length * z.g.levels * z.g.cols;
+        const filled = Math.round(occ * total);
+        /* ── 라벨과 눈금이 설 자리 ──
+           ⚠️ 기준선(baseline)은 글자의 **아랫변이 아니다.** 17px 글자는 기준선 아래로
+              5px 남짓 더 내려간다(디센더). 기준선과 눈금 사이를 5px 로 두었더니 글자
+              아랫부분이 눈금에 덮여 **잘려 보였다** (사용자 지적). 디센더 + 여유로
+              9px 를 준다.
+           ⚠️ 앞줄은 글자가 네모 **아래**에 붙으므로 윗변(기준선 - 어센더 약 14px)이
+              네모를 파고들지 않아야 한다 — 기준선을 17 아래에 둬서 3px 를 띄운다.
+           라벨 자리로 위아래 2.6m(≈78px)를 비워 두었다. 뒷줄 44px / 앞줄 36px 이니
+           둘 다 그 안에 들어간다. */
+        const codeY = above ? ry - 27 : ry + rh + 17;
+        const barY = above ? ry - 18 : ry + rh + 27;
+
+        ctx.fillStyle = W98.ink;
+        ctx.font = `700 ${FS_ZONE}px ${MAP_FONT}`;
+        const head = `${z.g.code} · ${z.g.name}`;
+        const num = `${filled}/${total}`;
+        /* 이름을 버릴지 정하는 기준 폭.
+           ★ `rw + 8` 이었다. 글자를 키우고 나니 C·D·E·F 가 전부 이름을 잃고 숫자만
+             남았다 — 그래서 화면이 "내용이 잘린" 것처럼 보였다.
+           ⚠️ 라벨은 구역 네모 밖으로 조금 나와도 된다. 구역 사이가 2.3m(≈69px) 벌어져
+              있으므로, 양쪽으로 28px 씩 빌려도 옆 구역 라벨과 부딪히지 않는다. */
+        const room = rw + 56;
+        ctx.fillText(
+          ctx.measureText(`${head}  ${num}`).width <= room ? `${head}  ${num}` : num,
+          rx + rw / 2, codeY,
+        );
+
+        /* 점유 눈금 — 98 진행 막대. 칸이 몇 개 찼는지로 점유율을 읽는다 */
+        const pw = Math.min(rw, 86), phh = 9;
+        const pxx = rx + (rw - pw) / 2;
+        ctx.fillStyle = "#CFCFCF";
+        ctx.fillRect(pxx, barY, pw, phh);
+        bevel(pxx, barY, pw, phh, false);
+        const cells = 10;
+        const cw = (pw - 4) / cells;
+        ctx.fillStyle = occ > 0.85 ? "#A00000" : W98.navy;
+        for (let i = 0; i < Math.round(occ * cells); i += 1) {
+          ctx.fillRect(pxx + 2 + i * cw, barY + 2, cw - 1.5, phh - 4);
+        }
+      }
 
       raf = requestAnimationFrame(draw);
     };
