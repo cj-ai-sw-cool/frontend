@@ -3,13 +3,17 @@
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { BoxType } from "@/lib/types";
-import { Btn, Panel, Sunken, w98 } from "./_components/win98-ui";
+import { Btn, Panel, w98 } from "./_components/win98-ui";
 import { BoxRecommendationPanel } from "./_components/box-recommendation-panel";
 import { Box3DViewer } from "./_components/box-3d-viewer";
+import { LineShipmentsPanel } from "./_components/line-shipments-panel";
 import { PackActions } from "./_components/pack-actions";
 import { ProductImagePanel } from "./_components/product-image-panel";
 import { ShipmentItemsPanel } from "./_components/shipment-items-panel";
 import { ToteScanPanel } from "./_components/tote-scan-panel";
+import { useLines } from "./_data/use-lines";
+import { useLineShipments } from "./_data/use-line-shipments";
+import { useNextTote } from "./_data/use-next-tote";
 import {
   useBoxTypes,
   useCompletePacking,
@@ -49,8 +53,12 @@ export default function PackingV2Page() {
   const [shipmentId, setShipmentId] = useState<number | null>(null);
   /** 실수량 — **프론트 상태로만** 존재한다 (D-06). 서버로 나가지 않는다 */
   const [actualQty, setActualQty] = useState<Record<number, number>>({});
-  const [selectedBoxTypeId, setSelectedBoxTypeId] = useState<number | null>(null);
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+  const [selectedBoxTypeId, setSelectedBoxTypeId] = useState<number | null>(
+    null,
+  );
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(
+    null,
+  );
   /**
    * 상자 뚜껑이 열려 있는가 — 박스 추천 패널의 3D 상자가 이 값을 따라 움직인다.
    * 토트를 스캔해 박스가 정해지면 열리고, 포장 완료를 누르면 닫힌다 (사용자 요청).
@@ -66,6 +74,16 @@ export default function PackingV2Page() {
    *    BOX_MODELS 에서 하나만 남기면 된다.
    */
   const [modelKey, setModelKey] = useState<BoxModelKey>("carton-v3");
+  /**
+   * "라인별 배송 내역" 패널의 LINE 탭이 지금 보고 있는 라인. 토트 스캔(3-5)과는 별개다 —
+   * 이 값은 그 패널만 바꾸고, 스캔된 배송단위가 실제로 어느 라인 소속인지와는 무관하다.
+   */
+  const [selectedLineId, setSelectedLineId] = useState<number | null>(null);
+  /**
+   * 지금 고른 라인에 아직 받아 올 다음 토트가 있는가 (`remaining > 0`).
+   * 라인마다 남은 개수가 다르므로 라인을 바꾸면 다시 true 로 되돌린다(handleSelectLine).
+   */
+  const [hasNextTote, setHasNextTote] = useState(true);
 
   /* ── 데이터 ────────────────────────────────────────────── */
   const scan = useToteScan(); // 3-5
@@ -74,9 +92,24 @@ export default function PackingV2Page() {
   const productImagesQuery = useProductImages(selectedProductId); // 1-6
   const overrideBox = useOverrideBox(); // 3-3
   const completePacking = useCompletePacking(); // 3-8
+  const linesQuery = useLines(); // 라인 목록 — LINE 탭
+  const nextTote = useNextTote(); // 시연용 다음 토트 발급
 
   const shipment = shipmentQuery.data;
-  const boxes = useMemo<BoxType[]>(() => boxTypesQuery.data ?? [], [boxTypesQuery.data]);
+  const boxes = useMemo<BoxType[]>(
+    () => boxTypesQuery.data ?? [],
+    [boxTypesQuery.data],
+  );
+  const lines = useMemo(() => linesQuery.data?.lines ?? [], [linesQuery.data]);
+
+  /**
+   * 탭에서 아직 아무것도 안 골랐으면 첫 번째 활성 라인을 기본값으로 쓴다.
+   * 렌더에서 파생시킨다(effect 로 setState 하지 않는다) — 라인 목록이 아직 없거나
+   * 활성 라인이 하나도 없으면 계속 null 이고, 그 동안 3-1 조회는 나가지 않는다.
+   */
+  const effectiveLineId =
+    selectedLineId ?? lines.find((line) => line.status === "ACTIVE")?.lineId ?? null;
+  const lineShipmentsQuery = useLineShipments(effectiveLineId); // 3-1
 
   /** 지금 화면이 말하는 박스 — 방금 고른 것 > 서버가 준 finalBox 순이다 */
   const finalBox = useMemo<BoxType | null>(() => {
@@ -89,10 +122,13 @@ export default function PackingV2Page() {
 
   /** 3D 상자와 아래 정보 패널이 **같은 박스**를 봐야 해서 여기서 한 번만 정한다 */
   const effectiveBox = finalBox ?? shipment?.recommendedBox ?? null;
-  const activeModel = BOX_MODELS.find((model) => model.key === modelKey) ?? BOX_MODELS[0];
+  const activeModel =
+    BOX_MODELS.find((model) => model.key === modelKey) ?? BOX_MODELS[0];
 
   const selectedItem = useMemo(
-    () => shipment?.items.find((item) => item.productId === selectedProductId) ?? null,
+    () =>
+      shipment?.items.find((item) => item.productId === selectedProductId) ??
+      null,
     [shipment, selectedProductId],
   );
 
@@ -101,7 +137,7 @@ export default function PackingV2Page() {
   /**
    * 3-5. 재스캔은 멱등이다 (D-14) — 새 토트를 잡으면 이전 화면 상태를 전부 버린다.
    *
-   * ⚠️ **값을 인자로 받는다.** `barcode` 상태를 직접 읽으면 TEST DATA 버튼처럼 "값을 넣고
+   * ⚠️ **값을 인자로 받는다.** `barcode` 상태를 직접 읽으면 다음 토트 버튼처럼 "값을 받아
    *    곧바로 조회"하는 경로에서 한 박자 늦은 값이 나간다(setState 는 즉시 반영되지 않는다).
    */
   const runScan = useCallback(
@@ -112,7 +148,8 @@ export default function PackingV2Page() {
           setShipmentId(detail.shipmentId);
           setActualQty({});
           setSelectedBoxTypeId(null);
-          setSelectedProductId(null);
+          // 사진은 맨 위 품목이 먼저 뜬다 — 품목이 없는 배송단위는 비운 채로 둔다
+          setSelectedProductId(detail.items[0]?.productId ?? null);
           overrideBox.reset();
           completePacking.reset();
           // 박스가 정해졌다 = 이제 여기 담는다. 상자가 천천히 한 번 열린다
@@ -126,9 +163,43 @@ export default function PackingV2Page() {
   /** 입력창에서 Enter · Scan 버튼 — 지금 입력창에 있는 값으로 조회한다 */
   const handleScan = useCallback(() => runScan(barcode), [runScan, barcode]);
 
-  const handleActualQtyChange = useCallback((productId: number, qty: number) => {
-    setActualQty((prev) => ({ ...prev, [productId]: qty }));
+  /**
+   * LINE 탭 — 라인을 바꾸면 그 라인 기준으로 "남은 토트가 있다"고 다시 가정한다.
+   * 실제 값은 다음 토트 버튼을 눌러야 알지만, 그 전까지 잠가 둘 근거가 없다(버튼을 눌러
+   * 봐야 그 라인이 이미 다 끝났는지 알 수 있다 — 서버가 그 순간 204 로 알려 준다).
+   */
+  const handleSelectLine = useCallback((lineId: number) => {
+    setSelectedLineId(lineId);
+    setHasNextTote(true);
   }, []);
+
+  /**
+   * 시연장에 스캐너가 없어 이 버튼이 스캐너를 대신한다. 서버가 다음 토트를 주면
+   * 곧바로 3-5 까지 실행한다 — 한 번 더 Enter 를 치게 하면 스캐너 흉내라는 목적이 반감된다.
+   * 그 라인에 남은 게 없으면 204 로 `null` 이 오고, 그때 버튼을 잠근다.
+   */
+  const handleNextTote = useCallback(() => {
+    if (effectiveLineId === null) return;
+    nextTote.mutate(effectiveLineId, {
+      onSuccess: (issued) => {
+        if (issued === null) {
+          setHasNextTote(false);
+          toast.info("이 라인은 포장할 토트를 모두 사용했습니다. 다른 라인을 골라 보세요.");
+          return;
+        }
+        setHasNextTote(issued.remaining > 0);
+        runScan(issued.toteBarcode);
+      },
+      onError: (error) => toast.error(error.message),
+    });
+  }, [effectiveLineId, nextTote, runScan]);
+
+  const handleActualQtyChange = useCallback(
+    (productId: number, qty: number) => {
+      setActualQty((prev) => ({ ...prev, [productId]: qty }));
+    },
+    [],
+  );
 
   /** 3-3. 낙관적으로 화면부터 바꾸고 요청을 보낸다 — 실패하면 패널이 에러를 그린다 */
   const handleOverride = useCallback(
@@ -156,7 +227,9 @@ export default function PackingV2Page() {
     setIsShipping(true);
     completePacking.mutate(shipment.shipmentId, {
       onSuccess: (result) => {
-        toast.success(`포장 완료 — ${shipment.line.name} 처리량 ${result.line.packedCount}건`);
+        toast.success(
+          `포장 완료 — ${shipment.line.name} 처리량 ${result.line.packedCount}건`,
+        );
         window.setTimeout(() => {
           setIsShipping(false);
           setShipmentId(null);
@@ -180,8 +253,6 @@ export default function PackingV2Page() {
         value={barcode}
         onChange={setBarcode}
         onScan={handleScan}
-        testCases={TEST_TOTES}
-        onPickTest={runScan}
         isPending={isScanning}
         error={scan.error?.message ?? null}
         summary={
@@ -193,16 +264,21 @@ export default function PackingV2Page() {
                 toteBarcode: shipment.tote?.barcode ?? null,
               }
         }
+        onNextTote={handleNextTote}
+        isNextPending={nextTote.isPending}
+        hasNextTote={hasNextTote && effectiveLineId !== null}
+        lines={lines}
+        linesLoading={linesQuery.isLoading}
+        selectedLineId={effectiveLineId}
+        onSelectLine={handleSelectLine}
       />
 
       <div className="flex min-h-0 flex-1 gap-2">
         {/* ── 좌: 배송 내역 + 품목 ──────────────────────────── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-          {/* TODO(P2): 3-1 GET /lines/{lineId}/shipments?status=
-              배송단위 리스트를 대기중(TOTE_ASSIGNED)/진행중(PACKING)/완료(PACKED) 로 표시 (D-12).
-              ⚠️ lineId 출처(라우트 파라미터 vs 화면 셀렉터)가 정해져야 착수할 수 있다.
-              ⚠️ 구현할 때도 **이 안에서 리스트가 스크롤**되게 유지할 것. 리스트 길이만큼
-                 패널이 늘어나면 아래 품목 표가 잘린다. */}
+          {/* 3-1 GET /lines/{lineId}/shipments — 위 토트 스캔 패널의 `LINE:` 탭에서 고른
+              라인의 배송단위를 대기중(TOTE_ASSIGNED)/진행중(PACKING)/완료(PACKED) 로 표시
+              (D-12). 라인은 여기서 다시 고르지 않는다(`line-shipments-panel.tsx`). */}
           {/* ★ 132 → **340px** (사용자 결정 — 라인별 배송 내역을 더 크게).
               이 칸은 라인의 배송단위가 **여러 줄로 쌓이는** 자리라 132px 로는 두세 줄이
               한계였다. 늘어난 208px 은 아래 품목 표(flex-1)가 내준다 — 품목은 보통 서너
@@ -211,13 +287,13 @@ export default function PackingV2Page() {
                  품목이 많아지면 표 안에서 스크롤된다(패널이 늘어나지 않는다).
               ⚠️ 이 숫자 하나만 바꾸면 두 칸의 비율이 정해진다. 왼쪽 열 높이가 약 764px 이라
                  340 이면 배송 내역 : 품목 = 340 : 416 이다. */}
-          <Panel title="Line Shipments — 라인별 배송 내역" className="h-[340px] shrink-0">
-            <Sunken
-              className={`${w98.small} flex flex-1 items-center justify-center p-3 text-center text-[color:var(--muted-foreground)]`}
-            >
-              라인 선택 · 상태별 배송단위 리스트 (3-1) — 아직 구현 전입니다
-            </Sunken>
-          </Panel>
+          <LineShipmentsPanel
+            selectedLineId={effectiveLineId}
+            linesLoading={linesQuery.isLoading}
+            shipments={lineShipmentsQuery.data?.shipments ?? []}
+            shipmentsLoading={lineShipmentsQuery.isLoading}
+            shipmentsError={lineShipmentsQuery.isError}
+          />
 
           {/* 3-2 items + 파생 취급속성. 실수량 입력·불일치 표시는 프론트 상태로만 (D-06) */}
           <ShipmentItemsPanel
@@ -328,7 +404,9 @@ export default function PackingV2Page() {
           {/* 3-8. OUT_OF_STOCK · INVALID_STATE(409) 방어는 컴포넌트 안에서 문구를 가른다 */}
           <PackActions
             onComplete={handleComplete}
-            disabled={shipment === undefined || completePacking.data !== undefined}
+            disabled={
+              shipment === undefined || completePacking.data !== undefined
+            }
             isPending={completePacking.isPending}
             error={completePacking.error}
           />
@@ -337,20 +415,6 @@ export default function PackingV2Page() {
     </div>
   );
 }
-
-/**
- * TEST DATA — `_mock/shipment.ts` 가 실제로 알고 있는 토트.
- *
- * mock 에 활성 할당이 있는 토트는 `T-0012` 하나뿐이고, 나머지는 전부 404
- * `TOTE_NOT_ASSIGNED` 로 떨어진다. 실패 경로도 눌러 볼 수 있게 없는 토트를 하나 같이 둔다.
- * **`_mock/shipment.ts` 의 MOCK_TOTE_BARCODE_TO_SHIPMENT_ID 가 바뀌면 여기도 같이 고쳐야 한다.**
- *
- * ⚠️ 실제 API 로 배선할 때 이 상수와 ToteScanPanel 의 TEST DATA 줄을 함께 지운다.
- */
-const TEST_TOTES: { label: string; barcode: string }[] = [
-  { label: "정상 · 라인A 3품목", barcode: "T-0012" },
-  { label: "할당 없음 (404)", barcode: "T-9999" },
-];
 
 /**
  * 뚜껑이 다 닫히는 데 걸리는 시간(ms). 화면을 비우기 전에 이만큼 기다린다.

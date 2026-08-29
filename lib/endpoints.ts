@@ -11,7 +11,9 @@ import type {
   ConfirmResponse,
   DashboardSummary,
   DemoNextBarcode,
+  DemoNextTote,
   DemoResetSummary,
+  LinesResponse,
   MeasurementResponse,
   ProductImagesResponse,
   ScanResponse,
@@ -49,6 +51,9 @@ export const inbound = {
 
 /* ── P2 출고 포장 ────────────────────────────────────────── */
 export const outbound = {
+  /** 라인 목록 — 활성 여부(status)로 골라 쓸 수 있는지 가른다. 이름은 서버가 준 그대로 쓴다 */
+  lines: () => api.get<LinesResponse>("/lines"),
+
   /** 3-1 라인별 배송 내역 (B안, D-12) */
   lineShipments: (lineId: number, status?: ShipmentStatus) =>
     api.get<{ shipments: ShipmentListItem[] }>(
@@ -106,6 +111,13 @@ export const demo = {
    */
   nextBarcode: () =>
     api.postOrNull<DemoNextBarcode>("/admin/demo/inbound/next-barcode"),
+
+  /**
+   * 다음 시연 토트 하나 — 그 라인에 포장할 게 남지 않으면 서버가 204 라 `null` 이다.
+   * 리셋하면 처음부터 다시 나온다.
+   */
+  nextTote: (lineId: number) =>
+    api.postOrNull<DemoNextTote>(`/admin/demo/outbound/next-tote?lineId=${lineId}`),
 };
 
 export const dashboard = {
@@ -117,6 +129,7 @@ export const dashboard = {
 export const queryKeys = {
   productImages: (id: number) => ["products", id, "images"] as const,
   dashboardSummary: ["dashboard", "summary"] as const,
+  lines: ["lines"] as const,
   boxTypes: ["box-types"] as const,
   lineShipments: (lineId: number, status?: ShipmentStatus) =>
     ["lines", lineId, "shipments", status ?? "ALL"] as const,

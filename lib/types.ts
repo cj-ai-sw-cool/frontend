@@ -147,6 +147,20 @@ export interface DashboardSummary {
   inbound: { todayConfirmed: number; pendingNew: number };
 }
 
+/** `GET /lines` 목록 항목 — 대시보드 집계(packedCount 등) 없이 라인 자체 정보만 */
+export interface Line {
+  lineId: number;
+  name: string;
+  regionCode: string;
+  /** "ACTIVE" 가 아니면 화면에서 고를 수 없게 막는다 — 값 자체는 서버가 정한다 */
+  status: string;
+}
+
+/** `GET /lines` */
+export interface LinesResponse {
+  lines: Line[];
+}
+
 /* ── 3. 출고 ─────────────────────────────────────────────── */
 
 /** TOTE_ASSIGNED=대기중, PACKING=진행중, PACKED=완료 (D-12) */
@@ -223,6 +237,19 @@ export interface DemoNextBarcode {
   barcode: string;
   name: string;
   /** 이 건을 빼고 남은 입고 시연 상품 수 */
+  remaining: number;
+}
+
+/**
+ * 시연용 다음 토트 (`POST /admin/demo/outbound/next-tote?lineId=`).
+ * 시연장에 스캐너가 없어 화면 버튼이 이 값을 받아 토트 스캔 칸을 채운다.
+ * 그 라인에 포장할 게 남지 않으면 서버가 204 를 주고, 그때는 `null` 이 된다.
+ */
+export interface DemoNextTote {
+  toteBarcode: string;
+  shipmentId: number;
+  receiptNo: string;
+  /** 이 건을 빼고 남은, 그 라인의 포장 대상 수 */
   remaining: number;
 }
 
