@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { w98Toast } from "@/lib/win98-toast";
 import type { BoxType } from "@/lib/types";
 import { Btn, Panel, w98 } from "./_components/win98-ui";
 import { BoxRecommendationPanel } from "./_components/box-recommendation-panel";
@@ -183,14 +184,15 @@ export default function PackingV2Page() {
     releaseOrders.mutate(undefined, {
       onSuccess: (result) => {
         if (result === null) {
-          toast.info("더 투입할 주문이 없습니다.");
+          toast.info("더 투입할 주문이 없습니다.", w98Toast.notice);
           return;
         }
         toast.success(
           `주문 ${result.orders}건이 들어왔습니다. 배송단위 ${result.shipments}건, 남은 묶음 ${result.remaining}개.`,
+          w98Toast.success,
         );
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, w98Toast.notice),
     });
   }, [releaseOrders]);
 
@@ -205,13 +207,16 @@ export default function PackingV2Page() {
       onSuccess: (issued) => {
         if (issued === null) {
           setHasNextTote(false);
-          toast.info("이 라인은 포장할 토트를 모두 사용했습니다. 다른 라인을 골라 보세요.");
+          toast.info(
+            "이 라인은 포장할 토트를 모두 사용했습니다. 다른 라인을 골라 보세요.",
+            w98Toast.notice,
+          );
           return;
         }
         setHasNextTote(issued.remaining > 0);
         runScan(issued.toteBarcode);
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(error.message, w98Toast.notice),
     });
   }, [effectiveLineId, nextTote, runScan]);
 
@@ -250,6 +255,7 @@ export default function PackingV2Page() {
       onSuccess: (result) => {
         toast.success(
           `포장 완료 — ${shipment.line.name} 처리량 ${result.line.packedCount}건`,
+          w98Toast.success,
         );
         window.setTimeout(() => {
           setIsShipping(false);
