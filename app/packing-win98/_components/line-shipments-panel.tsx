@@ -28,7 +28,7 @@ export function LineShipmentsPanel({
   className?: string;
 }) {
   return (
-    <Panel title="Line Shipments — 라인별 배송 내역" className={`h-[340px] shrink-0 ${className}`}>
+    <Panel title="라인별 배송 내역" className={`h-[340px] shrink-0 ${className}`}>
       <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto`}>
         {selectedLineId === null ? (
           <Placeholder>

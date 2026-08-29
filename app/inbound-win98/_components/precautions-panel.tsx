@@ -59,7 +59,7 @@ export function PrecautionsPanel({
             : "bg-[color:var(--surface)] text-[color:var(--foreground)]"
         }`}
       >
-        취급 주의사항 (Precautions)
+        취급 주의사항
       </div>
 
       {/* 제목 아래 음각선 — 이 화면의 다른 패널(Panel)과 같은 구조다 */}
@@ -77,21 +77,21 @@ export function PrecautionsPanel({
             확정 경로가 아니면 나갈 곳이 없어 잠근다.
             ⚠️ 목업 순서(Fragile → Cold Storage → Irregular)를 그대로 따랐다 */}
         <Checkbox
-          label="Fragile · 파손 주의"
+          label="파손 주의"
           checked={value.fragile}
           onToggle={toggle("fragile")}
           disabled={disabled}
           neon
         />
         <Checkbox
-          label="Cold Storage · 냉장 필요"
+          label="냉장 필요"
           checked={value.refrigerate}
           onToggle={toggle("refrigerate")}
           disabled={disabled}
           neon
         />
         <Checkbox
-          label="Irregular Size · 비정형"
+          label="비정형"
           checked={value.irregular}
           onToggle={toggle("irregular")}
           disabled={disabled}

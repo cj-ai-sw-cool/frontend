@@ -63,7 +63,7 @@ export function MeasurementPanel({
 
   return (
     <Panel
-      title="Automatic Measurement Data"
+      title="자동 측정값"
       right={
         <>
           {/* ★ 행동 안내를 **제목 줄로** 옮겼다 (사용자 결정 — 상자 위 줄에서는 잘렸다).
@@ -116,11 +116,11 @@ export function MeasurementPanel({
       ) : null}
 
       <div className="grid grid-cols-4 gap-2">
-        <Box label="Width" unit="cm" value={formatCm(widthCm)} alert={isDimsAlert} />
-        <Box label="Length" unit="cm" value={formatCm(lengthCm)} alert={isDimsAlert} />
-        <Box label="Height" unit="cm" value={formatCm(heightCm)} alert={isDimsAlert} />
+        <Box label="가로" unit="cm" value={formatCm(widthCm)} alert={isDimsAlert} />
+        <Box label="세로" unit="cm" value={formatCm(lengthCm)} alert={isDimsAlert} />
+        <Box label="높이" unit="cm" value={formatCm(heightCm)} alert={isDimsAlert} />
         {/* ⚠️ 무게가 빨개지는 조건은 치수와 다르다 — 게이트가 아니라 **저울값 미수신**이다. */}
-        <Box label="Weight" unit="kg" value={formatKg(weightKg)} alert={isWeightAlert} />
+        <Box label="무게" unit="kg" value={formatKg(weightKg)} alert={isWeightAlert} />
       </div>
 
       {/* 수기값을 적용한 상태의 안내 — 경고가 아니라 "무엇이 저장될지"의 예고라 아래에 둔다 */}

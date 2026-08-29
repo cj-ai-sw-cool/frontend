@@ -33,7 +33,7 @@ export default function WarehouseWin98Page() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Panel
-        title="Warehouse — 슬롯 창고 현황"
+        title="슬롯 창고 현황"
         right={
           <span className="shrink-0 text-[13px] font-normal">
             실측 61일 · 총용량 866.9㎥

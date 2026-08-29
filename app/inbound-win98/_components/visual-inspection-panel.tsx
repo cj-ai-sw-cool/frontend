@@ -56,7 +56,7 @@ export function VisualInspectionPanel({
 
   return (
     <Panel
-      title="Visual Inspection"
+      title="영상 검수"
       right={
         <span className={`${w98.small} flex shrink-0 items-center gap-1 font-normal`}>
           {/* 1-6 의 source — 사진이 촬영 원본인지 마스터 대체인지 알려 준다 */}
@@ -68,7 +68,7 @@ export function VisualInspectionPanel({
       bodyClassName="flex-row gap-2"
     >
       {/* 메인 — 목업의 flex: 0 0 65% 그대로 */}
-      <Slot caption="Main View / CAM 01" className="min-h-0" style={{ flex: "0 0 65%" }}>
+      <Slot caption="메인 뷰 / CAM 01" className="min-h-0" style={{ flex: "0 0 65%" }}>
         <div className={`${w98.camBlack} relative flex h-full w-full items-center justify-center overflow-hidden`}>
           <SlotBody image={main} isLoading={isLoading} placeholder="촬영 대기 중" tone="dark" waiting />
           {/* 감시 카메라 오버레이 — 목업의 두 줄 그대로 */}
@@ -83,7 +83,7 @@ export function VisualInspectionPanel({
       <div className="flex min-h-0 flex-1 flex-col gap-2" style={{ flex: "0 0 calc(35% - 8px)" }}>
         {/* 위 — 측면/라벨. 3번째 사진이 있으면 눌러서 바꿔 볼 수 있다 */}
         <Slot
-          caption="Side / Label"
+          caption="측면 / 라벨"
           className="min-h-0 flex-1"
           right={
             canFlip ? (
@@ -99,7 +99,7 @@ export function VisualInspectionPanel({
         </Slot>
 
         {/* 아래 — 마스터 이미지 (위 주석 참고) */}
-        <Slot caption="Product Photo" right={<span className="shrink-0 opacity-80">마스터 이미지</span>} className="min-h-0 flex-1">
+        <Slot caption="제품 사진" right={<span className="shrink-0 opacity-80">마스터 이미지</span>} className="min-h-0 flex-1">
           <div className="flex h-full w-full items-center justify-center overflow-hidden bg-[color:var(--surface-dim)]">
             {isProductPending ? (
               <span className={`${w98.mono} ${w98.small} uppercase opacity-70`}>loading…</span>

@@ -360,7 +360,7 @@ export default function PackingV2Page() {
               ⚠️ 추천 박스가 없으면(스캔 전) 점선 윤곽만 뜬다 — 비율을 모르는데 상자를
                  그리면 아무 박스나 그린 셈이 된다. */}
           <Panel
-            title="Box Preview — 박스 미리보기"
+            title="박스 미리보기"
             right={
               /* 모델 전환 — 제목 줄 오른쪽의 작은 탭 두 개. 눌린 쪽이 지금 보고 있는 것이다 */
               <span className="flex shrink-0 gap-1">

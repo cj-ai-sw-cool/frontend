@@ -99,7 +99,7 @@ export default function AnalyticsPage() {
             놓았다. 974 → 1390 이라 네 단계에 각각 320px 이 돌아간다.
           ★ 120 → **170px** (사용자 요청 — 글씨를 크게, 세련되게). 글자를 키우려면 세로가
             있어야 한다. 안쪽 122px 이면 이름 / 큰 숫자 / 부연 세 줄이 넉넉히 들어간다. */}
-      <Panel title="Flow — 입출고 흐름" className="h-[170px] shrink-0">
+      <Panel title="입출고 흐름" className="h-[170px] shrink-0">
         <FlowPanel />
       </Panel>
 
@@ -107,7 +107,7 @@ export default function AnalyticsPage() {
         {/* ★ 지도를 **가장 넓고 높은 칸**에 둔 이유: 가로 33m x 세로 22m 짜리 그림이라
             가로로 넉넉해야 구역 이름과 채움 수가 겹치지 않고 다 들어간다.
             ⚠️ 이 지도는 창고 화면의 사본이다 — `warehouse-map.jsx` 머리말 주의 참고. */}
-        <Panel title="Warehouse — 실시간 창고 맵" className="min-h-0 min-w-0 flex-1">
+        <Panel title="실시간 창고 맵" className="min-h-0 min-w-0 flex-1">
           <Sunken className="flex min-h-0 flex-1 flex-col p-1.5">
             <WarehouseMap onOpen3D={() => setFull(true)} />
           </Sunken>
@@ -134,7 +134,7 @@ export default function AnalyticsPage() {
             ★ 흐름도를 키우면서 이 폭도 **같이 늘렸다**(300 → 402). 위를 키우면 지도가 낮아지고,
               그러면 지도가 요구하는 폭도 함께 줄어든다 — 한쪽만 만지면 그만큼이 띠로 남는다.
               지도 축척은 31.24 → 28.94 로 7% 작아지지만 여백이 0 이라 실제 그림은 거의 같다. */}
-        <Panel title="Monthly — 월간 물동량 · 박스 재고" className="min-h-0 w-[402px] shrink-0">
+        <Panel title="월간 물동량 · 박스 재고" className="min-h-0 w-[402px] shrink-0">
           <MonthlyPanel />
         </Panel>
       </div>

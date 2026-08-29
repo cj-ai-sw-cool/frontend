@@ -74,7 +74,7 @@ export function ToteScanPanel({
   };
 
   return (
-    <Panel title="Tote Barcode — 토트 스캔" className="shrink-0" bodyClassName="flex-row items-center gap-3">
+    <Panel title="토트 스캔" className="shrink-0" bodyClassName="flex-row items-center gap-3">
       <form
         className="flex shrink-0 items-center gap-1"
         onSubmit={(event) => {
@@ -89,7 +89,7 @@ export function ToteScanPanel({
           mono
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="예: T-0012 (비워 두면 다음 토트를 받습니다)"
+          placeholder="예: T-0012"
           autoComplete="off"
           autoFocus
           disabled={isBusy}
