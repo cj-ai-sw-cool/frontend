@@ -154,7 +154,7 @@ const SCREENS: Screen[] = [
        그래도 목록에 넣는 이유: 잠긴 버튼으로 두면 "언젠가 생긴다"는 뜻이 되는데, 실제로는
        이미 열 수 있는 화면이고 안에서 스스로 `준비 중` 이라고 말한다. 그쪽이 정직하다. */
     href: "/analytics-win98",
-    label: "Analytics",
+    label: "Storage",
     windowTitle: "ANALYTICS — 분석",
     icon: AnalyticsIcon, // 목업: analytics
   },

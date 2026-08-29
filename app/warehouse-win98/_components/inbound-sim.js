@@ -132,7 +132,31 @@ export function createInboundSim(THREE, deps) {
     const taken = candidates.slice(0, RESERVE_PER_ZONE);
     reserved.set(c.id, taken.map((s) => s.i));
     for (const s of taken) {
+      /* ── 그 칸이 속한 열(column)의 단별 점유 순위 ──────────────────
+         ★ 화면이 "몇 단짜리 열의 어디에 들어갔나"를 그림으로 보여 준다 (사용자 요청 —
+           적재될 때 사용률이 오르는 걸 시각화하자).
+         ⚠️ 분모를 **열**로 잡는다. 구역 전체(A는 2,288칸)를 분모로 두면 한 건은
+            0.04%p 라 막대가 1픽셀도 안 움직인다. 11단짜리 열이면 한 칸이 9% 다.
+         ⚠️ 여기서 "찼다/비었다"를 정하지 않는다. 그날의 기준 재고는 화면 쪽에만 있으므로
+            **순위만** 넘기고, 화면이 그날의 채움 수와 비교해 판정한다. */
+      /* ── 그 칸이 속한 **랙 한 면**의 점유 순위 (단 x 열) ────────────
+         ★ 열 하나만 넘기던 것을 면 전체로 넓혔다 (사용자 요청 — 구역을 2D 로 그려서 칸에
+           색칠하는 식이 예쁘겠다). 열 게이지는 "몇 단인가"만 말하는데, 면 격자는 그 물건이
+           **랙 어디쯤**에 꽂혔는지를 한 그림에 담는다.
+         ⚠️ 크기는 등급마다 다르다 — A는 11단 x 26열(286칸), E는 4단 x 9열(36칸)이다.
+            화면 쪽에서 칸 크기를 폭에 맞춰 나눈다.
+         ⚠️ 여기서 "찼다/비었다"를 정하지 않는다. 그날의 기준 재고는 화면 쪽에만 있으므로
+            **순위만** 넘기고, 화면이 그날의 채움 수와 비교해 판정한다. */
+      const faceRanks = [];
+      for (let k2 = 0; k2 < g.levels; k2 += 1) {
+        const row = [];
+        for (let j2 = 0; j2 < g.cols; j2 += 1) row.push(gm.rank[s.rackIdx * per + k2 * g.cols + j2]);
+        faceRanks.push(row);
+      }
       slotInfo.set(s.i, {
+        faceRanks,
+        cols: g.cols,
+        levels: g.levels,
         z: c.zone.zStart + (s.j + 0.5) * g.w,
         y: s.k * c.pitch + 0.04,
         dir: s.rackIdx === c.iA ? -1 : 1,
@@ -209,11 +233,18 @@ export function createInboundSim(THREE, deps) {
      ★ 그래서 **이 구간만** 느리게 한다. 통로 주행이나 P&D 집기까지 늦추면 시연 전체가
        늘어진다 — 느려야 하는 것은 "물건이 칸에 들어가는 그 순간" 하나다.
      ★ 한 번 더 늦췄다 (사용자 요청 — 통로는 빠르되 적재는 천천히 줌 하며 보여 달라).
-       겨냥 0.8→1.4 · 뻗기 0.85→0.55m/s · 유지 0.9→1.5. 넣는 장면이 2.9 → **4.7초** 다.
+       겨냥 0.8→1.4 · 뻗기 0.85→0.55m/s · 유지 0.9→1.5. 넣는 장면이 2.9 → 4.7초 였다.
+     ★ 그 뒤 **살짝 되당겼다** (사용자 요청 — 조금만 더 빨리 들어가도 좋겠다).
+       겨냥 1.4→1.1 · 뻗기 0.55→0.78m/s. A구역(포크 0.95m)에서 넣는 동작이 3.1 → 2.3초다.
+       ⚠️ 유지(`STORE_HOLD`)는 **그대로 둔다.** 빨라져야 하는 것은 들어가는 동작이지, 다
+          넣고 나서 보여 주는 시간이 아니다 — 그건 이 장면의 요점이다.
+       ⚠️ 겨냥을 줄일 수 있게 된 것은 그 사이에 **카메라 세로 추적을 빠르게** 했기 때문이다
+          (`warehouse-slot-3d` 의 kAy·kPy 참고). 카메라가 먼저 자리를 잡으므로 기다릴 시간이
+          덜 든다 — 둘 중 하나만 바꾸면 다시 "도착하기 전에 끝나는" 장면이 된다.
      ⚠️ `AIM` 은 포크가 뻗기 **전에** 멈춰 서는 시간이다. 카메라가 자리를 잡을 틈을 주지
         않으면, 느리게 뻗어도 화면은 여전히 따라오는 중이다. */
-  const STORE_AIM = 1.4;        // 겨냥 — 멈춰 서서 카메라가 자리 잡기를 기다린다
-  const STORE_FORK = 0.55;      // 넣는 포크 속도 (m/s) — 1m 에 약 1.8초
+  const STORE_AIM = 1.1;        // 겨냥 — 멈춰 서서 카메라가 자리 잡기를 기다린다
+  const STORE_FORK = 0.78;      // 넣는 포크 속도 (m/s) — 1m 에 약 1.3초
   const STORE_HOLD = 1.5;       // 놓고 나서 그대로 보여 주는 시간
   const STORE_BACK = 1.9;       // 빼는 포크 속도 — 넣을 때보다는 빠르게
 
@@ -863,6 +894,13 @@ export function createInboundSim(THREE, deps) {
             gradeId: c.id,
             grade: `${j.grade.code} ${j.grade.name}`,
             slot: `${j.slot.col}열 ${j.slot.level}단`,
+            /* 슬롯 반짝임(3D)과 열 게이지(자막)가 쓴다 */
+            inst: j.target,
+            faceRanks: j.slot.faceRanks,
+            cols: j.slot.cols,
+            levels: j.slot.levels,
+            col: j.slot.col,
+            level: j.slot.level,
             name: j.item.name,
             bump,
           });
