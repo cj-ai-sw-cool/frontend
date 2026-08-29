@@ -53,7 +53,7 @@ export function LineShipmentsPanel({
               </tr>
             </thead>
             <tbody>
-              {shipments.map((shipment) => (
+              {sortForPacking(shipments).map((shipment) => (
                 <tr key={shipment.shipmentId}>
                   <td
                     className={`${w98.mono} border-b border-[color:var(--surface-variant)] px-1 py-1.5 align-middle text-[13px]`}
@@ -82,6 +82,26 @@ export function LineShipmentsPanel({
         )}
       </Sunken>
     </Panel>
+  );
+}
+
+/**
+ * 화면에 놓이는 순서 — 지금 포장 중인 것이 맨 위, 다음에 집을 대기중이 그 아래, 끝난 것은 맨
+ * 아래다. 작업자가 위에서부터 훑으면 지금 할 일이 먼저 보인다.
+ *
+ * 같은 상태끼리는 서버가 준 순서를 지킨다 — 먼저 들어온 주문이 먼저 나간다.
+ */
+const PACKING_ORDER: Record<ShipmentStatus, number> = {
+  PACKING: 0,
+  TOTE_ASSIGNED: 1,
+  PLANNED: 2,
+  PACKED: 3,
+  LOADED: 4,
+};
+
+function sortForPacking(shipments: ShipmentListItem[]): ShipmentListItem[] {
+  return [...shipments].sort(
+    (a, b) => PACKING_ORDER[a.status] - PACKING_ORDER[b.status],
   );
 }
 
