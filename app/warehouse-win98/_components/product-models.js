@@ -403,8 +403,179 @@ export function makeOtteCase(THREE) {
   return g;
 }
 
+
+/* ── 스팸 1.81kg — 6개입 케이스 ──────────────────────────────────────────────
+   단품: 101 x 101 x 198 mm 의 대형 사각 캔 (모서리가 둥글다)
+   케이스: 3 x 2 로 세워 담아 303 x 202 x 198 mm — 세 변 합 70.3cm → A 극소형
+
+   ⚠️ 캔 반지름과 자리 간격이 맞물린다. 3개 x 0.101 = 0.303 = 케이스 폭,
+      2개 x 0.101 = 0.202 = 케이스 깊이. 하나라도 키우면 캔끼리 겹친다. */
+export function makeSpamCase(THREE) {
+  const g = new THREE.Group();
+  const keep = [];
+  const M = (o) => { const m = new THREE.MeshLambertMaterial(o); keep.push(m); return m; };
+  const G = (geo) => { keep.push(geo); return geo; };
+
+  const CASE_H = 0.198, TRAY_H = 0.006;
+  const CAN_W = 0.101, CAN_H = CASE_H - TRAY_H;
+  const yBottom = -CASE_H / 2;
+
+  /* 캔 몸통 — 파란 바탕에 노란 상표띠. 옆면 무늬는 네 면에 같은 그림이 돈다 */
+  const bodyTex = canvas(THREE, 384, 512, (c, W, H) => {
+    c.fillStyle = "#123C86";
+    c.fillRect(0, 0, W, H);
+    c.fillStyle = "#F2C230";                 // 가운데 상표띠
+    c.fillRect(0, H * 0.30, W, H * 0.26);
+    c.fillStyle = "#123C86";
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    c.font = "700 92px sans-serif";
+    c.fillText("SPAM", W / 2, H * 0.43);
+    c.fillStyle = "rgba(255,255,255,0.85)";  // 아래 용량 표기
+    c.font = "700 44px sans-serif";
+    c.fillText("1.81kg", W / 2, H * 0.68);
+    c.fillStyle = "rgba(0,0,0,0.18)";        // 위아래 그늘 — 금속 느낌
+    c.fillRect(0, 0, W, H * 0.06);
+    c.fillRect(0, H * 0.94, W, H * 0.06);
+  });
+
+  const trayMat = M({ color: 0xc59a63 });
+  const tray = new THREE.Mesh(G(new THREE.BoxGeometry(0.303, TRAY_H, 0.202)), trayMat);
+  tray.position.y = yBottom + TRAY_H / 2;
+  g.add(tray);
+
+  const lidMat = M({ color: 0xb9bcc0 });     // 캔 뚜껑 — 은색
+  const bodyMat = M({ map: bodyTex });
+  const canGeo = G(new THREE.BoxGeometry(CAN_W * 0.94, CAN_H, CAN_W * 0.94));
+  const lidGeo = G(new THREE.CylinderGeometry(CAN_W * 0.30, CAN_W * 0.30, 0.004, 16));
+  for (let i = 0; i < 6; i += 1) {
+    const x = ((i % 3) - 1) * CAN_W;
+    const z = (Math.floor(i / 3) - 0.5) * CAN_W;
+    const can = new THREE.Mesh(canGeo, bodyMat);
+    can.position.set(x, yBottom + TRAY_H + CAN_H / 2, z);
+    g.add(can);
+    const lid = new THREE.Mesh(lidGeo, lidMat);
+    lid.position.set(x, yBottom + TRAY_H + CAN_H + 0.002, z);
+    g.add(lid);
+  }
+  g.userData.dispose = keep;
+  return g;
+}
+
+/* ── 비비고 사골곰탕 500g — 10개입 케이스 ────────────────────────────────────
+   단품: 58 x 156 x 218 mm 의 레토르트 파우치 (바닥이 서는 스탠딩 파우치)
+   케이스: 2열 5줄로 세워 담아 312 x 290 x 218 mm — 세 변 합 82.0cm → B 소형
+
+   ⚠️ 파우치는 상자가 아니다. 모서리를 깎은 납작한 판으로 그려야 "봉지가 섰다"로 읽힌다.
+      상자로 그리면 앞의 스팸 케이스와 구분이 안 된다. */
+export function makeGomtangCase(THREE) {
+  const g = new THREE.Group();
+  const keep = [];
+  const M = (o) => { const m = new THREE.MeshLambertMaterial(o); keep.push(m); return m; };
+  const G = (geo) => { keep.push(geo); return geo; };
+
+  const CASE_H = 0.218, TRAY_H = 0.006;
+  const P_W = 0.058, P_L = 0.156, P_H = CASE_H - TRAY_H;
+  const yBottom = -CASE_H / 2;
+
+  const faceTex = canvas(THREE, 320, 448, (c, W, H) => {
+    c.fillStyle = "#F4EFE4";                 // 크림 바탕
+    c.fillRect(0, 0, W, H);
+    c.fillStyle = "#8E1B24";                 // 위쪽 붉은 띠 — 비비고
+    c.fillRect(0, 0, W, H * 0.26);
+    c.fillStyle = "#F4EFE4";
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    c.font = "700 46px sans-serif";
+    c.fillText("bibigo", W / 2, H * 0.13);
+    c.fillStyle = "#2A2320";
+    c.font = "700 40px sans-serif";
+    c.fillText("사골곰탕", W / 2, H * 0.40);
+    c.fillStyle = "#C7B48A";                 // 아래 국물 사진 자리
+    c.fillRect(W * 0.12, H * 0.52, W * 0.76, H * 0.34);
+    c.fillStyle = "#2A2320";
+    c.font = "700 30px sans-serif";
+    c.fillText("500g", W / 2, H * 0.93);
+  });
+
+  const trayMat = M({ color: 0xc59a63 });
+  const tray = new THREE.Mesh(G(new THREE.BoxGeometry(0.312, TRAY_H, 0.290)), trayMat);
+  tray.position.y = yBottom + TRAY_H / 2;
+  g.add(tray);
+
+  const faceMat = M({ map: faceTex });
+  const pouchGeo = G(new THREE.BoxGeometry(P_L * 0.96, P_H, P_W * 0.86));
+  for (let i = 0; i < 10; i += 1) {
+    const x = ((i % 2) - 0.5) * P_L;
+    const z = (Math.floor(i / 2) - 2) * P_W;
+    const m = new THREE.Mesh(pouchGeo, faceMat);
+    m.position.set(x, yBottom + TRAY_H + P_H / 2, z);
+    m.rotation.y = (i % 2 ? 1 : -1) * 0.02;  // 봉지라 살짝 어긋나게 선다
+    g.add(m);
+  }
+  g.userData.dispose = keep;
+  return g;
+}
+
+/* ── 백설 고추장삼겹살구이양념 2450G — 12개입 케이스 ──────────────────────────
+   단품: 114 x 114 x 281 mm 의 대용량 사각 용기
+   케이스: 4 x 3 으로 세워 담아 456 x 342 x 281 mm — 세 변 합 107.9cm → C 중형 */
+export function makeSauceCase(THREE) {
+  const g = new THREE.Group();
+  const keep = [];
+  const M = (o) => { const m = new THREE.MeshLambertMaterial(o); keep.push(m); return m; };
+  const G = (geo) => { keep.push(geo); return geo; };
+
+  const CASE_H = 0.281, TRAY_H = 0.008;
+  const J_W = 0.114, J_H = CASE_H - TRAY_H;
+  const yBottom = -CASE_H / 2;
+
+  const bodyTex = canvas(THREE, 384, 512, (c, W, H) => {
+    c.fillStyle = "#B3232B";                 // 고추장 붉은색
+    c.fillRect(0, 0, W, H);
+    c.fillStyle = "#F0E6D2";                 // 흰 상표판
+    c.fillRect(W * 0.08, H * 0.34, W * 0.84, H * 0.34);
+    c.fillStyle = "#B3232B";
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    c.font = "700 52px sans-serif";
+    c.fillText("백설", W / 2, H * 0.44);
+    c.fillStyle = "#2A2320";
+    c.font = "700 34px sans-serif";
+    c.fillText("삼겹살양념", W / 2, H * 0.58);
+    c.fillStyle = "rgba(0,0,0,0.20)";
+    c.fillRect(0, 0, W, H * 0.05);
+  });
+
+  const trayMat = M({ color: 0xc59a63 });
+  const tray = new THREE.Mesh(G(new THREE.BoxGeometry(0.456, TRAY_H, 0.342)), trayMat);
+  tray.position.y = yBottom + TRAY_H / 2;
+  g.add(tray);
+
+  const bodyMat = M({ map: bodyTex });
+  const capMat = M({ color: 0x2A2320 });     // 검정 뚜껑
+  const jarGeo = G(new THREE.BoxGeometry(J_W * 0.94, J_H, J_W * 0.94));
+  const capGeo = G(new THREE.CylinderGeometry(J_W * 0.28, J_W * 0.28, 0.010, 16));
+  for (let i = 0; i < 12; i += 1) {
+    const x = ((i % 4) - 1.5) * J_W;
+    const z = (Math.floor(i / 4) - 1) * J_W;
+    const jar = new THREE.Mesh(jarGeo, bodyMat);
+    jar.position.set(x, yBottom + TRAY_H + J_H / 2, z);
+    g.add(jar);
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.set(x, yBottom + TRAY_H + J_H + 0.005, z);
+    g.add(cap);
+  }
+  g.userData.dispose = keep;
+  return g;
+}
+
 /** 이름 → 만드는 함수. `DEMO_ITEMS` 의 `model` 이 이 열쇠를 가리킨다 */
 export const PRODUCT_MODELS = {
+  spam: makeSpamCase,
+  gomtang: makeGomtangCase,
+  sauce: makeSauceCase,
+  /* 지난 시연 상품. DEMO_ITEMS 가 더는 안 부르지만, 상품이 다시 바뀔 때 참고로 남긴다 */
   kaguri: makeKaguriCase,
   otte: makeOtteCase,
   terra: makeTerraCase,
