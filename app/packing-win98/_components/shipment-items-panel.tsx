@@ -52,7 +52,7 @@ export function ShipmentItemsPanel({
         {isLoading ? (
           <Placeholder>조회 중…</Placeholder>
         ) : !hasShipment ? (
-          <Placeholder>토트를 스캔하면 품목이 표시됩니다 (3-2)</Placeholder>
+          <div className="h-full" />
         ) : items.length === 0 ? (
           <Placeholder>이 배송단위에 품목이 없습니다</Placeholder>
         ) : (

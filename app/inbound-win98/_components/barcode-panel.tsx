@@ -61,7 +61,6 @@ export function BarcodePanel({
           mono
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="바코드"
           autoComplete="off"
           inputMode="numeric"
           autoFocus

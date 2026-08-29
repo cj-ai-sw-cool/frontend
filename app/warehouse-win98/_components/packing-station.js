@@ -153,7 +153,6 @@ function drawScreen(c, W, H, live) {
   emptyNote(c, MX + 8, 108, LW - 16, 178, "라인 선택 · 상태별 배송단위 리스트 (3-1)");
 
   w98Panel(c, MX, 300, LW, H - 300 - 6, "Items — 품목");
-  emptyNote(c, MX + 8, 320, LW - 16, H - 300 - 34, "토트를 스캔하면 품목이 표시됩니다 (3-2)");
 
   /* ── 오른쪽 열 ── */
   const RX = MX + LW + 8, RW = W - RX - 6;
@@ -179,7 +178,6 @@ function drawScreen(c, W, H, live) {
 
   const BRX = RX + PIW + 8, BRW = RW - PIW - 8;
   w98Panel(c, BRX, PY, BRW, PH, "Box Recommendation — 박스 추천");
-  emptyNote(c, BRX + 8, PY + 20, BRW - 16, PH - 54, "토트를 스캔하면 추천 박스가 표시됩니다 (3-2 / 3-3)");
   c.textAlign = "left";
   c.font = "700 11px " + KO;
   c.fillStyle = "#000000";
