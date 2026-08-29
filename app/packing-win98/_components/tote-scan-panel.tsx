@@ -89,7 +89,6 @@ export function ToteScanPanel({
           mono
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="예: T-0012"
           autoComplete="off"
           autoFocus
           disabled={isBusy}

@@ -47,12 +47,9 @@ export function BoxRecommendationPanel({
     <Panel title="박스 추천" className={className} bodyClassName="min-h-0">
       <div className={`${w98.scroll} flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto`}>
         {!hasShipment ? (
-          /* 스캔 전에도 상자 자리를 비워 두지 않는다 — 칸이 통째로 비어 있으면 이 패널에
-             입체 미리보기가 있다는 걸 스캔하기 전에는 알 수 없다. 라벨은 `박스 미선택` 이라
-             "이미 뭔가 골라졌다"로 읽히지도 않는다. */
-          <Sunken className={`${w98.small} flex flex-1 items-center p-2 text-[color:var(--muted-foreground)]`}>
-            토트를 스캔하면 추천 박스가 표시됩니다 (3-2 / 3-3)
-          </Sunken>
+          /* 스캔 전에는 빈 상자만 둔다 (사용자 지적). 안내 문구는 스캔 뒤 추천 박스가
+             들어올 자리를 미리 차지해, 값이 들어온 뒤에도 한 번 더 읽게 만든다. */
+          <Sunken className="flex flex-1 items-center p-2" />
         ) : effectiveBox === null ? (
           <Sunken className={`${w98.small} p-3 text-[color:var(--muted-foreground)]`}>
             추천 박스가 없습니다. 아래에서 직접 선택하세요.
