@@ -126,9 +126,30 @@ export function ManifestPanel({
 }
 
 /** 맨 위 큰 줄 — 이 화면에서 가장 먼저 읽혀야 하는 값 하나 */
+/**
+ * 품목명을 **상품**과 **규격**으로 가른다: "하이트진로(주) 테라" / "1600mL x 1페트".
+ *
+ * ★ 그냥 두면 칸 너비에 걸리는 아무 데서나 넘어간다 — 실제로 "... 1600mL x" 에서 끊기고
+ *   "1페트" 만 다음 줄에 남았다 (사용자 지적). 규격은 한 덩어리라 쪼개지면 읽기 나쁘다.
+ * ★ 가르는 자리는 **첫 숫자 토큰 앞**이다. 상품 이름은 글자로 시작하고 규격은 수량·용량
+ *   으로 시작하므로, 그 경계가 곧 이름과 규격의 경계다:
+ *     농심 누들핏 카구리맛 | 40.5g      오리온 오뜨 치즈 | 12p
+ * ⚠️ 앞이 비면(이름이 숫자로 시작) 가르지 않는다. 규격만 남고 이름이 사라진다.
+ * ⚠️ 짧은 이름은 그대로 둔다. 어차피 한 줄에 들어가는데 억지로 나누면 허전해진다.
+ */
+function splitName(name: string): [string, string | null] {
+  if (name.length < 12) return [name, null];
+  const parts = name.split(/\s+/);
+  const at = parts.findIndex((p) => /^[0-9]/.test(p));
+  if (at <= 0) return [name, null];
+  return [parts.slice(0, at).join(" "), parts.slice(at).join(" ")];
+}
+
 function ProductName({ product, isPending }: { product: Product | null; isPending: boolean }) {
   const name = isPending ? "SCANNING…" : (product?.name ?? "--");
   const isPlaceholder = !isPending && product === null;
+  /* 자리표시자(`--`·`SCANNING…`)는 가르지 않는다 — 규격이 없는 문자열이다 */
+  const [head, spec] = isPlaceholder || isPending ? [name, null] : splitName(name);
 
   return (
     <div className="shrink-0">
@@ -149,7 +170,9 @@ function ProductName({ product, isPending }: { product: Product | null; isPendin
         }`}
         title={product?.name}
       >
-        {name}
+        {head}
+        {/* 규격은 **줄을 바꿔** 붙인다. 같은 크기·굵기라 한 이름의 두 줄로 읽힌다 */}
+        {spec !== null && <span className="block">{spec}</span>}
       </span>
     </div>
   );
