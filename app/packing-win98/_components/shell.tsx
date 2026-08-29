@@ -18,6 +18,7 @@ import { w98, Btn, Etched, TrayBox } from "./win98-ui";
 import { Minesweeper } from "@/components/common/minesweeper";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { w98Toast } from "@/lib/win98-toast";
 import { demo } from "@/lib/endpoints";
 
 /**
@@ -182,9 +183,12 @@ export function Win98Shell({ children }: { children: ReactNode }) {
     mutationFn: (password: string) => demo.reset(password),
     onSuccess: (summary) => {
       void queryClient.invalidateQueries();
-      toast.success(summary.summary.split("\n")[0] ?? "시연을 초기화했습니다.");
+      toast.success(
+        summary.summary.split("\n")[0] ?? "시연을 초기화했습니다.",
+        w98Toast.success,
+      );
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(error.message, w98Toast.notice),
   });
 
   const askAndReset = () => {
