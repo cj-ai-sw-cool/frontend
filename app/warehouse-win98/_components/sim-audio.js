@@ -1,22 +1,15 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    적재 시뮬레이션 사운드 — 칩튠 배경음과 효과음
 
-   ★ 시뮬레이션이 도는 동안 빠른 칩튠이 깔리고, 슬롯에 물건이 들어갈 때마다 짧게 올라가는
+   ★ 시뮬레이션이 도는 동안 칩튠이 깔리고, 슬롯에 물건이 들어갈 때마다 짧게 올라가는
      효과음이 난다 (사용자 요청). 화면만으로도 되는 장면이지만, 소리가 붙으면 "돌아가는
      설비"로 읽힌다.
-   ★ **레퍼런스에 맞춰 다시 썼다** (사용자 지적 — 루즈하고 저급 전자음 같다, 그리고
-     retro_platformer_bgm 을 참고해 달라). 파형을 분석해 성격만 가져왔다:
-       · 템포 190 → 252 → **420** (8분음표 기준. 레퍼런스의 4분음표 225 에 맞춘 값)
-       · G 메이저로 옮기고 G - D - Em - C 로 돌린다
-       · **밝고 선율 중심**으로 — 킥·스네어를 눌러 두고 리드와 16분 아르페지오를 앞세운다
-       · 사각파 하나로 내던 음을 **디튠한 두 오실레이터 + 로우패스 포락선**으로. 필터가
-         닫히면서 나는 소리가 값싼 삐 소리와 두꺼운 신스를 가른다
-       · 딜레이를 물렸다. 잔향이 없으면 소리가 화면에서 튀어나와 붙어 있는 것처럼 들린다
-   ★ 적재 순간 효과음(stow)은 **그대로 둔다** (사용자 확인 — 지금 소리 좋다).
 
-   ⚠️ **남의 곡을 옮겨 적지 않는다.** 요청은 슈퍼마리오 곡이었지만 그건 닌텐도 저작물이고,
-      이 화면은 고객사 시연에 쓰인다. 멜로디 자체가 보호 대상이라 음을 그대로 받아 적으면
-      음원 파일을 쓰지 않아도 마찬가지다. 그래서 **같은 결의 곡을 새로 썼다**.
+   ⚠️ **남의 곡을 옮겨 적지 않는다.** 요청으로 나온 곡들(슈퍼마리오, 크레이지아케이드)은
+      전부 남의 저작물이다. "서비스가 끝났으니 저작권도 없다"는 사실이 아니다 — 음악
+      저작권은 서비스 운영과 무관하게 저작자 사후 70년까지 살아 있다. 게다가 이 화면은
+      고객사 시연에 쓰인다. 그래서 **성격만 가져와 새로 썼다**: 원하는 것은 그 분위기이지
+      그 곡 자체가 아니다.
    ⚠️ 음원 **파일을 쓰지 않는다.** Web Audio 로 그때그때 만든다:
         · 번들에 mp3 가 안 붙는다 (배포 용량과 첫 로딩)
         · 배속이 숫자 하나(BPM)다 — 파일이면 재생 속도를 바꿀 때 음이 같이 낮아진다
@@ -32,40 +25,52 @@
 const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
 
 /* ── 곡 ──────────────────────────────────────────────────────────────────────
-   8분음표 32칸(네 마디). 0 은 쉼표.
-   ★ 사용자가 준 레퍼런스(retro_platformer_bgm_1_5x.wav)를 **분석해서 성격만 맞췄다.**
-     그 파일을 그대로 쓰거나 음을 받아 적지 않는다 — 남의 곡이고, 이 화면은 고객사 시연에
-     쓰인다. 파형에서 읽은 것은 셋이다:
-       · 템포 약 225 BPM (4분음표) → 여기 8분음표 기준으로 420
-       · 두드러진 음 D · B · A · G · E · C → **G 메이저**. 그래서 G - D - Em - C 로 돈다
-       · 대역 에너지가 저역 12% / 멜로디·고역 77% → **밝고 선율 중심**. 킥과 베이스를
-         눌러 두고 리드와 아르페지오를 앞세운 것이 이 숫자다
-   ⚠️ 멜로디는 6옥타브를 넘기지 않는다. 더 올리면 사각파가 날카로워져 오래 들으면 피곤하다. */
-const LEAD = [
-  79, 83, 86, 83, 81, 79, 76, 79,   // G
-  78, 81, 86, 81, 79, 78, 74, 78,   // D
-  76, 79, 83, 79, 78, 76, 74, 76,   // Em
-  72, 76, 79, 83, 81, 79, 76, 74,   // C
-];
-/* 16분음표 아르페지오 — 한 마디에 열여섯 칸씩, 네 마디치를 그대로 적어 둔다.
-   ⚠️ 길이가 **64** 여야 한다. 예전처럼 16칸만 두면 한 마디 만에 한 바퀴를 돌아, 리드가
-      코드를 바꿔도 아르페지오는 G 코드를 계속 굴린다. */
-const ARP = [
-  67, 71, 74, 71, 67, 71, 74, 71, 67, 71, 74, 71, 67, 71, 74, 71,   // G
-  62, 66, 69, 66, 62, 66, 69, 66, 62, 66, 69, 66, 62, 66, 69, 66,   // D
-  64, 67, 71, 67, 64, 67, 71, 67, 64, 67, 71, 67, 64, 67, 71, 67,   // Em
-  60, 64, 67, 64, 60, 64, 67, 64, 60, 64, 67, 64, 60, 64, 67, 64,   // C
-];
-/** 베이스는 8분음표. 근음에서 옥타브로 튀는 플랫포머 특유의 걸음이다 */
-const BASS = [
-  43, 43, 55, 43, 43, 43, 55, 50,
-  38, 38, 50, 38, 38, 38, 50, 45,
-  40, 40, 52, 40, 40, 40, 52, 47,
-  36, 36, 48, 36, 36, 36, 48, 43,
+   ★ 한국 캐주얼 아케이드 게임의 배경음 성격으로 맞췄다 (사용자 요청). 그 결을 만드는
+     것은 넷이다:
+       · **밝은 장조**와 아주 익숙한 진행 — C - Am - F - G. 튀는 화음이 없어야 오래 깔아
+         두고 들을 수 있다
+       · 통통 튀는 **옥타브 베이스**. 아케이드 배경음의 걸음걸이는 대부분 여기서 나온다
+       · **동글동글한 음색** — 톱니파 대신 삼각파를 섞고 필터를 덜 닫는다. 톱니는 날이
+         서 있어 귀엽지 않다
+       · 빠르지만 **급하지 않은** 템포. 4분음표 160 언저리다
+
+   ★ 선율을 **여덟 마디**로 늘렸다. 네 마디짜리는 30초만 들어도 같은 자리를 도는 것이
+     들리는데, 시뮬레이션은 그보다 오래 돈다. 앞 네 마디가 묻고 뒤 네 마디가 답한다.
+   ⚠️ 화음·아르페지오·베이스는 **CHORDS 한 곳에서 파생**시킨다. 세 벌을 각각 적어 두면
+      코드 하나를 바꿀 때 한 벌만 고쳐져, 베이스만 다른 화음을 짚는 사고가 난다. */
+
+/** 마디마다의 화음 (근음·3음·5음). 여덟 마디가 한 바퀴다 */
+const CHORDS = [
+  [60, 64, 67],   // C
+  [57, 60, 64],   // Am
+  [53, 57, 60],   // F
+  [55, 59, 62],   // G
+  [60, 64, 67],   // C
+  [57, 60, 64],   // Am
+  [50, 53, 57],   // Dm  ← 뒤 네 마디는 여기서 갈린다. 같은 진행을 두 번 돌면 여덟 마디가
+  [55, 59, 62],   // G      아니라 네 마디를 두 번 튼 것이 된다
 ];
 
-/** 분당 박자. 8분음표 기준이라 4분음표로는 이 절반이다 — 레퍼런스의 225 에 맞춘 값 */
-const BPM = 420;
+/** 선율 — 8분음표 64칸(여덟 마디). 0 은 쉼표 */
+const LEAD = [
+  72, 76, 79, 76, 84, 79, 76, 72,   // C
+  69, 72, 76, 72, 81, 76, 72, 69,   // Am
+  77, 81, 84, 81, 77, 76, 74, 72,   // F
+  74, 79, 83, 79, 74, 71, 74, 0,    // G
+  72, 76, 79, 76, 84, 79, 76, 72,   // C
+  69, 72, 76, 81, 84, 81, 76, 72,   // Am
+  74, 77, 81, 77, 84, 81, 77, 74,   // Dm
+  83, 79, 74, 79, 83, 84, 79, 0,    // G
+];
+
+/** 아르페지오가 화음을 짚는 순서 (근음-3음-5음-3음). 16분음표로 굴린다 */
+const ARP_SHAPE = [0, 1, 2, 1];
+
+/** 베이스가 한 마디를 걷는 모양 — 근음에서 옥타브와 5도로 튄다 (반음 단위) */
+const BASS_SHAPE = [0, 0, 12, 0, 7, 0, 12, 7];
+
+/** 분당 박자. 8분음표 기준이라 4분음표로는 이 절반(160)이다 */
+const BPM = 320;
 
 export function createSimAudio() {
   let ctx = null;
@@ -108,9 +113,9 @@ export function createSimAudio() {
       const dly = ctx.createDelay(1.0);
       dly.delayTime.value = (60 / BPM) * 1.5;
       const fb = ctx.createGain();
-      fb.gain.value = 0.28;
+      fb.gain.value = 0.26;
       const wet = ctx.createGain();
-      wet.gain.value = 0.22;
+      wet.gain.value = 0.2;
       const damp = ctx.createBiquadFilter();
       damp.type = "lowpass";
       damp.frequency.value = 2600;
@@ -130,17 +135,17 @@ export function createSimAudio() {
   };
 
   /**
-   * 신스 음 하나. 살짝 어긋나게 맞춘 두 오실레이터를 로우패스에 통과시킨다.
+   * 신스 음 하나. 살짝 어긋나게 맞춘 오실레이터들을 로우패스에 통과시킨다.
    * ⚠️ 게인을 **0 으로 떨어뜨리지 않고 아주 작은 값까지** 줄인다.
    *    exponentialRampToValueAtTime 은 0 을 못 받는다 — 0 을 주면 소리가 안 난다.
    * ⚠️ 필터를 **닫으면서** 끝낸다. 열어 둔 채 볼륨만 줄이면 끝까지 쨍한 채로 작아져서
    *    딱 그 "저급 전자음"이 된다.
    */
   const synth = (midi, at, dur, opt = {}) => {
-    const { types = ["square", "sawtooth"], vol = 0.12, hi = 4200, lo = 700, send = 0 } = opt;
+    const { types = ["square", "triangle"], vol = 0.12, hi = 4200, lo = 700, send = 0, det = 5 } = opt;
     const f = ctx.createBiquadFilter();
     f.type = "lowpass";
-    f.Q.value = 6;
+    f.Q.value = 5;
     f.frequency.setValueAtTime(hi, at);
     f.frequency.exponentialRampToValueAtTime(lo, at + dur);
 
@@ -153,7 +158,7 @@ export function createSimAudio() {
       const o = ctx.createOscillator();
       o.type = t;
       o.frequency.value = hz(midi);
-      o.detune.value = i === 0 ? -7 : 7;   // 살짝 어긋나야 두께가 생긴다
+      o.detune.value = i === 0 ? -det : det;   // 살짝 어긋나야 두께가 생긴다
       o.connect(f);
       o.start(at);
       o.stop(at + dur + 0.03);
@@ -166,6 +171,24 @@ export function createSimAudio() {
       g.connect(sg);
       sg.connect(delaySend);
     }
+  };
+
+  /**
+   * 자동재생이 막혔을 때, **다음 사용자 동작 한 번**으로 소리를 살린다.
+   *
+   * 입고 화면에서 넘어와 시뮬레이션이 자동으로 시작하는 경우가 그렇다 — 그 시작은 사용자가
+   * 누른 흐름 안이 아니라서 브라우저가 AudioContext 를 조용히 막아 둔다. 막힌 줄 모르고
+   * 계속 예약만 하면 영영 소리가 안 난다.
+   * ⚠️ 두 리스너를 서로 지운다. `once` 만 걸면 클릭으로 살아난 뒤에도 keydown 이 남는다.
+   */
+  const armResume = () => {
+    const go = () => {
+      window.removeEventListener("pointerdown", go);
+      window.removeEventListener("keydown", go);
+      try { ctx?.resume(); } catch { /* 이미 닫혔을 수 있다 */ }
+    };
+    window.addEventListener("pointerdown", go);
+    window.addEventListener("keydown", go);
   };
 
   /** 노이즈 한 조각 — 햇과 스네어가 같이 쓴다 */
@@ -187,13 +210,13 @@ export function createSimAudio() {
   const kick = (at) => {
     const o = ctx.createOscillator();
     o.type = "sine";
-    o.frequency.setValueAtTime(140, at);
-    o.frequency.exponentialRampToValueAtTime(46, at + 0.09);
+    o.frequency.setValueAtTime(150, at);
+    o.frequency.exponentialRampToValueAtTime(48, at + 0.08);
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.32, at);
-    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.16);
+    g.gain.setValueAtTime(0.34, at);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.15);
     o.connect(g); g.connect(bus);
-    o.start(at); o.stop(at + 0.18);
+    o.start(at); o.stop(at + 0.17);
   };
 
   /* 한 칸(8분음표)을 미리 예약한다.
@@ -204,27 +227,41 @@ export function createSimAudio() {
     if (!ctx) return;
     const spb = 60 / BPM;                       // 8분음표 한 칸의 길이
     while (nextAt < ctx.currentTime + 0.25) {   // 0.25초 앞까지 채워 둔다
-      const i = step % LEAD.length;
+      const i = step % LEAD.length;                     // 선율 안에서의 자리 (0~63)
+      const beat = i % 8;                               // 마디 안에서의 자리 (0~7)
+      const chord = CHORDS[(i >> 3) % CHORDS.length];   // 여덟 칸마다 한 마디
       const at = nextAt;
 
-      /* ⚠️ 베이스에서 -12 를 뺐다. 레퍼런스는 저역이 12% 뿐인데, 한 옥타브 더 내리면
-         베이스만 남고 선율이 묻힌다. 음량도 0.2 → 0.12 로 낮춘다. */
-      if (LEAD[i]) synth(LEAD[i], at, spb * 0.9, { vol: 0.13, hi: 6200, lo: 1700, send: 0.5 });
-      synth(BASS[i], at, spb * 0.95, { types: ["square"], vol: 0.12, hi: 1100, lo: 260 });
-
-      /* 16분음표 아르페지오 — 한 칸에 두 번. 이 층이 곡을 "빠르게" 만든다 */
-      for (let h = 0; h < 2; h++) {
-        const n = ARP[(step * 2 + h) % ARP.length];
-        synth(n + 12, at + h * spb * 0.5, spb * 0.42, { types: ["square"], vol: 0.055, hi: 7000, lo: 3200, send: 0.35 });
+      /* 선율 — 스타카토로 짧게 끊는다. 길게 늘이면 통통 튀는 맛이 사라진다 */
+      if (LEAD[i]) {
+        synth(LEAD[i], at, spb * 0.82, { vol: 0.13, hi: 6800, lo: 2200, send: 0.45 });
+        /* 뒤 네 마디에만 한 옥타브 아래를 얇게 겹친다 — 선율이 두 번째로 돌 때 조금
+           두꺼워지면 "반복"이 아니라 "전개"로 들린다.
+           ⚠️ 3도 화음이 아니라 **옥타브**다. 3도는 화음마다 온음/반음이 달라져서, 한
+              칸으로 밀면 어떤 마디에서는 어긋난 음이 된다. 옥타브는 언제나 맞는다. */
+        if (i >= 32) synth(LEAD[i] - 12, at, spb * 0.8, { types: ["triangle"], vol: 0.05, hi: 3000, lo: 1200 });
       }
 
-      /* 드럼 — 킥은 박자 머리, 스네어는 뒷박, 햇은 16분음표마다 */
-      /* ⚠️ 킥·스네어를 눌러 둔다. 레퍼런스는 저역이 4% 밖에 없는 **선율 중심** 곡이라,
-         쿵쿵거리는 드럼을 얹으면 참고한 곡과 전혀 다른 것이 된다. 속도는 템포가 낸다. */
-      if (i % 8 === 0 || i % 8 === 4) kick(at);
-      if (i % 8 === 4) hit(at, 0.11, { type: "bandpass", freq: 2100, Q: 0.8, vol: 0.17 });
-      hit(at, 0.024, { type: "highpass", freq: 8600, vol: i % 2 === 0 ? 0.075 : 0.05 });
-      hit(at + spb * 0.5, 0.02, { type: "highpass", freq: 8200, vol: 0.035 });
+      /* 베이스 — 근음에서 옥타브·5도로 튀는 걸음. 이 곡의 걸음걸이다 */
+      synth(chord[0] - 12 + BASS_SHAPE[beat], at, spb * 0.72, {
+        types: ["square"], vol: 0.13, hi: 1300, lo: 300, det: 0,
+      });
+
+      /* 16분음표 아르페지오 — 한 칸에 두 번. 화음을 계속 굴려 속도를 만든다 */
+      for (let h = 0; h < 2; h++) {
+        const n = chord[ARP_SHAPE[(step * 2 + h) % ARP_SHAPE.length]];
+        synth(n + 12, at + h * spb * 0.5, spb * 0.4, {
+          types: ["square"], vol: 0.05, hi: 6500, lo: 3000, send: 0.3, det: 0,
+        });
+      }
+
+      /* 드럼 — 킥은 1·3박, 스네어는 2·4박, 햇은 16분음표마다.
+         ⚠️ 가볍게 둔다. 이 곡의 주인공은 선율이라, 쿵쿵거리는 드럼을 얹으면 아케이드
+            배경음이 아니라 클럽 음악이 된다. */
+      if (beat === 0 || beat === 4) kick(at);
+      if (beat === 2 || beat === 6) hit(at, 0.1, { type: "bandpass", freq: 2200, Q: 0.9, vol: 0.16 });
+      hit(at, 0.022, { type: "highpass", freq: 8800, vol: beat % 2 === 0 ? 0.07 : 0.045 });
+      hit(at + spb * 0.5, 0.018, { type: "highpass", freq: 8800, vol: 0.034 });
 
       step += 1;
       nextAt += spb;
@@ -237,6 +274,8 @@ export function createSimAudio() {
       if (muted || !ensure()) return;
       try {
         ctx.resume();
+        /* 자동 시작이면 여기서 막힌다 — 다음 동작 한 번에 살리도록 걸어 둔다 (위 주석) */
+        if (ctx.state !== "running") armResume();
         step = 0;
         nextAt = ctx.currentTime + 0.05;
         clearInterval(timer);
@@ -251,7 +290,7 @@ export function createSimAudio() {
       try { ctx?.suspend(); } catch { /* 이미 닫혔을 수 있다 */ }
     },
 
-    /** 슬롯에 들어간 순간 — 짧게 올라가는 아르페지오 */
+    /** 슬롯에 들어간 순간 — 짧게 올라가는 아르페지오 (사용자 확인: 이 소리는 그대로 둔다) */
     stow() {
       if (muted || !ensure() || !ctx) return;
       try {

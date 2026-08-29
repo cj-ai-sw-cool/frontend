@@ -241,6 +241,23 @@ export interface DemoNextBarcode {
 }
 
 /**
+ * 시연 상태 (`GET /admin/demo/status`) — **읽기만 하고 아무것도 소비하지 않는다.**
+ *
+ * 입고 3건이 다 끝났는지 판정하는 데 쓴다. `next-barcode` 로 물어보면 안 된다 — 그 호출은
+ * 바코드를 하나 꺼내 `served_at` 을 찍어 버려서, 확인하는 것만으로 다음 상품을 건너뛴다.
+ *
+ * 서버는 이보다 훨씬 많은 것을 준다(대기열·토트·박스·주문 수). 여기서는 화면이 실제로
+ * 읽는 것만 적는다 — 안 쓰는 필드를 옮겨 적으면 계약이 바뀔 때 같이 썩는다.
+ */
+export interface DemoStatus {
+  products: {
+    /** "INBOUND" | "OUTBOUND" */
+    pool: string;
+    items: { gtin: string; name: string; dimStatus: string; stockQty: number }[];
+  }[];
+}
+
+/**
  * 시연용 다음 토트 (`POST /admin/demo/outbound/next-tote?lineId=`).
  * 시연장에 스캐너가 없어 화면 버튼이 이 값을 받아 토트 스캔 칸을 채운다.
  * 그 라인에 포장할 게 남지 않으면 서버가 204 를 주고, 그때는 `null` 이 된다.

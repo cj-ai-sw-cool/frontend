@@ -339,6 +339,46 @@ function buildWalls(scene, dispose) {
   scene.add(sh);
   dispose.push(sh.geometry, shMat, shutter);
 
+  /* ── ONLYONE 사인 (셔터 위) ────────────────────────────────────
+     ★ CJ 의 ONLYONE 을 물품이 들어오는 문 위에 건다 (사용자 요청). 실제 물류센터에서
+       이런 슬로건은 작업 동선이 시작되는 문 위에 붙는다 — 들어오는 사람이 반드시 한 번
+       보게 되는 자리다.
+     ⚠️ 벽에 **칠하지 않고 걸었다.** 창고 벽 사인과 같은 규칙이다: 두께 7cm 짜리 판을
+        두면 옆에서 볼 때 테두리가 보여 붙어 있는 물건이 되고, 평면이면 어느 각도에서도
+        두께가 없어 벽에 인쇄한 것처럼 뜬다.
+     ⚠️ 자리는 셔터 문틀 **위**다. 문틀 윗변이 3.06, 천장이 4.4 이므로 그 사이 1.3m 가
+        비어 있는 유일한 자리다. 옆으로 밀면 벽 기둥과 겹친다.
+     ⚠️ 상자 면 순서는 [+x,-x,+y,-y,+z,-z] 다. 방 안쪽(+z)을 보는 앞면이 다섯 번째다. */
+  {
+    const cv = document.createElement("canvas");
+    cv.width = 1024; cv.height = 148;
+    const c = cv.getContext("2d");
+    c.fillStyle = "#111925"; c.fillRect(0, 0, 1024, 148);
+    c.strokeStyle = "#4E617A"; c.lineWidth = 3; c.strokeRect(8, 8, 1008, 132);
+    c.fillStyle = "rgba(255,255,255,0.07)"; c.fillRect(11, 11, 1002, 3);
+    c.textAlign = "center"; c.textBaseline = "middle";
+    /* 굵기를 낮추고 자간을 넓힌다 — 굵게 붙여 쓰면 경고문이 되고, 가늘고 벌려 쓰면
+       기업 사인이 된다 (창고 A.LTS 사인과 같은 이유) */
+    c.font = "400 76px 'Helvetica Neue', 'Segoe UI', Arial, sans-serif";
+    try { c.letterSpacing = "22px"; } catch { /* 지원 안 하면 자간 없이 */ }
+    c.fillStyle = "#E9F0F8";
+    c.fillText("ONLYONE", 512 + 11, 70);   // 자간이 오른쪽에도 붙어 왼쪽으로 쏠린다
+    c.fillStyle = "#FF8A2A";
+    c.fillRect(432, 116, 160, 4);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
+    const face = new THREE.MeshBasicMaterial({ map: tex });
+    const edge = new THREE.MeshLambertMaterial({ color: 0x0C1119 });
+    const sign = new THREE.Mesh(
+      new THREE.BoxGeometry(5.4, 0.78, 0.07),
+      [edge, edge, edge, edge, face, edge],
+    );
+    sign.position.set(0, 3.66, -ROOM_D / 2 + 0.185);
+    scene.add(sign);
+    dispose.push(sign.geometry, face, edge, tex);
+  }
+
   const frameMat = new THREE.MeshLambertMaterial({ color: 0x4a525b });
   for (const [w, h, x, y] of [[3.66, 0.16, 0, 2.98], [0.13, 3.0, -1.77, 1.5], [0.13, 3.0, 1.77, 1.5]]) {
     const f = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.14), frameMat);

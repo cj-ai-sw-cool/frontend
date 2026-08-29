@@ -11,6 +11,7 @@ import type {
   ConfirmResponse,
   DashboardSummary,
   DemoNextBarcode,
+  DemoStatus,
   DemoNextTote,
   DemoReleasedOrders,
   DemoResetSummary,
@@ -119,6 +120,12 @@ export const demo = {
    */
   /** 대기 중인 주문 한 묶음 투입 — 더 없으면 204 라 `null` */
   releaseOrders: () => api.postOrNull<DemoReleasedOrders>("/admin/demo/orders/next"),
+
+  /**
+   * 시연 상태 조회 — 읽기 전용. 입고가 다 끝났는지 볼 때 쓴다.
+   * ⚠️ 같은 판정을 `nextBarcode()` 로 하면 안 된다. 그쪽은 바코드를 **소비**한다.
+   */
+  status: () => api.get<DemoStatus>("/admin/demo/status"),
 
   nextTote: (lineId: number) =>
     api.postOrNull<DemoNextTote>(`/admin/demo/outbound/next-tote?lineId=${lineId}`),

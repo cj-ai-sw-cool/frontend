@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { w98Toast } from "./_components/win98-ui";
 import { ApiError } from "@/lib/api";
@@ -22,6 +23,7 @@ import { PrecautionsPanel } from "./_components/precautions-panel";
 import { VisualInspectionPanel } from "./_components/visual-inspection-panel";
 import {
   useBarcodeScan,
+  useDemoStatus,
   useNextDemoBarcode,
   useConfirmMeasurement,
   useMeasure,
@@ -110,6 +112,8 @@ export default function InboundPage() {
   const measure = useMeasure(); // 1-3
   const confirm = useConfirmMeasurement(); // 1-4
   const stockIn = useStockIn(); // 1-5
+  const demoStatus = useDemoStatus(); // 입고 3건이 다 끝났는지 확인
+  const router = useRouter();
 
   /** 1-1 로 잡힌 상품. UNKNOWN 이면 계약대로 null 이다 */
   const product = scan.data?.product ?? null;
@@ -337,6 +341,36 @@ export default function InboundPage() {
    * 확정이 실패하면 연쇄가 끊겨 입고도 일어나지 않는다 — `dimStatus=NONE` 인 채 재고만
    * 늘어나는 경로는 없다.
    */
+  /**
+   * 입고 시연 상품을 **다 넣었으면** 창고 적재 시뮬레이션으로 넘어간다 (사용자 요청).
+   * 시연에서 입고와 적재는 한 장면이라, 마지막 건을 넣고 나서 발표자가 탭을 옮기는 동작이
+   * 끼면 흐름이 끊긴다.
+   *
+   * ★ 판정은 **서버에 묻는다.** 화면이 세고 있는 `hasNextBarcode` 는 새로고침 한 번에
+   *   초기화되는데, 그러면 마지막 건인 줄 모르고 그냥 리셋 상태로 남는다.
+   * ⚠️ `next-barcode` 로 물어보면 안 된다 — 그 호출은 바코드를 하나 꺼내 served 로 찍어
+   *    버려서, **확인하는 것만으로 다음 상품을 건너뛴다.** 그래서 읽기 전용인
+   *    `GET /admin/demo/status` 를 쓴다.
+   * ⚠️ 판정이 실패해도 **조용히 넘어간다.** 여기서 토스트를 띄우면, 입고는 멀쩡히 끝났는데
+   *    빨간 알림이 뜨는 화면이 된다. 넘어가지 못하면 발표자가 탭으로 가면 그만이다.
+   * ⚠️ 재고가 0 인 상품이 하나도 없을 때가 "다 넣었다"이다. 시드가 입고 3건을 stockQty 0
+   *    으로 깔고, 1-5 가 그 값을 올린다 — 리셋하면 다시 0 으로 돌아간다.
+   */
+  const goToSimIfDone = useCallback(() => {
+    demoStatus.mutate(undefined, {
+      onSuccess: (status) => {
+        const inbound = status.products.find((p) => p.pool === "INBOUND");
+        if (!inbound || inbound.items.length === 0) return;
+        if (!inbound.items.every((it) => it.stockQty > 0)) return;
+        toast.success("신규 입고 물품 적재를 시작합니다.", w98Toast.success);
+        /* 토스트를 읽을 틈을 준다. 곧바로 넘기면 화면이 툭 바뀌어 무슨 일이 일어났는지
+           관객이 못 따라온다 */
+        window.setTimeout(() => router.push("/warehouse-win98?sim=1"), 1500);
+      },
+      onError: () => { /* 위 주석 참고 — 판정 실패는 알리지 않는다 */ },
+    });
+  }, [demoStatus, router]);
+
   const handleDbSubmit = useCallback(() => {
     if (product === null || plan.kind === "BLOCKED") return;
 
@@ -349,6 +383,7 @@ export default function InboundPage() {
             // 한 건이 끝나면 처음 상태로 돌아간다 (사용자 결정). 다음 상품의 바코드를
             // 바로 받을 수 있어야 하고, 남아 있는 값이 다음 건의 것으로 오해되면 안 된다.
             clearScreen();
+            goToSimIfDone();
           },
           onError: (error) =>
             toast.error("입고에 실패했습니다", { ...w98Toast.notice, description: error.message }),
@@ -405,7 +440,8 @@ export default function InboundPage() {
           description: `${error.message} 수기 입력값은 그대로 남아 있습니다. 다시 DB 입력을 누르거나 촬영을 실행하세요.`,
         }),
     });
-  }, [product, plan, measurement, manual, handling, qty, stockIn, confirm, measure, clearScreen]);
+  }, [product, plan, measurement, manual, handling, qty, stockIn, confirm, measure, clearScreen,
+      goToSimIfDone]);
 
   /* ── 표시 ──────────────────────────────────────────────── */
   return (

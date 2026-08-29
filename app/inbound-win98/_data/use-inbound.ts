@@ -12,7 +12,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { demo } from "@/lib/endpoints";
-import type { DemoNextBarcode } from "@/lib/types";
+import type { DemoNextBarcode, DemoStatus } from "@/lib/types";
 
 export {
   useBarcodeScan,
@@ -32,5 +32,22 @@ export type { ConfirmVariables, StockInVariables } from "@/app/inbound/_data/use
 export function useNextDemoBarcode() {
   return useMutation<DemoNextBarcode | null, Error, void>({
     mutationFn: () => demo.nextBarcode(),
+  });
+}
+
+/**
+ * 시연 상태 조회 (`GET /admin/demo/status`).
+ *
+ * 입고 세 건이 다 끝났는지 볼 때 쓴다 — 다 끝났으면 화면이 창고 적재 시뮬레이션으로 넘어간다.
+ *
+ * ⚠️ 조회인데 `useQuery` 가 아니라 `useMutation` 이다. 화면에 늘 떠 있어야 하는 값이 아니라
+ *    **입고가 한 건 끝난 그 순간에만** 궁금한 값이라서다. 쿼리로 두면 캐시된 옛 값을 보고
+ *    판정하거나, 안 쓰는 동안에도 폴링이 돈다.
+ * ⚠️ 같은 판정을 `useNextDemoBarcode` 로 하면 안 된다. 그쪽은 바코드를 **소비**해서,
+ *    확인하는 것만으로 다음 상품 하나를 건너뛴다.
+ */
+export function useDemoStatus() {
+  return useMutation<DemoStatus, Error, void>({
+    mutationFn: () => demo.status(),
   });
 }

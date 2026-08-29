@@ -234,11 +234,9 @@ export function createInboundSim(THREE, deps) {
      ★ 예전에는 매 프레임 진행 방향에서 다시 구했다. 로봇이 조금만 방향을 틀어도 카메라가
        따라 돌았고, 그 끊임없는 회전이 화면을 정신없게 만든 진짜 원인이었다. 통로를 따라
        곧게 가는 구간에서는 각도가 바뀔 이유가 없다. */
-  let travelAz = -Math.PI / 2;
   /* 도입부에서 붙들고 있을 각. 시작할 때 **지금 사용자가 보고 있던 각**을 받아 둔다 —
      여기서 임의의 각을 잡으면 버튼을 누르는 순간 화면이 홱 돌고, 그 다음에야 밀고
      들어간다. 보던 자리에서 그대로 이어져야 "들어간다"로 읽힌다. */
-  let introAz = -Math.PI / 2;
   /* 도입부 길이 — 멀리서 붙들기 / 밀고 들어가기 (초).
      ⚠️ `PUSH` 는 창고 쪽 카메라 감쇠(k ≈ 1.0, 90% 에 2.3초)보다 짧게 잡는다. 다 붙은
         뒤에 출발시키면 멈춰 선 화면을 한참 보게 된다 — 아직 밀고 들어가는 중에
@@ -247,7 +245,10 @@ export function createInboundSim(THREE, deps) {
      `HOLD` 이 0 이라 아래 `pushing` 이 늘 참이고, 도입부 내내 1인칭 값이 쓰인다. 남긴
      0.9초는 **카메라가 제자리를 잡는 시간**이다 — 0 으로 두면 전 화면의 카메라 자리에서
      로봇 뒤까지 한 프레임에 순간이동한다. */
-  const INTRO_HOLD = 0, INTRO_PUSH = 0.9;
+  /* 도입부에 통로에 선 채로 머무는 시간(초).
+     ★ 0 → **1.6** 으로 늘렸다 (사용자 요청 — 시작을 알리는 자막을 읽을 틈이 필요하다).
+       그 사이 화면은 이미 통로에 서 있고, 자막만 먼저 읽힌다. */
+  const INTRO_HOLD = 1.6, INTRO_PUSH = 0.9;
 
   /* ── 통로 주행 = 로봇 1인칭 ────────────────────────────────────────────
      ★ 위에서 내려다보며 따라가던 것을 **로봇 눈높이**로 내렸다 (사용자 요청 — 몰입감).
@@ -267,8 +268,18 @@ export function createInboundSim(THREE, deps) {
      ⚠️ 로봇은 통로 한가운데(z = 0)를 지나고 통로 반폭이 1.6m 라, 눈높이로 내려도 랙을
         뚫지 않는다. `minY` 를 1.85 까지 낮출 수 있는 이유가 이것뿐이다 — 통로를 벗어난
         구간에서 같은 값을 쓰면 선반을 관통한다. */
-  const POV = { az: -Math.PI / 2, pol: 1.379, dist: 6.83, minY: 2.3 };
-  const POV_AHEAD = 6.0, POV_LOOK_Y = 1.1;
+  /* ★ 카메라를 **사람 눈높이로 내렸다** (사용자 요청 — 진짜 통로에 서 있는 것처럼).
+       예전 값은 카메라가 2.4m 에서 1.1m 지점을 내려다봐서, 걷는 사람이 아니라 지게차 위나
+       드론에서 본 그림이었다.
+     ⚠️ 각(`pol`)을 눈으로 고르지 않는다. 이 궤도 모형에서 카메라 높이는
+          camY = focus.y + dist * cos(pol)
+        이므로, 서 있는 눈높이 1.65m 를 얻으려면 cos(pol) = (1.65 - 1.25) / 6.83 = 0.0586,
+        즉 pol = 1.512 다. 시선(1.25m)보다 카메라가 0.4m 높아 6m 앞을 약 4° 내려본다 —
+        사람이 통로 끝을 볼 때의 각이다.
+     ⚠️ `minY` 도 같이 내린다. 2.3 으로 두면 위 계산이 무의미해진다 — 바닥을 뚫지 않을
+        만큼만(1.5) 남긴다. */
+  const POV = { az: -Math.PI / 2, pol: 1.512, dist: 6.83, minY: 1.5 };
+  const POV_AHEAD = 6.0, POV_LOOK_Y = 1.25;
   /* 골목을 빠져나오는 동안 카메라를 통로에 먼저 올려 두는 시간(초).
      ★ 적재를 마치고 다음 물건으로 갈 때, 카메라가 **골목에서 통로로 나오는 것과 x 로
        8m 옮기는 것을 동시에** 했다. 그 대각선이 사이에 있는 구역의 랙을 관통했다
@@ -302,6 +313,12 @@ export function createInboundSim(THREE, deps) {
   let handed = null;
   const tmpV = new THREE.Vector3();
   let phase = "idle";
+  /* 시뮬레이션이 시작한 뒤 흐른 시간(초) — 마무리 자막의 소요 시간에 쓴다 */
+  let runT = 0;
+  /* 실제로 넣은 구역 코드(A·E·C…) — 마무리 자막에 적는다.
+     ⚠️ `placedPerGrade` 를 쓰면 안 된다. 그건 크레인 id("xs"·"xl")가 열쇠라 화면에 그대로
+        쓸 수 없고, 순서도 넣은 순서가 아니라 Map 이 기억하는 순서다. */
+  let doneZones = [];
   let timer = 0;
   let legs = [];
   const filled = new Set();
@@ -380,7 +397,28 @@ export function createInboundSim(THREE, deps) {
       phase = "outro";
       timer = 2.6;
       legs = [];
-      onStatus({ note: "적재 완료 — Enter 를 눌러 창고 화면으로" });
+      /* ★ 마무리 자막에 **결과를 적는다** (사용자 요청 — 끝이 없다). 몇 건을 어느 구역에
+         얼마 만에 넣었는지가 이 영상의 결론이다. 그것 없이 멈추면 발표자가 말로 수습해야
+         한다. */
+      const mm = String(Math.floor(runT / 60)).padStart(2, "0");
+      const ss = String(Math.floor(runT % 60)).padStart(2, "0");
+      /* ★ 구역별로 **몇 칸이 늘었는지**를 같이 실어 보낸다 (사용자 요청 — 마무리에 슬롯
+           사용량 변화를 보여 주자). 적재 순간에 띄우던 팝업을 여기로 옮긴 셈이다: 그때는
+           카메라가 움직여서 화면에 붙은 판이 겉돌았지만, 마무리는 카메라가 멈춰 있어
+           읽을 자리가 된다.
+         ⚠️ 여기서 **비율을 계산하지 않는다.** 그날의 기준 재고(`stats`)는 화면 쪽에만 있고,
+            시뮬레이션은 자기가 몇 개를 넣었는지만 안다. 각자 아는 것만 내놓고 합치는 쪽이
+            같은 숫자를 두 곳에서 세지 않는 길이다. */
+      const byZone = [];
+      for (const z of doneZones) {
+        const hit = byZone.find((b) => b.id === z.id);
+        if (hit) hit.added += 1;
+        else byZone.push({ id: z.id, code: z.code, name: z.name, added: 1 });
+      }
+      onStatus({
+        note: `Enter 로 창고 화면`,
+        outro: { zones: byZone, count: jobs.length, time: `${mm}:${ss}` },
+      });
       return;
     }
     if (j.crane === null || j.target === null) {
@@ -395,7 +433,6 @@ export function createInboundSim(THREE, deps) {
     legs = routeTo(j.crane);
     /* 목표 구역의 **반대편**에서 본다 — 같은 쪽에 서면 그 구역의 랙이 시야를 막는다.
        로봇은 통로를 +x 로만 가므로 뒤쪽은 늘 -x 다(각으로는 -π/2). */
-    travelAz = -Math.PI / 2 + (j.crane.zone.row === 0 ? 0.5 : -0.5);
     exitT = EXIT_HOLD;   // 골목에서 나오는 동안 통로를 먼저 탄다 (위 `EXIT_HOLD` 참고)
     phase = "deliver";
     setStatus();
@@ -435,8 +472,7 @@ export function createInboundSim(THREE, deps) {
       onPlaced?.(null);
     },
 
-    /** @param fromAz 지금 궤도 카메라가 서 있는 각 (도입부가 이어받는다) */
-    start(items = DEMO_ITEMS, fromAz = null) {
+    start(items = DEMO_ITEMS) {
       filled.clear();
       // 다시 돌리면 지난번에 넣은 것부터 치운다 — 예약 칸이 세 개뿐이라 금방 찬다
       for (const c of cranes) {
@@ -508,16 +544,23 @@ export function createInboundSim(THREE, deps) {
          ★ 대신 **카메라로** 도입부를 만든다 (사용자 요청): 트럭까지 보이는 먼 자리에서
            입고 문을 잡고, 거기서 밀고 들어가며 로봇이 출발한다. 로봇을 움직여 만드는
            도입부가 아니라 **시선을 옮겨** 만드는 도입부라, 장면에 군더더기가 안 붙는다. */
-      introAz = fromAz ?? travelAz;
       phase = "intro";
       timer = INTRO_HOLD + INTRO_PUSH;
-      onStatus({ note: "입고 문 — 상품 3건 도착" });
+      /* ★ 시작 자막 (사용자 요청 — 시작이 없다). 무엇을 볼 것인지 한 줄로 먼저 알린다.
+         관객은 화면이 뭘 하는지 알고 봐야 따라온다. */
+      onStatus({ note: `신규 입고 ${jobs.length}건 · 규격 판정 후 자동 적재` });
+      runT = 0;
       placedPerGrade.clear();
+      doneZones = [];
       onPlaced?.(null);
     },
 
     update(dt) {
       if (phase === "idle") return;
+      /* 마무리 자막의 소요 시간 (위 `runT` 주석 참고).
+         ⚠️ `start()` 가 아니라 **여기서** 센다. start 에는 `dt` 가 없어서, 거기에 두면
+            버튼을 누른 그 순간 ReferenceError 로 시뮬레이션이 시작조차 못 한다. */
+      runT += dt;
 
       if (phase === "intro") {
         /* 도입부 — 멀리서 입고 문을 잡았다가 밀고 들어간다.
@@ -529,13 +572,17 @@ export function createInboundSim(THREE, deps) {
         /* 시선을 **로봇 앞쪽**에 둔다 — 주행 중과 같은 규칙이라 출발할 때 시점이 안 튄다 */
         focus.set(HOME[0] + POV_AHEAD, POV_LOOK_Y, HOME[2]);
         timer -= dt;
-        const pushing = timer <= INTRO_PUSH;
         /* ⚠️ 밀고 들어가는 끝점을 **1인칭 값과 같게** 둔다. 도입부 전용 값을 따로 두면
            로봇이 출발하는 순간 카메라가 한 번 더 튄다 — 그 한 번이 도입부를 망친다. */
-        state.az = pushing ? POV.az : introAz;
-        state.pol = pushing ? POV.pol : 0.95;   // 멀리서는 눈높이에 가깝게 내려다본다
-        state.dist = pushing ? POV.dist : 30;   // 30 ≈ 전체 보기 — 트럭과 야적장이 다 들어온다
-        state.minY = pushing ? POV.minY : 12;
+        /* ★ 먼 자리에서 밀고 들어오는 도입부를 **뺐다** (사용자 요청 — 시작부터 입고 문
+             앞 통로에 서 있는 시야였으면 좋겠다). 첫 프레임부터 주행 중과 **같은 값**이라,
+             로봇이 출발하는 순간에도 시점이 전혀 안 튄다.
+           ⚠️ `pushing` 은 이제 자막 전환에만 쓴다. 카메라는 갈래를 치지 않는다 — 도입부
+              전용 값을 하나라도 두면 그 값에서 주행 값으로 넘어가는 한 번의 튐이 생긴다. */
+        state.az = POV.az;
+        state.pol = POV.pol;
+        state.dist = POV.dist;
+        state.minY = POV.minY;
         if (timer <= 0) startNext();
         return;
       }
@@ -643,9 +690,13 @@ export function createInboundSim(THREE, deps) {
            `running` 은 참으로 남겨 두어 카메라를 계속 붙들고 있는다. */
         if (outroAt !== null) focus.copy(outroAt);
         state.az = Math.atan2(-1, 0.55);   // 출고 구역 바깥(통로 쪽)에서 본다
-        state.pol = 0.98;
-        state.dist = 16;
-        state.minY = 6;
+        /* ★ 더 높이, 더 멀리 물러난다 (16 → 24). 마무리 장면은 **창고 전체가 한 화면에
+             들어와야** 끝났다는 느낌이 난다. 출고 구역만 크게 잡으면 다음 장면의 도입부처럼
+             보이지 끝으로는 안 읽힌다.
+           ⚠️ 그래도 출고 구역을 가운데 둔다 — 발표자가 Enter 로 넘어갈 곳이 거기다. */
+        state.pol = 0.86;
+        state.dist = 24;
+        state.minY = 9;
         if (timer > 0) timer -= dt;
         return;
       }
@@ -804,6 +855,7 @@ export function createInboundSim(THREE, deps) {
                 더한 자리가 실제로 상자가 놓인 곳이다. */
           const bump = (placedPerGrade.get(c.id) ?? 0) + 1;
           placedPerGrade.set(c.id, bump);
+          doneZones.push({ id: c.id, code: j.grade.code, name: j.grade.name });
           onPlaced?.({
             x: c.craneX + j.slot.dir * c.reach,
             y: j.slot.y,
