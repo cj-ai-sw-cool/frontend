@@ -67,12 +67,20 @@ export function useBoxTypes() {
  * 3-5 토트 스캔 — 포장 화면 진입점. 재스캔 멱등(D-14): 활성 할당이 없으면 404
  * `TOTE_NOT_ASSIGNED`.
  *
- * 캐시 무효화는 하지 않는다 — 응답이 배송단위 상세를 통째로 돌려주고, `page.tsx` 가 그
+ * 스캔하면 그 배송단위가 포장 중으로 바뀌므로 라인 목록을 다시 읽게 한다. 상세는 응답이
+ * 통째로 돌려주고, `page.tsx` 가 그
  * 결과로 `shipmentId` state 를 세팅해서 `useShipmentDetail` 쿼리가 새로 열린다.
  */
 export function useToteScan() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: (barcode: string) => outbound.scanTote(barcode),
+    onSuccess: () => {
+      // 스캔하면 그 배송단위가 포장 중으로 바뀐다. 라인 목록을 다시 읽지 않으면 방금 스캔한
+      // 건이 목록에서 계속 대기중으로 보인다.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lines });
+    },
   });
 }
 
@@ -106,6 +114,8 @@ export function useCompletePacking() {
     mutationFn: (shipmentId: number) => outbound.complete(shipmentId),
     onSuccess: (_data, shipmentId) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.shipment(shipmentId) });
+      // 완료되면 목록에서도 완료로 내려가야 한다
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lines });
     },
   });
 }
