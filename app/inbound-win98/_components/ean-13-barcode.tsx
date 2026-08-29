@@ -140,14 +140,10 @@ export function encodeEan13(raw: string): Ean13Render {
 export function Ean13Barcode({ value }: { value: string }) {
   const render = encodeEan13(value);
 
+  // 스캔 전에는 빈 자리만 둔다. 안내 문구를 넣어 두면 바코드가 그려질 자리에 글자가
+  // 앉아 있어, 조회가 끝난 뒤에도 방금 읽은 값인지 안내인지 한 번 더 봐야 한다 (사용자 지적).
   if (render.kind === "EMPTY") {
-    return (
-      <div className="bg-muted/60 flex h-full w-full items-center justify-center rounded-lg">
-        <span className="text-label-sm text-muted-foreground">
-          조회한 바코드가 여기 그려집니다
-        </span>
-      </div>
-    );
+    return <div className="bg-muted/60 h-full w-full rounded-lg" />;
   }
 
   const dimmed = render.kind === "CHECKSUM_MISMATCH";

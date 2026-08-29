@@ -41,7 +41,7 @@ export function BarcodePanel({
   const isBusy = isPending || isNextPending;
 
   return (
-    <Panel title="Barcode Data" className="shrink-0">
+    <Panel title="바코드" className="shrink-0">
       <form
         className="flex gap-1"
         onSubmit={(event) => {

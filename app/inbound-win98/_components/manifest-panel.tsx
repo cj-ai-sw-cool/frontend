@@ -48,7 +48,7 @@ export function ManifestPanel({
   const status = hasResult ? buildStatus(result) : null;
 
   return (
-    <Panel title="Product Manifest" right={right} className="min-h-0 flex-1" bodyClassName="min-h-0 gap-2">
+    <Panel title="상품 정보" right={right} className="min-h-0 flex-1" bodyClassName="min-h-0 gap-2">
       {/* 위 — 텍스트 명세. 남는 세로를 여기가 먹는다 */}
       <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto p-2`}>
         {/* ★ **품목명만 따로 뽑아 맨 위에 크게 둔다** (사용자 결정 — "우선순위가 필요해").

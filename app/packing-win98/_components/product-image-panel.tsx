@@ -36,7 +36,7 @@ export function ProductImagePanel({
 
   return (
     <Panel
-      title="Product Image — 제품 이미지"
+      title="제품 이미지"
       right={
         data !== undefined ? (
           <span className={`${w98.small} shrink-0 font-normal`}>

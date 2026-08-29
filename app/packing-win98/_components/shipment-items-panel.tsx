@@ -34,7 +34,7 @@ export function ShipmentItemsPanel({
 
   return (
     <Panel
-      title="Items — 품목"
+      title="품목"
       right={
         mismatchCount > 0 ? (
           <span

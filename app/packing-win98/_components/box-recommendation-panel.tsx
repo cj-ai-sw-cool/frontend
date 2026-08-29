@@ -44,7 +44,7 @@ export function BoxRecommendationPanel({
     finalBox !== null && recommendedBox !== null && finalBox.boxTypeId !== recommendedBox.boxTypeId;
 
   return (
-    <Panel title="Box Recommendation — 박스 추천" className={className} bodyClassName="min-h-0">
+    <Panel title="박스 추천" className={className} bodyClassName="min-h-0">
       <div className={`${w98.scroll} flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto`}>
         {!hasShipment ? (
           /* 스캔 전에도 상자 자리를 비워 두지 않는다 — 칸이 통째로 비어 있으면 이 패널에
