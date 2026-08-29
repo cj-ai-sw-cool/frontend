@@ -1564,18 +1564,18 @@ function drawInboundScreen(c, CW, CH, live) {
   const MX = 124, MW = 796;
   c.font = "700 16px " + KO;
   c.fillStyle = W98.text;
-  c.fillText("Automatic Measurement Data", MX + 4, 48);
+  c.fillText("자동 측정값", MX + 4, 48);
   bevelOut(c, MX + MW - 84, 38, 80, 22);
   c.font = "700 13px " + KO;
   c.textAlign = "center";
-  c.fillText("PREVIEW", MX + MW - 44, 49);
+  c.fillText("STANDBY", MX + MW - 44, 49);
   c.textAlign = "left";
 
   const cards = [
-    ["Width", (live.width / 10).toFixed(1), "cm"],
-    ["Length", (live.length / 10).toFixed(1), "cm"],
-    ["Height", (live.height / 10).toFixed(1), "cm"],
-    ["Weight", live.realKg, "kg"],
+    ["가로", (live.width / 10).toFixed(1), "cm"],
+    ["세로", (live.length / 10).toFixed(1), "cm"],
+    ["높이", (live.height / 10).toFixed(1), "cm"],
+    ["무게", live.realKg, "kg"],
   ];
   const cw = (MW - 24) / 4;
   cards.forEach((row, i) => {
@@ -1599,11 +1599,11 @@ function drawInboundScreen(c, CW, CH, live) {
   /* ── 가운데: 육안 검사 ── */
   c.font = "700 16px " + KO;
   c.fillStyle = W98.text;
-  c.fillText("Visual Inspection", MX + 4, 200);
+  c.fillText("영상 검수", MX + 4, 200);
 
   const PY = 210, PH = CH - PY - 60;
   const mvW = 505;
-  w98Panel(c, MX, PY, mvW, PH, "Main View / CAM 01");
+  w98Panel(c, MX, PY, mvW, PH, "메인 뷰 / CAM 01");
   const vx = MX + 8, vy = PY + 30, vw = mvW - 16, vh = PH - 38;
   c.fillStyle = "#000000"; c.fillRect(vx, vy, vw, vh);
   cameraPlaceholder(c, vx + 8, vy + 8, vw - 16, vh - 16, "촬영 대기 중");
@@ -1635,7 +1635,7 @@ function drawInboundScreen(c, CW, CH, live) {
   c.font = "700 16px " + KO;
   c.textAlign = "left";
   c.fillStyle = W98.text;
-  c.fillText("Barcode Data", RX + 4, 48);
+  c.fillText("바코드", RX + 4, 48);
 
   bevelIn(c, RX, 62, RW - 34, 30, "#FFFFFF");
   c.font = "400 14px " + KO;
@@ -1643,29 +1643,11 @@ function drawInboundScreen(c, CW, CH, live) {
   c.fillText("스캔 또는 입력 후 Enter", RX + 10, 78);
   bevelOut(c, RX + RW - 30, 62, 30, 30);
 
+  // 실제 화면과 같이 빈 상자만 둔다. 안내 문구는 바코드가 그려질 자리를 미리 차지한다.
   bevelIn(c, RX, 98, RW, 34, "#EDEDED");
-  c.font = "700 15px " + KO;
-  c.textAlign = "center";
-  c.fillStyle = "#22334A";
-  c.fillText("조회한 바코드가 여기 그려집니다", RX + RW / 2, 116);
 
-  c.textAlign = "left";
-  c.font = "700 13px " + KO;
-  c.fillStyle = W98.text;
-  c.fillText("TEST:", RX + 2, 154);
-  bevelIn(c, RX + 44, 142, RW - 106, 26, "#FFFFFF");
-  c.font = "400 12px " + KO;
-  c.fillStyle = "#22334A";
-  c.fillText("게이트 통과 · 기존 데이터  8801234567893", RX + 50, 155);
-  bevelOut(c, RX + RW - 56, 142, 56, 26);
-  c.font = "700 13px " + KO;
-  c.textAlign = "center";
-  c.fillStyle = W98.text;
-  c.fillText("Load", RX + RW - 28, 155);
-
-  c.textAlign = "left";
   c.font = "700 16px " + KO;
-  c.fillText("Product Manifest", RX + 4, 190);
+  c.fillText("상품 정보", RX + 4, 190);
   bevelOut(c, RX + RW - 108, 180, 108, 22);
   c.font = "700 13px " + KO;
   c.textAlign = "center";
