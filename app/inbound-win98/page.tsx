@@ -363,6 +363,14 @@ export default function InboundPage() {
         if (!inbound || inbound.items.length === 0) return;
         if (!inbound.items.every((it) => it.stockQty > 0)) return;
         toast.success("신규 입고 물품 적재를 시작합니다.", w98Toast.success);
+        /* ★ 주소(`?sim=1`)와 **함께** 저장소에도 표시를 남긴다 (사용자 지적 — 배포본에서
+             안 넘어간다). App Router 의 `router.push` 는 비동기라 **새 화면이 먼저 그려지고
+             주소창이 나중에 바뀐다.** 창고 화면이 붙는 순간 `window.location` 은 아직 이
+             화면 주소여서, 주소만 보면 자동 시작 표시를 놓친다. 로컬에서는 청크 로딩이
+             느려 순서가 뒤집히는 바람에 우연히 됐다.
+           ⚠️ `sessionStorage` 다. `localStorage` 로 두면 브라우저를 닫았다 열어도 남아서,
+              한참 뒤에 창고 화면을 열었을 때 난데없이 시뮬레이션이 시작된다. */
+        try { sessionStorage.setItem("ws:sim", "1"); } catch { /* 저장소를 막아 둔 브라우저 */ }
         /* 토스트를 읽을 틈을 준다. 곧바로 넘기면 화면이 툭 바뀌어 무슨 일이 일어났는지
            관객이 못 따라온다 */
         window.setTimeout(() => router.push("/warehouse-win98?sim=1"), 1500);

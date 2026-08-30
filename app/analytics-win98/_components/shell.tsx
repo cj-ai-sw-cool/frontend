@@ -435,13 +435,24 @@ function BrandMark() {
           읽어 주는 쪽에는 무엇의 줄임말인지가 가야 한다. */
     <div role="img" aria-label="AWESOME LOGISTICS TERMINAL" className="flex items-center gap-2">
       <svg viewBox="0 0 32 32" className="size-8 shrink-0" aria-hidden>
-        <rect width="32" height="32" fill="var(--title-navy)" />
+        {/* ★ 받은 로고 이미지를 **픽셀로 재서** 다시 그렸다 (사용자 지적 — 미묘하게 다르다).
+              달라진 곳이 셋이다:
+                · 안쪽 주황이 **삼각형이 아니라 가로 막대**다
+                · 색이 화면 토큰이 아니라 **로고 고유색**이다
+              삼각형은 원래대로 **속이 빈 테두리**가 맞다. 처음에 받은 38x40 캡처로 재다가
+              구멍이 앤티앨리어싱에 묻혀 꽉 찬 것으로 잘못 읽었고, 큰 이미지로 다시 쟀다.
+            ⚠️ 색을 `--title-navy`(#000080) · `--brand-gold`(#8a7318) 로 쓰고 있었다. 화면에
+               원래 있던 색으로 맞추려던 것인데, 로고는 화면에 맞추는 물건이 아니라 그 자체가
+               기준이다. 이미지에서 뽑은 값(#003087 · #FCB40D)을 그대로 박는다.
+            ⚠️ 막대는 삼각형 안에 들어가야 한다. y 21.2 에서 삼각형 반폭이 8.8 이므로
+               x 8.4~23.6 이 한계다 — 폭을 더 키우면 삼각형 밖으로 삐져나온다. */}
+        <rect width="32" height="32" fill="#003087" />
         <path
-          d="M16 4 L29 28 L3 28 Z M16 13 L23.5 26 L8.5 26 Z"
+          d="M16 4.3 L28.6 29.4 L3.4 29.4 Z M16 12.9 L23.5 26.9 L8.5 26.9 Z"
           fill="#ffffff"
           fillRule="evenodd"
         />
-        <path d="M16 16 L21.5 26 L10.5 26 Z" fill="var(--brand-gold)" />
+        <rect x="8.5" y="21.9" width="15" height="4.8" fill="#FCB40D" />
       </svg>
       <span className="text-[19px] leading-6 font-bold tracking-[0.04em]">A.LTS</span>
     </div>
