@@ -128,7 +128,7 @@ export default function PackingV2Page() {
   /** 3D 상자와 아래 정보 패널이 **같은 박스**를 봐야 해서 여기서 한 번만 정한다 */
   const effectiveBox = finalBox ?? shipment?.recommendedBox ?? null;
   const activeModel =
-    BOX_MODELS.find((model) => model.key === modelKey) ?? BOX_MODELS[0];
+    SHOWN_MODELS.find((model) => model.key === modelKey) ?? SHOWN_MODELS[0];
 
   const selectedItem = useMemo(
     () =>
@@ -366,7 +366,7 @@ export default function PackingV2Page() {
             right={
               /* 모델 전환 — 제목 줄 오른쪽의 작은 탭 두 개. 눌린 쪽이 지금 보고 있는 것이다 */
               <span className="flex shrink-0 gap-1">
-                {BOX_MODELS.map((model) => (
+                {SHOWN_MODELS.map((model) => (
                   <Btn
                     key={model.key}
                     pressed={model.key === modelKey}
@@ -476,9 +476,25 @@ const LID_CLOSE_MS = 5600;
       3D 를 확인해야 할 때 쓰는 안전망이라, 목록에서만 내리고 기능은 지우지 않았다. */
 type BoxModelKey = "chest-real" | "meshy" | "carton-v3";
 
+/**
+ * 화면에 띄울 상자 목록.
+ *
+ * ★ `localOnly` 가 붙은 것은 **배포본에서 뺀다** (사용자 요청). GLB 가 한 덩어리에
+ *   10~15MB 라 `public/` 이 39MB 였고, 배포가 그 폴더를 통째로 올리는 구조여서 매번
+ *   20분씩 걸렸다. 시연에 실제로 쓰는 상자는 하나뿐이라 나머지를 안 올린다.
+ * ⚠️ 파일 자체는 저장소에 남긴다. 지우면 팀원이 받았을 때 로컬에서도 안 보인다 —
+ *    올리지 않는 것과 없애는 것은 다르다. 제외는 `.vercelignore` 가 한다.
+ * ⚠️ 마크 상자(`chest-split.glb`)는 **목록에서만 빼고 파일은 올린다.** 분석 화면의
+ *    이스터에그(상자가 열리며 돼지가 튀어나오는 것)가 같은 파일을 쓴다 — 안 올리면
+ *    그 연출이 서버에서 깨진다.
+ * ⚠️ 목록에서 빼는 것과 파일을 안 올리는 것을 **함께** 해야 한다. 목록에만 남기면
+ *    배포본에서 그 버튼을 눌렀을 때 404 가 난다.
+ */
 const BOX_MODELS: {
   key: BoxModelKey;
   label: string;
+  /** 참이면 개발 중에만 보인다 (위 주석 참고) */
+  localOnly?: boolean;
   title: string;
   url: string;
   /** 1 이면 도트 없이 또렷하게. 마크 상자만 굵은 도트로 그린다 */
@@ -496,6 +512,7 @@ const BOX_MODELS: {
           (몸체 230,292 + 뚜껑 126,992 삼각형). */
     key: "chest-real",
     label: "마크(실사)",
+    localOnly: true,
     title: "마인크래프트 상자 — 팀원이 자른 원본 (뚜껑 분리)",
     url: "/models/chest-split.glb",
     pixelScale: 1,
@@ -542,9 +559,17 @@ const BOX_MODELS: {
        ⚠️ 14.3MB · 341,008 삼각형. 배포 전에는 줄이는 게 좋다. */
     key: "carton-v3",
     label: "실사2",
+    localOnly: true,
     title: "택배 상자 — 팀원이 세 번째로 자른 원본 (날개 4장, 얇은 단면)",
     url: "/models/carton-split-v3.glb",
     pixelScale: 1,
     decalUrl: "/textures/onepack-decal.png",
   },
 ];
+
+/* 이 빌드에서 실제로 보여 줄 상자. 배포본에서는 `localOnly` 를 뺀다 (위 주석 참고).
+   ⚠️ `NODE_ENV` 로 가른다. Next 가 빌드 때 이 값을 상수로 바꿔 넣으므로, 배포본 번들에는
+      뺀 항목이 아예 안 들어간다 — 실행 중에 판단하는 것이 아니다. */
+const SHOWN_MODELS = BOX_MODELS.filter(
+  (m) => process.env.NODE_ENV !== "production" || m.localOnly !== true,
+);
