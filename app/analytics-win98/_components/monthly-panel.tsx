@@ -63,7 +63,7 @@ import { useState } from "react";
 
 import { FAINT, FILL, FILL_WEAK, INK, MUTED, RULE, TRACK } from "./clean-ui";
 import { w98 } from "./win98-ui";
-import { REAL_DATES, REAL_IN, REAL_OUT, REAL_USAGE, gradeStats } from "./warehouse-data";
+import { REAL_DATES, REAL_IN, REAL_OUT, REAL_USAGE, gradeStats, DEMO_DAY } from "./warehouse-data";
 
 /* ── 지어낸 달 ─────────────────────────────────────────────────────────────
    ⚠️ **실측이 아니다.** 시연에서 열두 달을 넘겨 보려고 채운 값이다 (위 머리말 참고).
@@ -309,7 +309,7 @@ export function MonthlyPanel() {
             ⚠️ 여섯 줄이 남는 높이를 나눠 갖는다(`flex-1`). 줄 높이를 못 박으면 창 높이가
                조금만 달라져도 마지막 줄이 잘리거나 아래가 휑하다. */}
         <div className="mt-2 flex min-h-0 flex-1 flex-col">
-          {gradeStats(29).map((g, i) => {
+          {gradeStats(DEMO_DAY).map((g, i) => {
             const spec = BOX_SPEC[i];
             const pct = g.occ * 100;
             /* 임계를 넘긴 규격만 굵게. 색을 안 쓰므로 굵기가 유일한 강조다 */
