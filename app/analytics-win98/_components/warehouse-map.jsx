@@ -19,12 +19,12 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 
 /* 배치·재고는 `warehouse-data.js` 한 곳에서 온다 — 규격별 재고 패널과 **같은 숫자**를
    써야 해서 꺼내 놓았다. 그 파일 머리말 참고. */
 import {
-  REAL_INV, INV_PEAK, MAP_FONT, MAP_FLOOR, CORRIDOR, computeLayout,
+  REAL_INV, INV_PEAK, MAP_FONT, MAP_FLOOR, CORRIDOR, computeLayout, DEMO_DAY,
 } from "./warehouse-data";
 /* ── 닫힌 경로 위의 한 점 ────────────────────────────────────────────────
    `t` 는 0~1. 변의 길이에 비례해 나눠 걷는다 — 꼭짓점마다 같은 시간을 주면 짧은 변에서
@@ -59,21 +59,10 @@ function onLoop(pts, t) {
 export default function WarehouseMap({ onOpen3D }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
-  const [day, setDay] = useState(29);
-
-  /* 날짜는 **저절로 흐른다.** 조작줄을 뺐으므로(사용자 요청 — 여기서는 필요 없다) 멈추거나
-     되감을 길이 없고, 그래서 재생/정지 상태도 들고 있지 않다.
-     ⚠️ 끝(60일)에서 멈추지 않고 처음으로 돌아간다. 대시보드에 늘 떠 있는 칸이라, 한 번
-        끝까지 가고 멈춰 버리면 그 뒤로는 죽은 그림이 된다. */
-  useEffect(() => {
-    const iv = setInterval(() => setDay((d) => (d >= 60 ? 0 : d + 1)), 420);
-    return () => clearInterval(iv);
-  }, []);
-
-  /* 날짜는 상태지만 그리기 루프는 매 프레임 돈다. 루프 안에서 상태를 직접 읽으면 첫 값에
-     붙박이므로 ref 로 넘긴다 */
-  const dayRef = useRef(day);
-  useEffect(() => { dayRef.current = day; }, [day]);
+  /* ★ 날짜를 **멈췄다** (사용자 요청 — 대시보드 칸마다 숫자가 다르다). 예전에는 여기만
+       420ms 마다 하루씩 넘어가서, 같은 화면의 박스 재고 칸(29일 고정)과 계속 어긋났다.
+       움직임은 아래 AGV·지게차·작업자가 만든다 — 그쪽이 "실시간"을 맡고, 재고 숫자는
+       시연 기준일에 붙박이로 둔다. 시연 중에 짚어 말할 숫자가 흔들리면 안 된다. */
 
   useEffect(() => {
     const wrap = wrapRef.current, cvs = canvasRef.current;
@@ -140,7 +129,7 @@ export default function WarehouseMap({ onOpen3D }) {
 
     const draw = () => {
       const el = (performance.now() - t0) / 1000;
-      const d = dayRef.current;
+      const d = DEMO_DAY;
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const w = cvs.width / dpr, h = cvs.height / dpr;

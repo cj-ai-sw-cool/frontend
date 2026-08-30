@@ -51,7 +51,7 @@ import type { ReactNode } from "react";
 
 import { FAINT, FILL, INK, MUTED, TRACK } from "./clean-ui";
 import { w98 } from "./win98-ui";
-import { REAL_IN, REAL_OUT, REAL_STOCK, gradeStats } from "./warehouse-data";
+import { REAL_IN, REAL_OUT, REAL_STOCK, gradeStats, DEMO_DAY } from "./warehouse-data";
 
 /** 라인별 분배 비율 — 실측이 아니다 (위 주의 참고). 합은 1 */
 const LINE_SHARE = [0.4, 0.34, 0.26];
@@ -158,7 +158,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export function FlowPanel({ day = 29 }: { day?: number }) {
+export function FlowPanel({ day = DEMO_DAY }: { day?: number }) {
   const inn = REAL_IN[day] ?? 0;
   const out = REAL_OUT[day] ?? 0;
   const stock = REAL_STOCK[day] ?? 0;

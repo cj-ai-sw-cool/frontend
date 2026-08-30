@@ -321,10 +321,67 @@ function makeFloorTexture(layout, floorW, floorD, floorCz) {
     c.fillStyle = "rgba(40,58,86,0.30)";
     c.font = `700 ${Math.round(PPM * 0.62)}px 'Noto Sans KR', sans-serif`;
     c.fillText("모두를 위한 단 하나의 배송", u(0), v(cz - 0.95));
-    c.fillStyle = "rgba(24,86,180,0.34)";     // 오네 — 파란 강조
+
+    /* ── 오네 로고 마크 ────────────────────────────────────────────────
+       ★ 글자 옆에 마크를 같이 찍는다 (사용자 요청). 브랜드 도장은 글자만 있으면 안내문이고,
+         마크가 붙어야 로고가 된다.
+       ⚠️ 마크와 글자를 **한 덩어리로 가운데 정렬**한다. 글자만 가운데 두고 마크를 왼쪽에
+          덧붙이면 덩어리 전체가 오른쪽으로 밀려, 앞마당 한가운데가 아니게 된다. 그래서
+          둘의 폭을 먼저 재고 시작점을 계산한다.
+       ⚠️ 바닥 도장이라 **알파를 낮춘다.** 다른 도장(글자)이 0.30~0.34 인데 마크만 진하면
+          같은 페인트로 안 보인다. 조금만 높게(0.44) 둔 것은 마크가 면이라 글자보다 옅게
+          보이기 때문이다. */
+    const MARK = PPM * 2.05, GAP = PPM * 0.55;
     c.font = `900 ${Math.round(PPM * 1.75)}px 'Noto Sans KR', sans-serif`;
-    c.fillText("오네 (O-NE)", u(0), v(cz + 0.75));
+    const tw = c.measureText("오네 (O-NE)").width;
+    const x0 = u(0) - (MARK + GAP + tw) / 2;
+    const my = v(cz + 0.75) - MARK / 2;
+    {
+      const S = MARK, x = x0, y = my;
+      c.save();
+      c.globalAlpha = 0.44;
+      /* 타일 — 왼쪽 위·아래 모서리를 비스듬히 잘라 낸 사각형. 시안(왼아래)에서
+         파랑(오른위)으로 넘어간다 */
+      const g = c.createLinearGradient(x, y + S, x + S, y);
+      g.addColorStop(0, "#20C6EA");
+      g.addColorStop(1, "#1B5CE0");
+      c.beginPath();
+      c.moveTo(x + S * 0.24, y);
+      c.lineTo(x + S, y);
+      c.lineTo(x + S, y + S);
+      c.lineTo(x + S * 0.30, y + S);
+      c.lineTo(x, y + S * 0.70);
+      c.lineTo(x, y + S * 0.24);
+      c.closePath();
+      c.fillStyle = g;
+      c.fill();
+
+      /* 검은 글자·기호는 타일에서 파낸 것처럼 보여야 한다 — 같은 알파 안에서 위에 얹는다 */
+      c.fillStyle = "#0B1016";
+      // O — 왼쪽 위 고리
+      c.beginPath();
+      c.arc(x + S * 0.30, y + S * 0.30, S * 0.175, 0, Math.PI * 2);
+      c.arc(x + S * 0.30, y + S * 0.30, S * 0.085, 0, Math.PI * 2, true);
+      c.fill("evenodd");
+      // 오른쪽 위 빗금
+      c.beginPath();
+      c.moveTo(x + S * 0.60, y + S * 0.30);
+      c.lineTo(x + S * 0.86, y + S * 0.30);
+      c.lineTo(x + S * 0.76, y + S * 0.42);
+      c.lineTo(x + S * 0.50, y + S * 0.42);
+      c.closePath();
+      c.fill();
+      // NE — 아래쪽
+      c.textAlign = "center";
+      c.font = `900 ${Math.round(S * 0.40)}px 'Arial Black', Arial, sans-serif`;
+      c.fillText("NE", x + S * 0.55, y + S * 0.72);
+      c.restore();
+    }
+
+    c.fillStyle = "rgba(24,86,180,0.34)";     // 오네 — 파란 강조
     c.textAlign = "left";
+    c.font = `900 ${Math.round(PPM * 1.75)}px 'Noto Sans KR', sans-serif`;
+    c.fillText("오네 (O-NE)", x0 + MARK + GAP, v(cz + 0.75));
   }
 
   /* ── 출고 구역 (오른쪽 벽 안쪽) ──
@@ -796,7 +853,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
        한다. 시연 자리에 따라 소리를 빼야 할 때가 있어서 한 줄로 남겨 두었다.
      ⚠️ 스위치를 여기 **하나만** 둔다. 호출부(start/stop/stow) 네 곳을 각각 주석 처리하면
         다시 켤 때 한 곳을 빠뜨리기 쉽고, 그러면 배경음 없이 효과음만 나는 상태가 된다. */
-  const SIM_SOUND = false;
+  const SIM_SOUND = true;
   const [audio] = useState(() =>
     (!SIM_SOUND || typeof window === "undefined" ? null : createSimAudio()));
   /* 방금 넣은 칸 — 자막 아래 열 게이지가 쓴다. 다음 건이 시작되면 시뮬레이션이 null 을
@@ -1041,6 +1098,91 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     };
     addWall("back", new THREE.BoxGeometry(floorW, 5.4, 0.3), 0x1a2028, 0, 4.0, zMin);
     addWall("back", new THREE.BoxGeometry(floorW, 1.3, 0.34), 0x232b35, 0, 0.65, zMin);
+
+    /* ── 뒷벽 회사 로고 ────────────────────────────────────────────
+       ★ 글자만 쓰다가 **로고 그대로**로 바꿨다 (사용자 요청). CJ 꽃잎 마크 + CJ +
+         OLIVENETWORKS 한 벌이다. 랙 위쪽 벽이 통째로 비어 있어 이 자리가 브랜드 벽이 된다 —
+         통로에서 고개를 들면 반드시 들어오는 면이다.
+       ⚠️ 워드마크를 **검정으로 쓰면 안 된다.** 원본 로고는 검은 글자지만 이 벽이 어두워서
+          (0x1a2028) 그대로 두면 글자가 아예 안 보인다. 어두운 배경에 놓는 로고는 밝은
+          쪽으로 뒤집어 쓰는 것이 원칙이고, 실제 센터의 벽 로고도 흰색이다.
+       ⚠️ 그래도 흰색은 안 쓴다 (사용자 요청 — 진하지 않게). 벽보다 밝되 눌러 칠한 회청색이면
+          "거기 있다"까지만 읽히고 화면의 주인공 자리를 안 뺏는다.
+       ⚠️ 꽃잎 색은 살린다. 이 로고에서 알아보게 하는 것은 글자가 아니라 세 꽃잎이라,
+          여기까지 눌러 버리면 그냥 회색 글씨가 된다.
+       ⚠️ 간판이 아니라 **칠한 것**이다. 회사명은 벽 자체가 말하는 것이라 두께를 주면
+          광고판이 된다 (A.LTS·신규입고는 무엇을 가리키는 표지라 판을 걸었다).
+       ⚠️ `MeshBasicMaterial` — 빛이 거의 안 닿는 벽이라 램버트면 로고가 벽과 같이 묻힌다.
+       ⚠️ `wallSets.back` 에 넣는다. 카메라가 벽 너머로 돌면 벽이 투명해지는데, 로고만
+          남으면 허공에 떠 있게 된다. */
+    {
+      /* ⚠️ 캔버스 폭을 **글자를 재서** 정한다. 1536 으로 못 박았더니 OLIVENETWORKS 가
+         오른쪽에서 잘렸다 (사용자 지적) — 글꼴이 없어 대체 글꼴로 떨어지면 폭이 또 달라지므로,
+         눈으로 맞춘 숫자는 언제든 다시 어긋난다. 재고 나서 그 폭으로 캔버스를 만든다.
+         ⚠️ `canvas.width` 를 바꾸면 컨텍스트가 **초기화된다.** 그래서 재기용으로 한 번 쓰고,
+            폭을 정한 뒤 글꼴을 다시 세워야 한다. */
+      const CH = 435;
+      const F_CJ = Math.round(CH * 0.40), F_OL = Math.round(CH * 0.345);
+      const cjFont = `900 ${F_CJ}px 'Arial Black', Arial, sans-serif`;
+      const olFont = `800 ${F_OL}px 'Arial Black', Arial, sans-serif`;
+      const cv = document.createElement("canvas");
+      cv.width = 64; cv.height = CH;
+      let c = cv.getContext("2d");
+      c.font = cjFont;
+      const cjW = c.measureText("CJ").width;
+      c.font = olFont;
+      const olW = c.measureText("OLIVENETWORKS").width;
+
+      const PAD = CH * 0.07, MARK = CH * 0.52, GAP = CH * 0.10;
+      const CW = Math.ceil(PAD + cjW + GAP * 0.4 + MARK + GAP + olW + PAD);
+      cv.width = CW;
+      c = cv.getContext("2d");
+      c.clearRect(0, 0, CW, CH);
+
+      /** 꽃잎 하나 — 기울인 타원 */
+      const petal = (cx, cy, rx, ry, rot, fill) => {
+        c.save();
+        c.translate(cx, cy);
+        c.rotate(rot);
+        c.beginPath();
+        c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        c.fillStyle = fill;
+        c.fill();
+        c.restore();
+      };
+
+      const INK = "#C3CBD4";   // 워드마크 — 벽보다 밝되 눌러 칠한다 (위 주석)
+      c.textBaseline = "middle";
+      c.textAlign = "left";
+
+      // CJ
+      c.font = cjFont;
+      c.fillStyle = INK;
+      c.fillText("CJ", PAD, CH * 0.56);
+
+      // 꽃잎 셋 — 파랑(위) · 주황(오른쪽) · 빨강(아래)
+      const mx = PAD + cjW + GAP * 0.4 + MARK / 2, my = CH * 0.46, R = CH * 0.155;
+      petal(mx - R * 0.42, my - R * 0.95, R * 0.62, R * 0.92, -0.45, "#2E86D8");
+      petal(mx + R * 0.86, my - R * 0.10, R * 0.95, R * 0.66, -0.25, "#E8720E");
+      petal(mx - R * 0.10, my + R * 1.00, R * 0.62, R * 0.92, 0.30, "#DC2A4E");
+
+      // OLIVENETWORKS
+      c.font = olFont;
+      c.fillStyle = INK;
+      c.fillText("OLIVENETWORKS", PAD + cjW + GAP * 0.4 + MARK + GAP, CH * 0.56);
+
+      const tex = new THREE.CanvasTexture(cv);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+      /* 폭 9m — 랙 위(3.3m)와 벽 윗변(6.7m) 사이에 로고 높이(2.55m)가 들어가는 크기다.
+         더 키우면 천장을 넘고, 줄이면 통로에서 글자가 안 읽힌다 */
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(9.0, 9.0 * CH / CW), mat);
+      /* 벽 두께가 0.3 이라 중심에서 0.15 가 표면이다. 1cm 띄워 z-파이팅을 피한다 */
+      sign.position.set(0, 5.1, zMin + 0.16);
+      scene.add(sign);
+      wallSets.back.push(sign);
+    }
     addWall("left", new THREE.BoxGeometry(0.3, 5.4, floorD), 0x1a2028, -floorW / 2, 4.0, floorCz);
     addWall("left", new THREE.BoxGeometry(0.34, 1.3, floorD), 0x232b35, -floorW / 2, 0.65, floorCz);
     /* ── 오른쪽 벽 — 도크 문을 뚫는다 ──────────────────────────────────
@@ -1724,8 +1866,10 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
        `buildPiglin` 이 `buildWorker` 와 같은 손잡이를 돌려주므로, 아래 걷기·정차 상태
        기계는 한 줄도 손대지 않았다. `buildWorker` 는 지우지 않고 남겨 둔다 — 되돌리고
        싶으면 이 두 줄만 바꾸면 된다. */
-    const worker1 = buildPiglin({ cart: true });
-    const worker2 = buildPiglin({ cart: false, device: true });
+    /* ★ 창고 안 작업자도 조끼를 입힌다 (사용자 요청). 출고장 둘만 입고 있으면 같은
+       현장인데 복장이 갈린다 — 실제 센터에서 반사 조끼는 구역이 아니라 신분에 붙는다 */
+    const worker1 = buildPiglin({ cart: true, vest: true });
+    const worker2 = buildPiglin({ cart: false, device: true, vest: true });
     worker1.grp.position.set(-patrolBound * 0.5, 0, -0.72);
     worker2.grp.position.set(patrolBound * 0.55, 0, 0.72);
     scene.add(castAll(worker1.grp));
@@ -3581,7 +3725,12 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         const pg = stats?.perGrade?.[placed.gradeId];
         if (!pg) return null;
         const n = pg.filled;
-        const W = 236;                                   // 격자가 쓸 수 있는 폭
+        /* ★ 판을 키웠다 (사용자 요청). 폭을 **고정**하고 칸 크기를 열 수로 나눈다 —
+             칸을 고정하고 폭을 따라가게 두면 A(26열)와 E(9열)에서 판 너비가 확 달라져,
+             물건이 바뀔 때마다 오른쪽 위가 들썩인다.
+           ⚠️ 이렇게 두면 세로도 저절로 맞는다: A는 11px x 11단, E는 33px x 4단, C는
+              21px x 6단 — 셋 다 130px 언저리라 판 높이가 거의 안 변한다. */
+        const W = 312;                                   // 격자가 쓸 수 있는 폭 (고정)
         const cw = Math.max(4, Math.floor((W - (placed.cols - 1)) / placed.cols));
         const gridW = cw * placed.cols + (placed.cols - 1);
         const used = placed.faceRanks.flat().filter((r) => r < n).length + 1;
@@ -3590,17 +3739,17 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
           <div
             className="ws-panel"
             style={{
-              position: "absolute", top: 46, right: 14, width: gridW + 32,
-              padding: "13px 16px 14px", fontFamily: "'Noto Sans KR', sans-serif",
+              position: "absolute", top: 46, right: 14, width: W + 36,
+              padding: "16px 18px 17px", fontFamily: "'Noto Sans KR', sans-serif",
               pointerEvents: "none", zIndex: 30,
             }}
           >
-            <div style={{ fontSize: 11, fontWeight: 800, color: "#7FD49A", letterSpacing: 0.6 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#7FD49A", letterSpacing: 0.6 }}>
               직전 적재
             </div>
             <div style={{ marginTop: 6, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-              <span style={{ fontSize: 16, fontWeight: 800, color: "#F2F6FB" }}>{placed.grade}</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: "#57C8FF", fontFamily: "'JetBrains Mono',monospace" }}>
+              <span style={{ fontSize: 20, fontWeight: 800, color: "#F2F6FB" }}>{placed.grade}</span>
+              <span style={{ fontSize: 17, fontWeight: 700, color: "#57C8FF", fontFamily: "'JetBrains Mono',monospace" }}>
                 {placed.slot}
               </span>
             </div>
@@ -3608,10 +3757,10 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
             {/* 랙 한 면 — 들어간 테두리 안에 픽셀 격자 */}
             <div
               style={{
-                marginTop: 11, padding: 4, borderRadius: 2,
+                marginTop: 13, padding: 5, borderRadius: 2,
                 background: "rgba(0,0,0,.30)",
                 boxShadow: "inset 1px 1px 0 rgba(0,0,0,.55), inset -1px -1px 0 rgba(255,255,255,.10)",
-                display: "flex", flexDirection: "column-reverse", gap: 1, width: gridW + 8,
+                display: "flex", flexDirection: "column-reverse", gap: 1, width: gridW + 10, margin: "0 auto",
               }}
             >
               {placed.faceRanks.map((row, k) => (
@@ -3624,7 +3773,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
                         style={{
                           width: cw, height: cw,
                           background: now ? "#57C8FF" : r < n ? "#5A7A9E" : "rgba(255,255,255,.07)",
-                          boxShadow: now ? "0 0 9px rgba(87,200,255,.95)" : undefined,
+                          boxShadow: now ? "0 0 13px rgba(87,200,255,.95)" : undefined,
                         }}
                       />
                     );
@@ -3633,8 +3782,11 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
               ))}
             </div>
 
-            <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#9FB0C3", fontFamily: "'JetBrains Mono',monospace" }}>
-              <span>이 랙 <b style={{ color: "#F2F6FB" }}>{used}/{totalCells}</b></span>
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", fontSize: 14.5, color: "#9FB0C3", fontFamily: "'JetBrains Mono',monospace" }}>
+              {/* ★ "이 랙" 이라는 말을 뺐다 (사용자 지적). 격자가 바로 위에 있어서 이 숫자가
+                     무엇에 대한 것인지는 이미 보인다 — 굳이 이름을 붙이면 오른쪽의 '구역'과
+                     나란히 놓여 두 이름이 서로 다른 분모를 가리키는 꼴이 된다. */}
+              <span><b style={{ color: "#F2F6FB" }}>{used}/{totalCells}</b>칸</span>
               <span>구역 <b style={{ color: "#F2F6FB" }}>{(((pg.filled + placed.bump) / pg.total) * 100).toFixed(1)}%</b></span>
             </div>
           </div>
