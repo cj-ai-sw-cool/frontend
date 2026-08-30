@@ -69,7 +69,7 @@ export function BoxRecommendationPanel({
                     그 차이가 그대로 커진다. 한 서체로 묶으면 `B호` 가 한 덩어리로 읽힌다.
                   ⚠️ 모노를 포기해도 잃는 게 없다 — 자릿수를 맞출 값이 아니라 이름이다.
                      정렬이 필요한 건 아래 내치수·재고이고, 거기는 모노를 그대로 둔다. */}
-              <span className="text-[56px] leading-[60px] font-bold">{effectiveBox.name}</span>
+              <span className="text-[56px] leading-[60px] font-bold">{boxLabel(effectiveBox.name)}</span>
               {isOverridden ? (
                 <span className={`${w98.raised} ${w98.small} bg-[color:var(--surface)] px-1`}>
                   OVERRIDDEN
@@ -98,7 +98,7 @@ export function BoxRecommendationPanel({
                 <>
                   <dt className="font-bold text-[color:var(--muted-foreground)]">원래 추천</dt>
                   <dd className="truncate">
-                    {recommendedBox.name} · {formatInnerCm(recommendedBox.innerCm)}
+                    {boxLabel(recommendedBox.name)} · {formatInnerCm(recommendedBox.innerCm)}
                   </dd>
                 </>
               ) : null}
@@ -141,7 +141,7 @@ export function BoxRecommendationPanel({
             {effectiveBox === null ? <option value="">박스를 선택하세요</option> : null}
             {availableBoxes.map((box) => (
               <option key={box.boxTypeId} value={String(box.boxTypeId)} disabled={box.stockQty === 0}>
-                {box.name} · {formatInnerCm(box.innerCm)} · 재고 {box.stockQty}개
+                {boxLabel(box.name)} · {formatInnerCm(box.innerCm)} · 재고 {box.stockQty}개
               </option>
             ))}
           </select>
@@ -155,6 +155,22 @@ export function BoxRecommendationPanel({
       </div>
     </Panel>
   );
+}
+
+/**
+ * 박스 이름을 화면 표기로 바꾼다: `A호` → `1호`.
+ *
+ * ★ 서버는 알파벳(A~E호)으로 들고 있는데 화면에는 **숫자(1호~)** 로 띄운다 (사용자 요청).
+ *   작업자가 부르는 이름이 숫자라서다.
+ * ⚠️ 서버 값을 고치지 않는다. 이름은 DB·API 계약에 걸려 있고, 여기서 바꾸는 것은 **보여
+ *    주는 방식**뿐이다. 서버까지 바꾸려면 백엔드 시드와 함께 가야 한다.
+ * ⚠️ 알파벳이 아니면 **그대로 둔다.** 서버가 이름 규칙을 바꾸거나 새 규격을 넣었을 때,
+ *    억지로 숫자를 붙이면 없는 번호가 생긴다.
+ */
+export function boxLabel(name: string): string {
+  const m = /^([A-Z])호$/.exec(name.trim());
+  if (m === null) return name;
+  return `${m[1].charCodeAt(0) - 64}호`;
 }
 
 function formatInnerCm(innerCm: BoxType["innerCm"]): string {
