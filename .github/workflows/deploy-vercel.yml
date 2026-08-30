@@ -21,6 +21,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Vercel Hobby 플랜은 커밋 작성자가 팀 소유자일 때만 배포를 받아준다.
+      # 팀원이 올린 커밋은 BLOCKED 로 막히고, CLI 는 그 상태를 모르는 채 "Building…" 에서
+      # 무한히 기다린다. 러너에 받아둔 사본에서만 작성자를 소유자로 맞춘다 — 저장소로 push 하지 않으므로
+      # GitHub 쪽 커밋 이력은 그대로 남는다.
+      - name: Normalize commit author
+        env:
+          DEPLOY_AUTHOR_NAME: ${{ vars.VERCEL_DEPLOY_AUTHOR_NAME }}
+          DEPLOY_AUTHOR_EMAIL: ${{ vars.VERCEL_DEPLOY_AUTHOR_EMAIL }}
+        run: |
+          if [ -z "$DEPLOY_AUTHOR_NAME" ] || [ -z "$DEPLOY_AUTHOR_EMAIL" ]; then
+            echo "저장소 변수 VERCEL_DEPLOY_AUTHOR_NAME / VERCEL_DEPLOY_AUTHOR_EMAIL 이 비어 있다." >&2
+            exit 1
+          fi
+          git config user.name "$DEPLOY_AUTHOR_NAME"
+          git config user.email "$DEPLOY_AUTHOR_EMAIL"
+          git commit --amend --no-edit --reset-author
+          git log -1 --format='배포 작성자: %an <%ae>'
+
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -49,6 +67,7 @@ jobs:
 
       # --prebuilt 를 빼면 위에서 만든 결과를 버리고 Vercel 이 다시 빌드한다.
       - name: Deploy
+        timeout-minutes: 10
         run: |
           URL=$(vercel deploy --prebuilt --prod --scope="$VERCEL_SCOPE" --token="$VERCEL_TOKEN")
           echo "배포 완료: $URL"
