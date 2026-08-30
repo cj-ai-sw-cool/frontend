@@ -805,11 +805,24 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         그려지는 낭비이고, 무엇보다 lint 가 막는다(effect 안의 동기 setState). 처음 값으로
         정하면 그런 일이 아예 없다.
      ⚠️ 초기화 함수 안에서 읽는다. 본문에서 바로 읽으면 렌더마다 주소를 다시 파싱한다. */
-  const [tab, setTab] = useState(() => (
-    typeof window !== "undefined"
-      && new URLSearchParams(window.location.search).get("sim") === "1"
-      ? "3d" : initialTab
-  ));
+  /* 입고 화면에서 넘어와 **바로 시뮬레이션을 시작할 자리인가.**
+     ⚠️ 주소(`?sim=1`)를 먼저 믿으면 안 된다. App Router 의 `router.push` 는 비동기라 새
+        화면이 먼저 그려지고 주소창이 나중에 바뀐다 — 여기가 붙는 순간 `window.location` 은
+        아직 입고 화면 주소다. 그래서 입고 화면이 남긴 **저장소 표시를 먼저 본다.**
+     ⚠️ 주소도 계속 본다. 주소를 직접 쳐서 들어오는 길(`?sim=1`)을 남겨 둬야 시연 중에
+        입고를 안 거치고도 시뮬레이션만 띄울 수 있다.
+     ⚠️ 여기서 표시를 **지우지 않는다.** 개발 모드(StrictMode)는 이 초기화 함수를 두 번
+        부르는데, 여기서 지우면 두 번째 호출이 거짓을 받는다. 지우는 것은 아래 효과가 한다. */
+  const [autoSim] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      if (window.sessionStorage.getItem("ws:sim") === "1") return true;
+    } catch { /* 저장소를 막아 둔 브라우저 — 주소로 넘어간다 */ }
+    try {
+      return new URLSearchParams(window.location.search).get("sim") === "1";
+    } catch { return false; }
+  });
+  const [tab, setTab] = useState(() => (autoSim ? "3d" : initialTab));
   /* 하단 타임라인이 펼쳐져 있는가. 기본은 접힘 - 이 화면의 주인공은 3D 창고인데
      폭 640px 짜리 패널이 늘 아래를 가리고 있었다 */
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -872,16 +885,18 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         있고, 훅을 쓰면 이 컴포넌트만을 위한 Suspense 경계를 세워야 한다. */
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    if (new URLSearchParams(window.location.search).get("sim") !== "1") return undefined;
+    if (!autoSim) return undefined;
     /* 탭은 위 `useState` 초기화에서 이미 3D 로 잡혔다 — 여기서는 씬이 준비되기만 기다린다 */
     const t = window.setInterval(() => {
       if (!simRunRef.current) return;
       window.clearInterval(t);
+      /* 표시를 지운다 — 안 지우면 이 탭에서 창고 화면을 다시 열 때마다 또 시작한다 */
+      try { window.sessionStorage.removeItem("ws:sim"); } catch { /* 위 주석 참고 */ }
       window.history.replaceState(null, "", window.location.pathname);
       simRunRef.current(DEMO_ITEMS);
     }, 120);
     return () => window.clearInterval(t);
-  }, []);
+  }, [autoSim]);
   /* ⚠️ 원본의 시계(`clock`)를 뺐다. 작업표시줄에만 쓰던 값인데 그 표시줄을 걷어냈으니,
      남겨 두면 아무도 안 보는 값을 위해 인터벌만 돈다. */
   const mapWrapRef = useRef(null);
