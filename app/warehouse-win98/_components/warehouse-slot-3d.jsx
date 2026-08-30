@@ -821,6 +821,10 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
        막을 덮었다 걷는 연출이었는데, 들어가는 데 1.3초가 걸렸다. 자주 오가는 화면에서
        그만한 대기는 연출이 아니라 방해라서, 단계를 없애고 값 하나로 줄였다. */
   const [inRoom, setInRoom] = useState(false);
+  /* 출고 작업대 화면을 코앞에서 들여다보고 있는가.
+     ⚠️ 이 동안에는 화면에 겹쳐 둔 판을 다 감춘다. 카메라가 모니터를 가득 채우도록 다가가는데,
+        마무리 카드가 그 위에 그대로 떠 있어 정작 보여 주려는 출고 화면을 가렸다. */
+  const [atStation, setAtStation] = useState(false);
   /* 입고 적재 시뮬레이션이 돌고 있나 + 지금 무엇을 하고 있나(한 줄).
      ⚠️ 진행 상황을 **글자로도** 내보낸다. 로봇이 30m 를 가는 동안 눈이 그것을 놓치면
         화면이 멈춘 것처럼 보이는데, 글자가 따라가면 무슨 일이 일어나는지 계속 읽힌다. */
@@ -898,6 +902,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
   const inRoomRef = useRef(false);
   const onEnterPortalRef = useRef(null);
   const onPortalHoverRef = useRef(null);
+  const onStationFocusRef = useRef(null);
 
   /* 씬 쪽 손잡이를 최신 함수로 유지한다 (위 ref 설명 참고).
      ⚠️ 렌더 중에 ref 를 건드리면 안 된다 — 리액트가 화면을 그리는 도중에 바깥 값을 바꾸는
@@ -905,6 +910,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         의존성 없는 effect 에 두면 **그릴 것을 다 그린 뒤** 매번 갱신된다. */
   const router = useRouter();
   useEffect(() => { goPackingRef.current = () => router.push("/packing-win98"); }, [router]);
+  /* 상태 함수는 리액트가 그대로 유지하므로 한 번만 걸어 두면 된다 */
+  useEffect(() => { onStationFocusRef.current = setAtStation; }, []);
 
   /* 씬 쪽 손잡이를 최신 함수로 유지한다 (위 ref 설명 참고).
      ⚠️ 렌더 중에 ref 를 건드리면 안 된다 — 리액트가 화면을 그리는 도중에 바깥 값을 바꾸는
@@ -2253,6 +2260,13 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
          못한 채 화면이 넘어간다. 한 번은 다가가서 **무엇인지 보여 주고**, 그 다음 클릭에
          넘긴다. 무엇을 하는 클릭인지는 포스기 화면 자신이 적어 준다. */
     let focusedStation = null;
+    /* 값을 바꾸는 자리는 여기 하나뿐이다. 바뀌는 곳이 여덟 군데라, 각자 바꾸면 화면에
+       알리는 것을 어딘가에서 빠뜨린다. */
+    const setStation = (st) => {
+      if (focusedStation === st) return;
+      focusedStation = st;
+      onStationFocusRef.current?.(st !== null);
+    };
 
     /* 작업대 포스기 정면으로 카메라를 옮긴다.
        ⚠️ 새 카메라 연출을 만들지 않고 **기존 궤도 목표값만 바꾼다** — 루프가 이미 목표를
@@ -2291,7 +2305,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         if (focusedStation === st) {
           goPackingRef.current?.();     // 이미 들여다보고 있다 → 실제 화면으로
         } else {
-          focusedStation = st;
+          setStation(st);
           focusStation(st);             // 처음 눌렀다 → 다가가서 보여 준다
         }
         return;
@@ -2323,7 +2337,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       des.ty = Math.min(3.0, Math.max(0.7, h.point.y));
       des.tz = h.point.z;
       des.r = Math.max(6.5, cur.r * 0.55); // 클릭할 때마다 단계 줌인
-      focusedStation = null;   // 다른 데를 봤으면 작업대에서 눈을 뗀 것이다
+      setStation(null);   // 다른 데를 봤으면 작업대에서 눈을 뗀 것이다
     };
     const onDown = (e) => {
       followSim = false;   // 사용자가 손을 댔다 (위 `followSim` 주의 참고)
@@ -2400,7 +2414,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
          onWindowContextMenu 가 먼저 플래그를 읽고 소비할 시간을 번다. */
       setTimeout(() => { rightDragActive = false; }, 0);
     };
-    const onDbl = () => { Object.assign(des, OVERVIEW); focusedStation = null; outboundStage = false; exterior.setDeparting(false); };
+    const onDbl = () => { Object.assign(des, OVERVIEW); setStation(null); outboundStage = false; exterior.setDeparting(false); };
     /* 우클릭 드래그로 카메라를 돌리므로, 네이티브 컨텍스트 메뉴는 방해만 된다 */
     const onContextMenu = (e) => e.preventDefault();
     /* el 밖(오버레이 패널 더 바깥, 3D 탭 wrapper 바깥 등)에서 드래그가 끝나는 극단적인
@@ -2455,7 +2469,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         followSim = false;
         setSimActive(false);
         audio?.stop();
-        focusedStation = null;
+        setStation(null);
         outboundStage = false;   // 시뮬레이션에서 나오면 한 바퀴를 처음부터
         exterior.setDeparting(false);
         Object.assign(des, OVERVIEW);
@@ -2482,11 +2496,11 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       }
       const front = stations[stations.length - 1];
       if (focusedStation === null && front) {
-        focusedStation = front;
+        setStation(front);
         focusStation(front);
       } else {
         Object.assign(des, OVERVIEW);
-        focusedStation = null;
+        setStation(null);
         outboundStage = false;   // 한 바퀴 돌았다 — 다음 Enter 는 다시 출고 구역부터
         exterior.setDeparting(false);   // 트럭도 도크로 되돌린다
       }
@@ -2553,7 +2567,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       des.az = z.row === 0 ? 0.45 : 0.45;
       des.pol = 1.02;
     };
-    const resetView = () => { Object.assign(des, OVERVIEW); focusedStation = null; };
+    const resetView = () => { Object.assign(des, OVERVIEW); setStation(null); };
 
     apiRef.current = { applyDay, setHighlight, flyTo, resetView };
 
@@ -3637,7 +3651,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
              시뮬레이션은 자기가 몇 개 넣었는지만 안다.
           ⚠️ 기준 재고는 적재해도 다시 계산되지 않는다. 그래서 '이후'는 `filled + added`
              로 직접 더한다 — 안 그러면 넣었는데 숫자가 그대로인 화면이 된다. */}
-      {simLine?.outro && (
+      {simLine?.outro && !atStation && (
         <div
           className="ws-panel"
           style={{
@@ -3707,7 +3721,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
           ⚠️ 다만 **마무리 카드가 뜨면 내린다.** 마무리는 세 건을 통째로 정리해 보여 주는
              자리인데, 그 옆에 마지막 한 건짜리 판이 남아 있으면 어느 쪽을 읽어야 할지
              갈린다 (사용자 지적). 끝났다는 화면에는 끝난 이야기만 있어야 한다. */}
-      {placed?.faceRanks && !simLine?.outro && (() => {
+      {placed?.faceRanks && !simLine?.outro && !atStation && (() => {
         const pg = stats?.perGrade?.[placed.gradeId];
         if (!pg) return null;
         const n = pg.filled;
@@ -3779,7 +3793,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         );
       })()}
 
-      {simLine && !simLine.outro && (
+      {simLine && !simLine.outro && !atStation && (
         <div
           className="ws-panel"
           style={{

@@ -409,10 +409,11 @@ export function makeOtteCase(THREE) {
      실제 포장이므로 코리안넷 제품 사진을 그대로 붙인다 (사용자 지적).
    ⚠️ 사진은 흰 배경 정면 컷이라 여백을 미리 잘라 두었다. 여백째 쓰면 상품이 면 가운데
       조그맣게만 들어가 무엇인지 안 보인다. */
-function photo(THREE, file) {
+function photo(THREE, file, keep) {
   const tex = new THREE.TextureLoader().load(`/products/${file}`);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
+  keep.push(tex);
   return tex;
 }
 
@@ -443,7 +444,7 @@ export function makeSpamCase(THREE) {
   const CAN_W = 0.101, CAN_H = CASE_H - TRAY_H;
   const BODY = CAN_W * 0.95;
   const yBottom = -CASE_H / 2;
-  const tex = photo(THREE, "spam-1810g.jpg");
+  const tex = photo(THREE, "spam-1810g.jpg", keep);
 
   const tray = new THREE.Mesh(G(new THREE.BoxGeometry(0.303, TRAY_H, 0.202)), M({ color: 0xc59a63 }));
   tray.position.y = yBottom + TRAY_H / 2;
@@ -456,7 +457,7 @@ export function makeSpamCase(THREE) {
     can.position.set(x, yBottom + TRAY_H + CAN_H / 2, z);
     g.add(can);
   }
-  g.userData.dispose = keep;
+  g.userData.dispose = () => { for (const k of keep) k.dispose?.(); };
   return g;
 }
 
@@ -472,7 +473,7 @@ export function makeGomtangCase(THREE) {
   const CASE_H = 0.218, TRAY_H = 0.006;
   const P_W = 0.058, P_L = 0.156, P_H = CASE_H - TRAY_H;
   const yBottom = -CASE_H / 2;
-  const tex = photo(THREE, "gomtang-500g.jpg");
+  const tex = photo(THREE, "gomtang-500g.jpg", keep);
 
   const tray = new THREE.Mesh(G(new THREE.BoxGeometry(0.312, TRAY_H, 0.290)), M({ color: 0xc59a63 }));
   tray.position.y = yBottom + TRAY_H / 2;
@@ -490,7 +491,7 @@ export function makeGomtangCase(THREE) {
     m.position.set(x, yBottom + TRAY_H + P_H / 2, z);
     g.add(m);
   }
-  g.userData.dispose = keep;
+  g.userData.dispose = () => { for (const k of keep) k.dispose?.(); };
   return g;
 }
 
@@ -507,7 +508,7 @@ export function makeSauceCase(THREE) {
   const J_W = 0.114, J_H = CASE_H - TRAY_H;
   const BODY = J_W * 0.94, BODY_H = J_H * 0.88, CAP_H = J_H * 0.10;
   const yBottom = -CASE_H / 2;
-  const tex = photo(THREE, "sauce-2450g.jpg");
+  const tex = photo(THREE, "sauce-2450g.jpg", keep);
 
   const tray = new THREE.Mesh(G(new THREE.BoxGeometry(0.456, TRAY_H, 0.342)), M({ color: 0xc59a63 }));
   tray.position.y = yBottom + TRAY_H / 2;
@@ -526,7 +527,7 @@ export function makeSauceCase(THREE) {
     cap.position.set(x, foot + BODY_H + CAP_H / 2, z);
     g.add(cap);
   }
-  g.userData.dispose = keep;
+  g.userData.dispose = () => { for (const k of keep) k.dispose?.(); };
   return g;
 }
 
