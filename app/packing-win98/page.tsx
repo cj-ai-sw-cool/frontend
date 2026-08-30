@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { w98Toast } from "@/lib/win98-toast";
 import type { BoxType } from "@/lib/types";
 import { Btn, Panel, w98 } from "./_components/win98-ui";
-import { BoxRecommendationPanel } from "./_components/box-recommendation-panel";
+import { BoxRecommendationPanel, boxLabel } from "./_components/box-recommendation-panel";
 import { Box3DViewer } from "./_components/box-3d-viewer";
 import { LineShipmentsPanel } from "./_components/line-shipments-panel";
 import { PackActions } from "./_components/pack-actions";
@@ -75,7 +75,9 @@ export default function PackingV2Page() {
    * ⚠️ 화면 상태일 뿐 계약과 무관하다. 어느 쪽을 쓸지 정해지면 이 상태와 헤더 버튼을 지우고
    *    BOX_MODELS 에서 하나만 남기면 된다.
    */
-  const [modelKey, setModelKey] = useState<BoxModelKey>("carton-v3");
+  /* ★ 기본을 실사2(carton-v3) 에서 **실사(meshy)** 로 바꿨다 (사용자 요청).
+     화면을 열자마자 보이는 상자라, 어느 것이 기본인지가 곧 "우리 상자"가 된다. */
+  const [modelKey, setModelKey] = useState<BoxModelKey>("meshy");
   /**
    * "라인별 배송 내역" 패널의 LINE 탭이 지금 보고 있는 라인. 토트 스캔(3-5)과는 별개다 —
    * 이 값은 그 패널만 바꾸고, 스캔된 배송단위가 실제로 어느 라인 소속인지와는 무관하다.
@@ -385,7 +387,7 @@ export default function PackingV2Page() {
               pixelScale={activeModel.pixelScale}
               decalUrl={activeModel.decalUrl}
               innerCm={effectiveBox?.innerCm ?? null}
-              name={effectiveBox?.name ?? null}
+              name={effectiveBox ? boxLabel(effectiveBox.name) : null}
               lidOpen={isLidOpen}
               shipAway={isShipping}
               pigs={activeModel.pigs ?? false}
