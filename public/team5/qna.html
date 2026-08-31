@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="ko" style="background:#79A9FF">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Q&amp;A — 2조 멋지조</title>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     발표의 마지막 장 — 질의응답.
+
+     ★ 원래는 여기서 팀 소개 화면으로 되돌아갔는데, 그 자리를 이 페이지로 바꿨다
+       (사용자 요청). 질의응답은 발표와 성격이 다른 시간이라, 앞 장들을 다시 보여 주는
+       것보다 "이제 물어보세요" 라고 말하는 화면 하나가 낫다.
+     ★ 마인크래프트 컨셉 — 앞의 이스터에그(마크 상자·돼지)와 같은 세계관이다.
+
+     ── 무엇을 "마인크래프트처럼" 이라고 보고 그렸나 (사용자 요청으로 두 번 손봤다) ──
+       ① 블록 사이에 **선을 긋지 않는다.** 블록이 구분돼 보이는 건 선이 아니라 16x16
+          텍스처가 반복되기 때문이다. 선을 그으면 타일 붙인 욕실 벽이 된다.
+       ② 색을 평평하게 칠하지 않는다. 마크의 모든 면에는 **한 픽셀짜리 얼룩**이 있다.
+          이게 없으면 색종이를 오려 붙인 것으로 보인다.
+       ③ 캐릭터 비율은 마크 스킨 규격을 따른다 — 팔 4칸 · 몸 8칸 · 두 다리가 **붙어**
+          있다. 다리 사이를 벌리면 그 순간 다른 게임 캐릭터가 된다.
+       ④ 눈은 흰자 한 칸 + 눈동자 한 칸. 이 두 칸이 마크 얼굴의 서명이다.
+       ⑤ 하늘은 부드러운 그러데이션이 아니라 **몇 단으로 끊긴 띠**다.
+       ⑥ 해는 빛나지 않는다. 그냥 네모다.
+
+     ⚠️ 캐릭터·구름·땅은 그림 파일이 아니라 **SVG 사각형과 캔버스**로 그린다. 도트를
+        이미지로 넣으면 화면 배율이 바뀔 때 뭉개진다.
+     ⚠️ 음악은 틀지 않는다. 질의응답 중에 깔리면 말을 방해한다.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css" rel="stylesheet">
+
+<style>
+:root{
+  /* 마인크래프트 글자의 특징 = 오른쪽 아래로 떨어지는 딱딱한 그림자. 흐리지 않다 */
+  --mcshadow:.14em .14em 0 rgba(0,0,0,.45);
+  --pixel:'Press Start 2P','Courier New',monospace;
+  --kr:'Pretendard Variable','Pretendard','Malgun Gothic','맑은 고딕',sans-serif;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; overflow:hidden;
+  font-family:var(--kr); color:#fff;
+  /* ── 하늘 ──────────────────────────────────────────────────────────────
+     ★ 부드러운 그러데이션을 **단으로 끊었다** (사용자 요청 — 더 마인크래프트처럼).
+       마크의 하늘은 지평선으로 갈수록 밝아지는데, 그 변화가 매끄럽지 않고 안개처럼
+       몇 겹으로 층이 진다. 색이 연속으로 흐르면 사진이 되고, 끊기면 도트가 된다.
+     ⚠️ 각 색을 **두 번씩** 적어 구간을 만든다(0~40%, 40~62%…). 한 번만 적으면
+        브라우저가 그 사이를 부드럽게 이어 버려서 단이 사라진다. */
+  background:linear-gradient(180deg,
+    #6C9DF5 0%,  #6C9DF5 40%,
+    #79A9FF 40%, #79A9FF 62%,
+    #8FBAFF 62%, #8FBAFF 78%,
+    #AECCFF 78%, #AECCFF 90%,
+    #C9DDFF 90%, #C9DDFF 100%);
+  image-rendering:pixelated;
+}
+
+/* ── 무대 ──────────────────────────────────────────────────────────────────
+   1920x1080 을 그려 놓고 화면에 맞춰 **줄이기만** 한다. 늘리면 도트 한 칸이 소수점
+   픽셀에 걸쳐 흐려진다 — 도트 그림에서는 확대가 곧 품질 저하다. */
+.wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+.stage{position:relative;width:1920px;height:1080px;transform-origin:center center;overflow:hidden}
+
+/* ── 해 ────────────────────────────────────────────────────────────────────
+   ⚠️ 빛나지 않는다. 전에는 둘레에 번지는 빛을 뒀는데, 마크의 해는 **그냥 네모**다.
+      번지는 빛은 도트가 아니라 사진의 문법이다. */
+.sun{position:absolute;right:196px;top:104px;width:112px;height:112px;background:#FFF5C2}
+.sun::before{content:'';position:absolute;inset:14px;background:#FFFAE0}
+
+/* ── 구름 ── */
+.cloud{position:absolute;image-rendering:pixelated;opacity:.92}
+@keyframes drift{from{transform:translateX(-560px)}to{transform:translateX(2200px)}}
+
+/* ── 땅 ────────────────────────────────────────────────────────────────────
+   높이 256px = 64 x 4 블록 (잔디 1줄 + 흙 3줄). 타일은 16x16 을 정확히 4배로 키운다 —
+   소수배로 키우면 도트 한 칸이 픽셀 경계에 걸쳐 흐려진다. */
+.ground{position:absolute;left:0;right:0;bottom:0;height:256px;
+  image-rendering:pixelated;background-repeat:repeat;background-size:64px 64px}
+.ground .top{position:absolute;left:0;right:0;top:0;height:64px;
+  image-rendering:pixelated;background-repeat:repeat-x;background-size:64px 64px}
+/* 잔디 위에 돋은 풀·꽃 — 땅 위로 삐져나온다 */
+.tufts{position:absolute;left:0;right:0;bottom:256px;height:64px;pointer-events:none}
+.tufts canvas{position:absolute;bottom:0;image-rendering:pixelated}
+
+/* ── 제목 ── */
+.title{position:absolute;left:0;right:0;top:104px;text-align:center}
+.title h1{margin:0;font-family:var(--pixel);font-size:126px;line-height:1;
+  letter-spacing:.02em;color:#FFE259;text-shadow:var(--mcshadow);
+  animation:tbob 2.6s ease-in-out infinite}
+@keyframes tbob{0%,100%{transform:translateY(0) rotate(-.6deg)}50%{transform:translateY(-12px) rotate(.6deg)}}
+.title p{margin:32px 0 0;font-size:38px;font-weight:800;letter-spacing:-.02em;
+  color:#fff;text-shadow:var(--mcshadow)}
+.title .sub{margin-top:16px;font-size:24px;font-weight:700;color:#EAF3FF;opacity:.94;
+  text-shadow:.1em .1em 0 rgba(0,0,0,.35)}
+
+/* ── 캐릭터 줄 ─────────────────────────────────────────────────────────────
+   bottom 값 계산 — 하나라도 바꾸면 여기부터 다시 재라.
+     땅 256px(64x4블록) 중 잔디 윗면이 bottom:256. 이 줄의 자식은 아래부터
+     [역할표 30px][간격 14px][캐릭터]. 그래서 발이 잔디에 닿으려면 256 - 44 = 212.
+   ⚠️ SVG 의 viewBox 아래 끝을 **발바닥에 정확히 맞춰** 뒀다(y=30). 그래야 이 계산에
+      "그림 아래 남는 여백" 이라는 변수가 끼지 않는다. */
+.crew{position:absolute;left:0;right:0;bottom:212px;
+  display:flex;align-items:flex-end;justify-content:center;gap:78px}
+.mob{display:flex;flex-direction:column;align-items:center;
+  animation:bob 2.2s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+
+/* 이름표 — 마크에서 머리 위에 뜨는 그것 */
+.tag{font-family:var(--kr);font-size:22px;font-weight:800;letter-spacing:-.01em;
+  color:#fff;background:rgba(0,0,0,.42);padding:7px 15px;margin-bottom:12px;white-space:nowrap;
+  text-shadow:.1em .1em 0 rgba(0,0,0,.55)}
+.mob svg{width:158px;height:auto;display:block;filter:drop-shadow(0 9px 0 rgba(0,0,0,.15))}
+.role{margin-top:14px;font-size:17px;font-weight:700;color:#173A2A;
+  background:rgba(255,255,255,.82);padding:5px 13px;white-space:nowrap}
+
+/* ── 아래 HUD : 하트 + 핫바 ────────────────────────────────────────────────
+   내용이 있어서 넣은 게 아니라, 이 두 개가 있어야 화면이 마인크래프트로 읽힌다. */
+.hud{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:12px}
+.hearts{display:flex;gap:5px}
+.hearts svg{width:26px;height:26px;display:block}
+.hotbar{display:flex;background:#1D1D1D;padding:5px;border:4px solid #8B8B8B;
+  box-shadow:inset 0 0 0 2px #373737}
+.slot{width:62px;height:62px;background:#5E5E5E;
+  border:3px solid #8B8B8B;border-right-color:#373737;border-bottom-color:#373737;
+  display:flex;align-items:center;justify-content:center;font-size:30px;line-height:1}
+.slot.sel{outline:5px solid #F0F0F0;outline-offset:-1px;position:relative;z-index:1}
+
+/* ── 안내 ── */
+.hint{position:absolute;right:26px;bottom:24px;font-size:15px;font-weight:600;
+  color:#fff;opacity:.62;text-shadow:.1em .1em 0 rgba(0,0,0,.45)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<div class="stage" id="stage">
+
+  <div class="sun"></div>
+  <div id="clouds"></div>
+
+  <div class="title">
+    <h1>Q &amp; A</h1>
+    <p>무엇이든 물어보세요!</p>
+    <div class="sub">2조 멋지조</div>
+  </div>
+
+  <div class="crew" id="crew"></div>
+
+  <div class="tufts" id="tufts"></div>
+  <div class="ground" id="ground">
+    <div class="top" id="grassRow"></div>
+  </div>
+
+  <div class="hud">
+    <div class="hearts" id="hearts"></div>
+    <div class="hotbar" id="hotbar"></div>
+  </div>
+
+  <div class="hint">← 이전 장으로</div>
+</div>
+</div>
+
+<script>
+(() => {
+  /* ── 무대를 화면에 맞춰 줄인다 (늘리지는 않는다 — 위 .stage 주석 참고) ── */
+  const stage = document.getElementById('stage');
+  const fit = () => {
+    const s = Math.min(1, innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = 'scale(' + s + ')';
+  };
+  fit(); addEventListener('resize', fit);
+
+  /* ── 씨앗 난수 ────────────────────────────────────────────────────────────
+     ⚠️ Math.random 을 쓰면 새로고침할 때마다 흙 무늬도 구름도 달라진다. 발표 중에
+        이 화면으로 되돌아왔을 때 배경이 바뀌어 있으면 눈에 띈다. 씨앗에서 뽑는다. */
+  const rng = (seed) => () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
+
+  /* ═══ 구름 ═════════════════════════════════════════════════════════════════
+     ★ 네모 몇 개를 겹치던 것을 **칸 단위 덩어리**로 바꿨다 (사용자 요청).
+       마크 구름은 한 층에 납작하게 깔린 덩어리라, 위아래로 뭉게뭉게 쌓이지 않는다.
+     ⚠️ 옆 칸과 높이 차이를 1칸으로 묶는다. 제한이 없으면 톱니처럼 튀어서 구름이 아니라
+        그래프가 된다. */
+  function cloudCanvas(seed, cols, rows) {
+    const r = rng(seed);
+    const c = document.createElement('canvas');
+    c.width = cols; c.height = rows;
+    const g = c.getContext('2d');
+    let top = Math.floor(rows / 2), bot = top + 1;
+    for (let x = 0; x < cols; x++) {
+      top = Math.max(0, Math.min(rows - 2, top + Math.round(r() * 2 - 1)));
+      bot = Math.max(top + 1, Math.min(rows, bot + Math.round(r() * 2 - 1)));
+      g.fillStyle = '#FFFFFF';
+      g.fillRect(x, top, 1, bot - top);
+      /* 아랫면은 한 톤 어둡다 — 아래에서 올려다보는 그늘 */
+      g.fillStyle = '#DCE8F7';
+      g.fillRect(x, bot - 1, 1, 1);
+    }
+    return c;
+  }
+
+  const clouds = document.getElementById('clouds');
+  const CLOUDS = [
+    { top: 112, cols: 14, rows: 4, cell: 26, dur: 138, delay: -18 },
+    { top: 232, cols: 10, rows: 3, cell: 22, dur: 182, delay: -96 },
+    { top: 168, cols: 18, rows: 5, cell: 24, dur: 154, delay: -58 },
+    { top: 300, cols: 8,  rows: 3, cell: 20, dur: 206, delay: -146 },
+  ];
+  CLOUDS.forEach((c, i) => {
+    const cv = cloudCanvas(9000 + i * 137, c.cols, c.rows);
+    cv.className = 'cloud';
+    cv.style.cssText = 'top:' + c.top + 'px;left:0;width:' + (c.cols * c.cell) + 'px;height:' +
+      (c.rows * c.cell) + 'px;animation:drift ' + c.dur + 's linear ' + c.delay + 's infinite';
+    clouds.appendChild(cv);
+  });
+
+  /* ═══ 땅 블록 ═══════════════════════════════════════════════════════════════
+     16x16 타일을 캔버스로 그려 배경으로 깐다 — 마인크래프트 텍스처가 딱 그 크기다.
+     ⚠️ 격자선은 긋지 않는다 (맨 위 머리말 ① 참고). */
+  const DIRT = ['#8B6141', '#7A543A', '#96704F', '#6E4B32', '#9C7757'];
+  const GRASS = ['#78B03A', '#6CA033', '#84BC43'];
+
+  /** 16x16 캔버스를 그려 배경으로 쓸 주소를 낸다 */
+  function tile(draw) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 16;
+    draw(c.getContext('2d'));
+    return 'url(' + c.toDataURL() + ')';
+  }
+
+  /** 흙 — 바탕색 위에 얼룩을 흩는다. 얼룩이 없으면 색종이로 보인다 */
+  function drawDirt(g, r) {
+    g.fillStyle = DIRT[0];
+    g.fillRect(0, 0, 16, 16);
+    for (let i = 0; i < 52; i++) {
+      g.fillStyle = pick(r, DIRT);
+      g.fillRect(Math.floor(r() * 16), Math.floor(r() * 16), 1 + (r() < .28 ? 1 : 0), 1);
+    }
+  }
+
+  document.getElementById('ground').style.backgroundImage = tile((g) => drawDirt(g, rng(20240830)));
+
+  /* 잔디 블록의 **옆면** — 위쪽 초록, 아래쪽 흙, 그 경계가 들쭉날쭉하다.
+     ⚠️ 경계를 직선으로 그으면 잔디가 아니라 페인트칠한 띠로 보인다. 마인크래프트
+        잔디 옆면의 특징이 바로 이 흘러내린 경계다. */
+  document.getElementById('grassRow').style.backgroundImage = tile((g) => {
+    const r = rng(778899);
+    drawDirt(g, rng(31415));
+    for (let x = 0; x < 16; x++) {
+      const h = 3 + Math.floor(r() * 4);            // 3~6px 로 흘러내린다
+      for (let y = 0; y < h; y++) {
+        g.fillStyle = y === 0 ? GRASS[1] : pick(r, GRASS);
+        g.fillRect(x, y, 1, 1);
+      }
+    }
+  });
+
+  /* ── 잔디 위의 풀과 꽃 ────────────────────────────────────────────────────
+     땅 위로 삐져나오는 것이 있어야 "땅" 이지, 없으면 그냥 벽면이다. */
+  const tufts = document.getElementById('tufts');
+  const tr = rng(5150);
+  for (let i = 0; i < 26; i++) {
+    const c = document.createElement('canvas');
+    c.width = 16; c.height = 16;
+    const g = c.getContext('2d');
+    const kind = tr();
+    if (kind < .66) {                                  // 풀
+      const col = pick(tr, GRASS);
+      for (const pair of [[4, 5], [7, 8], [10, 6], [12, 4]]) {
+        g.fillStyle = col;
+        g.fillRect(pair[0], 16 - pair[1], 1, pair[1]);
+        g.fillRect(pair[0] + (tr() < .5 ? -1 : 1), 16 - pair[1], 1, 2);
+      }
+    } else {                                           // 꽃
+      g.fillStyle = GRASS[1];
+      g.fillRect(8, 8, 1, 8);
+      g.fillStyle = kind < .83 ? '#E04B4B' : '#F2D44B';
+      g.fillRect(7, 5, 3, 3);
+      g.fillStyle = '#F5F0C8';
+      g.fillRect(8, 6, 1, 1);
+    }
+    const size = 40 + Math.floor(tr() * 3) * 8;
+    c.style.cssText = 'left:' + Math.round(tr() * 1880) + 'px;width:' + size + 'px;height:' + size + 'px';
+    tufts.appendChild(c);
+  }
+
+  /* ═══ 팀원 ═══════════════════════════════════════════════════════════════
+     ⚠️ 순서는 발표 덱(06. 팀 소개)의 순서 그대로다. 두 화면에서 사람 순서가 다르면
+        보는 쪽이 같은 팀으로 안 읽는다. */
+  const CREW = [
+    /* ★ 왼쪽 다리 깁스 + 목발 (사용자 요청). 배경 포스터(bg.jpg)의 이동우 님과
+         **같은 쪽**이다 — 거기서도 화면 왼쪽 다리에 깁스, 왼쪽에 목발이다.
+         두 화면에서 다친 다리가 바뀌면 같은 사람으로 안 읽힌다. */
+    { name:'이동우', role:'팀장 · 기획',      hair:'short', crown:true, cast:true, crutch:true,
+      skin:'#E0AC7C', shirt:'#2A5DB0', pants:'#31405C', hairC:'#3B2A20', eye:'#5A3A22' },
+    /* ★ 다이아몬드 검 (사용자 요청 — 한 명은 들고 있게).
+         손이 비어 있는 사람에게 줬다. 팀장님은 목발을 짚고 있어 안 된다.
+         옮기려면 sword:true 만 다른 사람에게 넘기면 된다. */
+    { name:'한승엽', role:'입고 · 풀스택',    hair:'spike', sword:true,
+      skin:'#DCA579', shirt:'#3E9E5F', pants:'#3A4650', hairC:'#241C18', eye:'#3B2B20' },
+    { name:'강유진', role:'출고 · 풀스택',    hair:'long',
+      skin:'#E9BB8E', shirt:'#D9557E', pants:'#43506B', hairC:'#4A2F22', eye:'#4A2E1E' },
+    { name:'민은경', role:'디자인 · FE · AI', hair:'bob',
+      skin:'#EDC49B', shirt:'#7B5BD9', pants:'#38405E', hairC:'#20191A', eye:'#2E2320' },
+    { name:'하미송', role:'AI · PM',          hair:'tail',
+      skin:'#E5B287', shirt:'#E8A33D', pants:'#3E4A5E', hairC:'#5A3A24', eye:'#54351F' },
+  ];
+
+  /** 색을 어둡게/밝게 — 그림자 면에 쓴다. 손으로 색을 두 벌씩 적지 않으려는 것 */
+  const dark = (hex, k) => {
+    const n = parseInt(hex.slice(1), 16);
+    const f = (v) => Math.min(255, Math.round(v * k)).toString(16).padStart(2, '0');
+    return '#' + f(n >> 16 & 255) + f(n >> 8 & 255) + f(n & 255);
+  };
+
+  /**
+   * 면에 **한 픽셀짜리 얼룩**을 흩는다.
+   *
+   * ★ 마크의 모든 스킨에는 이 얼룩이 있다 (사용자 요청 — 더 마인크래프트처럼).
+   *   평평하게 칠하면 색종이를 오려 붙인 것으로 보인다. 옷이 옷으로 보이는 건
+   *   이 한 칸짜리 명암 때문이다.
+   * ⚠️ 씨앗을 이름에서 만든다. 같은 사람은 항상 같은 얼룩을 갖는다 — 새로고침마다
+   *    무늬가 바뀌면 발표 중에 눈에 띈다.
+   */
+  const grain = (x, y, w, h, base, seed, n) => {
+    const r = rng(seed);
+    const shades = [dark(base, .88), dark(base, .94), dark(base, 1.06)];
+    let out = '';
+    for (let i = 0; i < n; i++) {
+      out += '<rect x="' + (x + Math.floor(r() * w)) + '" y="' + (y + Math.floor(r() * h)) +
+             '" width="1" height="1" fill="' + pick(r, shades) + '" opacity=".55"/>';
+    }
+    return out;
+  };
+
+  /** 사각형 하나 — 이 그림은 전부 사각형이라, 짧게 쓸 수 있어야 읽힌다 */
+  const R = (x, y, w, h, c) =>
+    '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + c + '"/>';
+
+  /* ── 머리 모양 ─────────────────────────────────────────────────────────────
+     머리통은 x3~13 · y0~10. 그 위에 얹는 사각형들이다.
+     ⚠️ 긴 머리는 몸통보다 **뒤에** 그려야 어깨를 덮지 않는다. 그래서 back/front 로 나눈다. */
+  const HAIR = {
+    short: { front:(c)=>R(3,-1,10,4,c) + R(2,0,1,6,c) + R(13,0,1,6,c) },
+    spike: { front:(c)=>R(3,-1,10,4,c) + R(2,0,1,6,c) + R(13,0,1,6,c) +
+                        R(4,-2,2,1,c) + R(8,-2,2,1,c) + R(11,-2,1,1,c) },
+    long:  { back:(c)=>R(1,1,2,17,c) + R(13,1,2,17,c),
+             front:(c)=>R(3,-1,10,4,c) + R(2,0,1,10,c) + R(13,0,1,10,c) },
+    bob:   { back:(c)=>R(1,1,2,10,c) + R(13,1,2,10,c),
+             front:(c)=>R(3,-1,10,5,c) + R(2,0,1,10,c) + R(13,0,1,10,c) +
+                        R(1,10,3,1,c) + R(12,10,3,1,c) },
+    tail:  { back:(c)=>R(14,2,2,12,c) + R(15,13,1,2,c),
+             front:(c)=>R(3,-1,10,4,c) + R(2,0,1,7,c) + R(13,0,1,7,c) + R(3,3,3,1,c) },
+  };
+  const part = (v, c) => (typeof v === 'function' ? v(c) : '');
+
+  /**
+   * 마크 스킨 규격을 따른다 — 16칸 폭에 팔 4 · 몸 8 · 팔 4.
+   *
+   * ★ 전에는 팔이 2칸이고 두 다리 사이가 벌어져 있었다. 그 둘만 고쳐도 다른 게임
+   *   캐릭터에서 마인크래프트 캐릭터가 된다 (사용자 요청 — 캐릭터도 더 마크처럼).
+   * ⚠️ **두 다리는 붙어 있다.** 사이를 벌리면 그 순간 마크가 아니다. 붙인 채로 가운데에
+   *    어두운 한 줄만 넣어 두 다리로 읽히게 한다.
+   * ⚠️ viewBox 아래 끝(y=30)을 **발바닥에 맞춰** 뒀다. 위 .crew 의 bottom 계산이
+   *    이 전제 위에 서 있다 — 여기를 바꾸면 그 숫자도 다시 재야 한다.
+   */
+  function mob(p) {
+    const sk = p.skin, skD = dark(sk, .86), skDD = dark(sk, .74);
+    const sh = p.shirt, shD = dark(sh, .78);
+    const pa = p.pants, paD = dark(pa, .78), paDD = dark(pa, .66);
+    const h = HAIR[p.hair], hc = p.hairC, hcD = dark(hc, .8);
+    const seed = p.name.charCodeAt(0) * 733 + p.name.charCodeAt(1);
+
+    /* 왼쪽(보는 쪽 기준) 다리 — 성한 다리이거나, 깁스이거나.
+       ⚠️ 깁스는 다리보다 **굵게** 그린다(4칸 → 6칸). 같은 폭으로 하얗게만 칠하면
+          "흰 바지" 로 보이지 깁스로 안 읽힌다. 부피가 있어야 깁스다.
+       ⚠️ 가로 붕대 줄을 넣는다. 통짜 흰 덩어리는 붕대가 아니라 장화로 보인다. */
+    const legL = p.cast
+      ? R(3,19,6,11,'#F3F1EA') + R(7,19,2,11,'#DCD8CC') +
+        R(3,22,6,1,'#E4E0D3') + R(3,26,6,1,'#E4E0D3') +
+        grain(3, 19, 6, 11, '#F3F1EA', seed + 7, 12)
+      : R(4,20,4,10,pa) + grain(4, 20, 4, 10, pa, seed + 1, 14) + R(4,27,4,3,'#3E362F');
+
+    /* 목발 — 겨드랑이 받침 · 손잡이 · 고무 발.
+       ⚠️ 팔(x0~4)보다 **왼쪽 바깥**에 세운다. 몸 위로 겹치면 짚은 게 아니라 몸에 박힌
+          것처럼 보인다. viewBox 를 x=-4 부터 잡아 둔 것이 이 자리를 위해서다. */
+    const crutch = p.crutch
+      ? R(-3,11,3,1,'#8A6134') + R(-2,11,1,19,'#A2743F') +
+        R(-3,18,3,1,'#8A6134') + R(-3,29,3,1,'#3B3B3B')
+      : '';
+
+    /* 다이아몬드 검 — 손잡이(갈색) · 날밑(회색) · 날(청록).
+       ⚠️ 오른손(x12~16, y17~20)에서 **위로** 뻗는다. 머리(x3~13)와 안 겹치는 자리라
+          얼굴을 가리지 않는다.
+       ⚠️ 팔보다 **나중에** 그려 손 앞으로 온다. 먼저 그리면 쥔 게 아니라 뒤에 세워
+          둔 것으로 보인다. */
+    const sword = p.sword
+      ? R(14,17,2,5,'#6B4A2E') + R(15,17,1,5,'#523822') +
+        R(13,15,4,2,'#9A9A9A') + R(13,16,4,1,'#6E6E6E') +
+        R(14,5,2,10,'#4AEDD9') + R(15,5,1,10,'#2CB8A8') +
+        R(14,5,1,4,'#8FF6EA') + R(14,4,1,1,'#4AEDD9')
+      : '';
+
+    const crown = p.crown
+      ? R(4,-4,8,3,'#F5C13D') + R(4,-6,2,2,'#F5C13D') + R(7,-6,2,2,'#F5C13D') +
+        R(10,-6,2,2,'#F5C13D') + R(4,-2,8,1,'#C99A22')
+      : '';
+
+    return '<svg viewBox="-4 -7 24 37" shape-rendering="crispEdges" aria-hidden="true">' +
+      /* 뒷머리·목발 — 몸보다 뒤 */
+      part(h.back, hcD) + crutch +
+      /* 다리 : 붙어 있다. 가운데 어두운 한 줄로만 가른다 */
+      legL +
+      R(8,20,4,10,pa) + R(11,20,1,10,paD) + grain(8, 20, 4, 10, pa, seed + 2, 14) +
+      R(8,20,1,10,paDD) + R(8,27,4,3,'#3E362F') +
+      /* 팔 : 4칸 */
+      R(0,10,4,7,sh) + R(12,10,4,7,shD) + grain(0, 10, 4, 7, sh, seed + 3, 10) +
+      R(0,17,4,3,sk) + R(12,17,4,3,skD) +
+      /* 손에 쥔 것 — 팔보다 나중 = 손 앞 */
+      sword +
+      /* 몸 : 8칸 */
+      R(4,10,8,10,sh) + R(10,10,2,10,shD) + grain(4, 10, 8, 10, sh, seed + 4, 26) +
+      R(6,10,4,1,'#F2F2F2') +
+      /* 목 */
+      R(6,9,4,1,skDD) +
+      /* 머리 */
+      R(3,0,10,10,sk) + R(11,0,2,10,skD) + grain(3, 0, 10, 10, sk, seed + 5, 16) +
+      part(h.front, hc) +
+      /* 눈 : 흰자 한 칸 + 눈동자 한 칸. 이 두 칸이 마크 얼굴의 서명이다 */
+      R(4,4,2,1,hcD) + R(10,4,2,1,hcD) +
+      R(4,5,1,2,'#FFFFFF') + R(5,5,1,2,p.eye) +
+      R(10,5,1,2,'#FFFFFF') + R(9,5,1,2,p.eye) +
+      /* 코 · 볼 · 입 */
+      R(7,6,2,1,skD) + R(3,6,1,1,'#E5928C') + R(12,6,1,1,'#D4837D') +
+      R(6,8,4,1,skDD) + R(7,8,2,1,'#8C5A50') +
+      crown +
+    '</svg>';
+  }
+
+  const crew = document.getElementById('crew');
+  CREW.forEach((p, i) => {
+    const d = document.createElement('div');
+    d.className = 'mob';
+    /* 같은 박자로 흔들리면 다섯이 한 덩어리로 보인다 — 조금씩 어긋나야 각자 서 있다 */
+    d.style.animationDelay = (i * 0.26) + 's';
+    d.innerHTML = '<div class="tag">' + p.name + '</div>' + mob(p) +
+                  '<div class="role">' + p.role + '</div>';
+    crew.appendChild(d);
+  });
+
+  /* ── 하트 10개 ── */
+  const heart = '<svg viewBox="0 0 9 9" shape-rendering="crispEdges">' +
+    '<path d="M1 1h2v1h1V1h2v1h1v3h-1v1h-1v1H4v1H3V7H2V6H1V5H0V2h1z" fill="#000" opacity=".35" transform="translate(1,1)"/>' +
+    '<path d="M1 1h2v1h1V1h2v1h1v3h-1v1h-1v1H4v1H3V7H2V6H1V5H0V2h1z" fill="#E23B3B"/>' +
+    '<rect x="1" y="2" width="1" height="1" fill="#FF8B8B"/></svg>';
+  document.getElementById('hearts').innerHTML = heart.repeat(10);
+
+  /* ── 핫바 : 우리가 만든 것들을 아이템처럼 ── */
+  const ITEMS = ['\u{1F4E6}', '\u{1F4CF}', '\u{1F916}', '\u{1F9CA}', '\u{1F69A}', '\u{1F3F7}', '\u{1F4CA}', '\u{1F437}', ''];
+  document.getElementById('hotbar').innerHTML = ITEMS
+    .map((it, i) => '<div class="slot' + (i === 0 ? ' sel' : '') + '">' + it + '</div>').join('');
+
+  /* ── 이전 장으로 ──────────────────────────────────────────────────────────
+     ⚠️ 앞으로 가는 키는 두지 않는다. 여기가 발표의 끝이라, 질의응답 중에 실수로
+        키를 눌러 화면이 넘어가는 쪽이 훨씬 나쁘다.
+     ⚠️ ?s=2 — 덱을 열되 **마지막 장(THANK YOU)부터** 연다. 그냥 열면 1장으로
+        돌아가서, 뒤로 간 사람이 앞으로 두 번 더 눌러야 제자리가 된다. */
+  addEventListener('keydown', (e) => {
+    if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) {
+      e.preventDefault();
+      location.href = 'sdlc.html?s=2';
+    }
+    if (e.key === 'f' || e.key === 'F') {
+      document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+    }
+  });
+
+  /* 가만히 두면 커서를 숨긴다 — 앞 화면들과 같은 동작 */
+  let t; addEventListener('mousemove', () => {
+    document.body.style.cursor = 'default';
+    clearTimeout(t); t = setTimeout(() => document.body.style.cursor = 'none', 1500);
+  });
+})();
+</script>
+</body>
+</html>

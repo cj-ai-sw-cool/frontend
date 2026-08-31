@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ChestOpen } from "./chest-open";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    바탕화면 이스터에그 — CJ대한통운 트럭에서 내린 좀비 택배기사가 상자를 들고 서 있다.
@@ -48,13 +47,17 @@ const H = 54 * U;
 
 /** 좀비가 든 상자의 뚜껑이 젖혀지는 시간(ms) — 3D 상자가 뜨는 신호다 */
 const OPEN_MS = 200;
-/** 뚜껑이 열린 뒤 돼지들이 날아다니는 것을 보여 주는 시간(ms).
-    ★ 구겨진 종이를 씌웠더니 **돼지가 보이지도 않았다** (사용자 지적). 종이가 뚜껑 열리자
-      마자 화면을 덮어 버렸기 때문이다. 연출을 겹쳐 놓으면 뒤엣것이 앞엣것을 잡아먹는다 —
-      이제 돼지에게 화면을 온전히 내주고, 다 보고 나서 넘어간다. */
-const PIGS_MS = 3200;
-/** 넘어가기 직전에 어두워지는 시간(ms) — 딱 끊기지 않을 만큼만 */
-const DIM_MS = 300;
+/* ── 넘어가는 연출 ─────────────────────────────────────────────────────────
+   ★ 3D 마인크래프트 상자와 돼지를 **걷어냈다** (사용자 요청 — 그냥 빼고, 노란 화면
+     나온 다음 번쩍하는 느낌으로 바로 팀 소개로).
+   ★ 남은 것은 세 박자뿐이다 — 금빛이 차오르고 · 번쩍하고 · 넘어간다.
+     상자를 띄우던 때는 10.4MB 모델을 기다려야 해서 타이밍이 그때그때 달랐는데,
+     이제 기다릴 것이 없어 **항상 같은 속도**로 넘어간다. 시연에서는 그게 낫다.
+   ⚠️ 합이 곧 클릭에서 다음 화면까지의 시간이다. 늘리면 그만큼 멍하니 기다린다. */
+/** 금빛이 화면을 채우는 시간(ms) */
+const GOLD_MS = 320;
+/** 흰빛이 번쩍하는 시간(ms) — 짧아야 "번쩍" 이지, 길면 그냥 흰 화면이다 */
+const FLASH_MS = 180;
 
 /** 상자를 열면 **이 페이지로 아예 넘어간다** (사용자 요청).
  *
@@ -66,7 +69,11 @@ const DIM_MS = 300;
  *    두었다(`public/team5/index.html`). 여기서 틀면 0.9초 뒤 이동하며 잘려 더 어색하다. */
 const TEAM_URL = "/team5/index.html";
 /** 상자를 누르는 그 순간 트는 곡. 넘어갈 페이지가 쓰는 것과 **같은 파일**이다 */
-const BGM_SRC = "/team5/assets/bgm-highlight.mp3";
+/* ★ 팀 소개 화면이 트는 것과 **같은 파일**이어야 한다 (사용자 지적 — 노래가 렉걸린다).
+     예전에는 여기만 `bgm-highlight.mp3` 를 봤는데, 넘어간 쪽은 `bgm.mp3` 를 본다.
+     내용은 같아도 **주소가 다르면 캐시가 따로**라, 화면이 바뀌는 순간 134KB 를 처음부터
+     다시 받았다. 곡이 이어지는 그 자리에서 정확히 끊긴 이유다. */
+const BGM_SRC = "/team5/assets/bgm.mp3";
 
 /* CJ 색 — 로고에서 뽑은 값 (`shell.tsx` 의 BrandMark 와 같다) */
 const CJ_BLUE = "#003087";
@@ -90,7 +97,7 @@ const SHOE = "#6B6B6B";        // 신발 — 회색
 const GOLD = "#c9a458";
 const GOLD_LIGHT = "#ffe08a";
 
-type Phase = "idle" | "show";
+type Phase = "idle" | "gold" | "flash";
 
 /** 픽셀 한 덩어리 */
 function P({ x, y, w, h, fill, opacity }: {
@@ -102,13 +109,10 @@ function P({ x, y, w, h, fill, opacity }: {
 export function TruckDock() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [hover, setHover] = useState(false);
-  const opening = phase === "show";
+  const opening = phase !== "idle";
   const audioRef = useRef<HTMLAudioElement | null>(null);
   /* 뚜껑이 열렸나. 열린 뒤부터 돼지를 보여 줄 시간을 센다 */
-  const [opened, setOpened] = useState(false);
-  /* ⚠️ 인라인 화살표로 넘기면 다시 그릴 때마다 **신원이 바뀌어**, 받는 쪽 이펙트가
-        의존성 변화로 보고 타이머를 지웠다 다시 건다. 고정해 둔다. */
-  const markOpened = useCallback(() => setOpened(true), []);
+
 
 
 
@@ -132,17 +136,28 @@ export function TruckDock() {
   const warm = useCallback(() => {
     if (warmed.current) return;
     warmed.current = true;
-    for (const u of [TEAM_URL, "/models/chest-split.glb", "/team5/assets/bg.jpg", "/team5/assets/quest-serif.woff", BGM_SRC]) {
+    /* ⚠️ 마인크래프트 상자 모델(10.4MB)을 **뺐다** (사용자 지적 — 노래가 렉걸린다).
+          연출에서 상자를 걷어냈는데 미리 받는 목록에는 남아 있어서, 마우스를 올리는
+          순간 10MB 를 받느라 정작 필요한 음악·배경이 뒤로 밀렸다. */
+    for (const u of [TEAM_URL, "/team5/assets/bg.jpg", "/team5/assets/quest-serif.woff", BGM_SRC]) {
       void fetch(u).catch(() => undefined);
     }
   }, []);
 
-  /* 돼지를 다 보여 준 뒤에 넘긴다 */
+  /* 금빛 → 번쩍 → 이동. 한 단계씩만 예약한다 — 한 번에 다 걸어 두면 도중에 멈출 수 없다 */
   useEffect(() => {
-    if (!opened) return undefined;
-    const t = window.setTimeout(goTeam, PIGS_MS);
-    return () => window.clearTimeout(t);
-  }, [opened, goTeam]);
+    if (phase === "gold") {
+      const t = window.setTimeout(() => setPhase("flash"), GOLD_MS);
+      return () => window.clearTimeout(t);
+    }
+    if (phase === "flash") {
+      /* ⚠️ 번쩍이 **가장 밝을 때** 넘긴다. 다 사그라든 뒤에 넘기면 금빛 화면이 한 번 더
+         비쳤다가 바뀌어서, 번쩍이 전환을 가려 주지 못하고 따로 논다. */
+      const t = window.setTimeout(goTeam, FLASH_MS);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [phase, goTeam]);
 
   const openBox = useCallback(() => {
     warm();
@@ -164,7 +179,7 @@ export function TruckDock() {
       goTeam();
       return;
     }
-    setPhase("show");
+    setPhase("gold");
   }, [goTeam, warm]);
 
 
@@ -375,16 +390,30 @@ export function TruckDock() {
           ★ 검은 암전이 아니다. 다음 화면(원정대 두루마리)이 금빛 양피지라, 그 색으로 덮으면
             장면이 끊기지 않고 **그대로 이어진다** (사용자 지적 — 연결이 어색하다).
           ⚠️ `pointerEvents: none` — 덮개일 뿐이라 클릭을 먹으면 안 된다. */}
-      {/* 3D 마인크래프트 상자가 떠서 뚜껑이 열리고 돼지들이 튀어나온다 */}
-      {phase === "show" && <ChestOpen onOpened={markOpened} />}
-
-      {/* 다 보고 나서 어두워지며 넘어간다 — 딱 끊기면 화면이 튄 것으로 보인다 */}
-      {opened && (
+      {/* ── 금빛이 화면을 채운다 ──
+          ⚠️ 검은 암전이 아니다. 다음 화면(원정대 두루마리)이 금빛이라 이 색으로 덮으면
+             장면이 끊기지 않고 그대로 이어진다.
+          ⚠️ 상자에서 퍼져 나가듯 **가운데가 밝다**. 통짜 한 색이면 화면에 판을 덮은
+             것으로 보이지, 상자에서 빛이 터진 것으로 안 보인다. */}
+      {opening && (
         <div
           style={{
-            position: "fixed", inset: 0, zIndex: 9999, pointerEvents: "none", background: "#000",
-            animation: `td-flash ${DIM_MS}ms ${PIGS_MS - DIM_MS}ms linear forwards`,
+            position: "fixed", inset: 0, zIndex: 9998, pointerEvents: "none",
+            background: `radial-gradient(circle at 50% 52%, ${GOLD_LIGHT} 0%, #f0cf86 46%, ${GOLD} 100%)`,
+            animation: `td-gold ${GOLD_MS}ms ease-in forwards`,
             opacity: 0,
+          }}
+        />
+      )}
+
+      {/* ── 번쩍 ──
+          ⚠️ 흰빛이 **차오르지 않고 곧바로 최대**로 뜬다. 서서히 밝아지면 번쩍이 아니라
+             화면이 하얘지는 것이다. 그 정점에서 페이지가 바뀐다. */}
+      {phase === "flash" && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999, pointerEvents: "none", background: "#FFFFFF",
+            animation: `td-flash ${FLASH_MS}ms ease-out forwards`,
           }}
         />
       )}
@@ -393,7 +422,8 @@ export function TruckDock() {
         @keyframes td-hint  { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
         @keyframes td-ray   { 0% { transform: scaleY(0) scaleX(.4); opacity: 0 }
                               100% { transform: scaleY(1) scaleX(1); opacity: 1 } }
-        @keyframes td-flash { 0% { opacity: 0 } 100% { opacity: 1 } }
+        @keyframes td-gold  { 0% { opacity: 0 } 70% { opacity: 1 } 100% { opacity: 1 } }
+        @keyframes td-flash { 0% { opacity: .85 } 35% { opacity: 1 } 100% { opacity: .9 } }
       `}</style>
     </div>
   );

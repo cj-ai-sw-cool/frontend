@@ -164,8 +164,6 @@
     letter-spacing:.06em;color:rgba(255,225,180,.75);background:rgba(0,0,0,.45);
     padding:.5em 1em;border-radius:999px;animation:hide 1s ease 7s forwards;pointer-events:none}
   @keyframes hide{to{opacity:0;visibility:hidden}}
-  .paused .glow,.paused .logo,.paused .logo-halo,.paused .flame,.paused .castlight,
-  .paused .sglow,.paused .score,.paused .spark{animation-play-state:paused}
 </style>
 </head>
 <body>
@@ -248,7 +246,7 @@ setTimeout(function(){ var el=document.getElementById('td-in'); if(el) el.remove
   }
 
   const cv = document.getElementById('embers'), ctx = cv.getContext('2d');
-  let W, H, ps = [], last = performance.now(), running = true;
+  let W, H, ps = [], last = performance.now();
   const resize = () => { W = cv.width = stage.clientWidth; H = cv.height = stage.clientHeight; };
   resize(); addEventListener('resize', resize);
   const RX = .637, RY = .1541;
@@ -260,7 +258,7 @@ setTimeout(function(){ var el=document.getElementById('td-in'); if(el) el.remove
   }
   function frame(now){
     const dt = Math.min(.05, (now - last)/1000); last = now;
-    if (running){
+    {
       for (let i = 0; i < 2; i++) spawn();
       ctx.clearRect(0,0,W,H); ps = ps.filter(p => p.life > 0);
       for (const p of ps){
@@ -276,14 +274,7 @@ setTimeout(function(){ var el=document.getElementById('td-in'); if(el) el.remove
   requestAnimationFrame(frame);
 
   const bgm = document.getElementById('bgm'); bgm.volume = .8;
-  /* ★ **두 번째로 뜰 때는 음악을 뺀다** (사용자 요청 — 그냥 화면만).
-       발표 끝(THANK YOU)에서 돌아온 것이라 질의응답 중이다. 그 위에 음악이 깔리면
-       말을 방해한다.
-     ⚠️ `started` 를 미리 참으로 둔다. 이 값은 "이미 틀었다" 는 표시라, 참이면 아래
-        클릭·키 핸들러의 `start()` 가 전부 조용히 지나간다 — 조건문을 여러 군데
-        더할 필요가 없다. */
-  const NO_BGM = new URLSearchParams(location.search).has('nobgm');
-  let started = NO_BGM;
+  let started = false;
   const start = () => { if (!started){ started = true; bgm.play().catch(()=>{}); } };
   addEventListener('pointerdown', start, { once: true });
   /* 이스터에그(바탕화면 상자)에서 넘어오며 **바로** 켠다.
@@ -294,30 +285,30 @@ setTimeout(function(){ var el=document.getElementById('td-in'); if(el) el.remove
      ⚠️ 같은 파일이라 이미 캐시에 있다 — 다시 받지 않는다.
      ⚠️ 값이 이상하면(직접 주소를 친 경우 등) 그냥 처음부터 튼다. */
   const at = parseFloat(new URLSearchParams(location.search).get('t') || '0');
-  if (!NO_BGM) {
-    if (isFinite(at) && at > 0) { try { bgm.currentTime = at; } catch(e){} }
-    bgm.play().then(() => { started = true; }).catch(() => {});
-  }
+  if (isFinite(at) && at > 0) { try { bgm.currentTime = at; } catch(e){} }
+  bgm.play().then(() => { started = true; }).catch(() => {});
   /* ★ 여기서 **다음 장(SDLC·스프린트)으로 넘어간다** (사용자 요청 — 팀 소개 뒤에 붙여 달라).
        →/PageDown/Enter 만 받는다. 발표용 리모컨이 보내는 키가 정확히 이것들이라,
        무대에서 노트북을 안 만지고 넘길 수 있다.
      ⚠️ 클릭으로는 안 넘긴다. 이 화면의 클릭은 이미 **BGM 을 켜는 일**을 하고 있어서
         (자동재생이 막혔을 때의 유일한 탈출구다), 넘기기까지 얹으면 음악을 켜려던
         클릭 한 번에 화면이 넘어가 버린다.
-     ⚠️ 재생 위치를 `?t=` 로 넘긴다 — 상자를 누른 순간부터 여기까지 한 곡으로 이어온
-        그 흐름을 다음 화면에서도 끊지 않는다 (`sdlc.html` 아래쪽 주석 참고). */
-  const NEXT_KEYS = ['ArrowRight', 'PageDown', 'Enter'];
+     ⚠️ 재생 위치를 넘기지 않는다. 음악은 **이 화면까지만** 나온다 (사용자 요청) —
+        넘어가는 순간 이 페이지가 버려지면서 소리도 같이 멎는다. */
+  /* ★ Space 를 **"다음"** 에 넣었다 (사용자 결정 — 일시정지 기능 삭제).
+       전에는 Space 가 불티를 멈추는 키였는데, 다음 화면(SDLC 덱)에서는 같은 키가
+       "다음 장" 이다. 화면마다 뜻이 정반대였고, 발표용 리모컨이 보내는 키가 보통
+       Space·PageDown 이라 리모컨을 누르면 넘어가는 대신 화면이 멈췄다.
+       이제 어느 화면에서든 같은 키로 넘어간다. */
+  const NEXT_KEYS = ['Enter', 'ArrowRight', 'PageDown', ' '];
   addEventListener('keydown', e => {
-    /* ⚠️ 돌아온 화면에서는 앞으로 안 넘긴다. 여기가 발표의 끝인데 다시 덱으로 들어가면
-          같은 자리를 맴돈다 — 질의응답 중 실수로 키를 눌러도 화면이 안 바뀌는 편이 낫다. */
-    if (NEXT_KEYS.includes(e.key) && !NO_BGM){
+    if (NEXT_KEYS.includes(e.key)){
       e.preventDefault();
-      location.href = 'sdlc.html?t=' + (bgm.currentTime || 0).toFixed(2);
+      location.href = 'sdlc.html';
       return;
     }
     if (e.key === 'm' || e.key === 'M'){ started = true; bgm.paused ? bgm.play() : bgm.pause(); return; }
     start();
-    if (e.code === 'Space'){ e.preventDefault(); running = !running; stage.classList.toggle('paused', !running); }
     if (e.key === 'f' || e.key === 'F'){ document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
   });
   let t; addEventListener('mousemove', () => { document.body.style.cursor='default'; clearTimeout(t); t=setTimeout(()=>document.body.style.cursor='none',1500); });

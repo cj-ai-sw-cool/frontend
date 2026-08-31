@@ -357,7 +357,7 @@ body.edit-mode [contenteditable="true"]{outline:1.5px dashed rgba(26,86,219,.55)
      ⚠️ 이 장에서 한 번 더 넘기면 팀 소개 화면으로 돌아간다 (아래 `go()` 참고). -->
 <section class="slide dark">
   <div class="mark" style="color:#6D9CF0;">Thank you</div>
-  <div class="chap" style="color:#6D9CF0;">A.LTS · 5조</div>
+  <div class="chap" style="color:#6D9CF0;">A.LTS · 2조</div>
   <div class="hdr gx" style="--delay:.06s;background:#2B4A7E;"></div>
   <div class="reg" style="left:119px;bottom:60px;"></div><div class="reg" style="right:119px;bottom:60px;"></div>
 
@@ -371,7 +371,7 @@ body.edit-mode [contenteditable="true"]{outline:1.5px dashed rgba(26,86,219,.55)
     <div class="rule gx" style="--delay:.24s;background:#6D9CF0;width:104px;height:5px;margin-top:44px;transform-origin:center;"></div>
   </div>
 
-  <div class="notes">맺는 장입니다. 여기서 한 번 더 넘기면 팀 소개 화면으로 돌아갑니다 — 질의응답 동안 팀원 얼굴이 떠 있도록 한 것이니, 넘긴 뒤에는 그대로 두세요. 음악은 나오지 않습니다.</div>
+  <div class="notes">맺는 장입니다. 여기서 한 번 더 넘기면 질의응답 화면으로 넘어갑니다. 그 화면에서는 앞으로 가는 키가 없으니 실수로 눌러도 안 넘어가고, 왼쪽 방향키로 이 장으로 돌아옵니다.</div>
 </section>
 
 </div></div>
@@ -398,11 +398,20 @@ class Deck{
     this.timerEl=document.getElementById('timer');
     this.t0=null; this.elapsed=0;
     this.scale(); addEventListener('resize',()=>this.scale());
-    document.getElementById('nextBtn').onclick=()=>this.go(this.i+1);
-    document.getElementById('prevBtn').onclick=()=>this.go(this.i-1);
+    /* ⚠️ 누른 뒤 **포커스를 무대로 돌려준다.** 안 그러면 포커스가 이 버튼에 남아서,
+          다음에 Enter 나 Space 를 누를 때 브라우저가 버튼을 한 번 더 누르고(onclick)
+          keydown 핸들러도 도는 바람에 **두 장이 넘어간다** — 방금 고친 것과 같은
+          종류의 이중 실행이다. 마우스로 한 번 넘긴 뒤 키로 넘기면 재현된다. */
+    const back=()=>document.getElementById('deckViewport').focus();
+    document.getElementById('nextBtn').onclick=()=>{this.go(this.i+1);back();};
+    document.getElementById('prevBtn').onclick=()=>{this.go(this.i-1);back();};
     this.keys(); this.touch(); this.wheel(); this.click();
     setInterval(()=>this.paint(),500);
-    this.go(0);
+    /* ★ `?s=` 가 있으면 그 장부터 연다 (기본 0).
+         Q&A 에서 ← 로 돌아올 때 1장으로 튀지 않게 하려는 것이다 — 그냥 0 으로 열면
+         뒤로 간 사람이 앞으로 두 번 더 눌러야 제자리가 된다. */
+    const at=parseInt(new URLSearchParams(location.search).get('s')||'0',10);
+    this.go(Number.isFinite(at)?at:0);
     // 미리보기 iframe에서도 키가 먹도록 포커스를 잡아 둔다
     const vp=document.getElementById('deckViewport');
     if(vp){ vp.focus(); addEventListener('load',()=>vp.focus()); }
@@ -434,8 +443,16 @@ class Deck{
       else if(k==='t'||k==='T'){this.t0?(this.elapsed+=Date.now()-this.t0,this.t0=null):this.t0=Date.now();}
       else if(k==='r'||k==='R'){this.t0=null;this.elapsed=0;this.paint();}
     };
+    /* ★ 예전에는 `document` 와 `window` **둘 다**에 같은 함수를 걸어 뒀다. 키를 한 번
+         누르면 이벤트가 document 를 거쳐 window 로 올라가므로 핸들러가 **두 번** 돌고,
+         한 번 눌렀는데 두 장이 넘어갔다 (사용자 지적 — 지라 화면이 있었다 없었다 한다).
+       ⚠️ 슬라이드가 2장일 때는 이 버그가 **안 보였다.** `go()` 가 마지막 장에서 멈추니
+          0 → 1 → 1 로 클램프되어 결과가 맞아떨어졌다. THANK YOU 장을 더해 3장이 되자
+          0 → 1 → 2 가 되면서 가운데(지라)가 통째로 건너뛰어졌다.
+       ⚠️ 클릭은 핸들러가 하나뿐이라 한 장씩 넘어갔다. 그래서 누르는 방식에 따라 지라가
+          보이기도 하고 안 보이기도 했던 것이다.
+       document 하나면 충분하다 — 키 이벤트는 어차피 여기까지 올라온다. */
     document.addEventListener('keydown',h);
-    window.addEventListener('keydown',h);
   }
   paint(){
     const ms=this.elapsed+(this.t0?Date.now()-this.t0:0), s=Math.floor(ms/1000);
@@ -459,12 +476,12 @@ class Deck{
     },{passive:true});
   }
   go(n){
-    /* ★ 마지막 장을 넘기면 **팀 소개 화면으로 돌아간다** (사용자 요청).
-         질의응답 동안 팀원 얼굴이 떠 있게 하려는 것이라, 이번엔 음악을 뺀다 —
-         `?nobgm=1` 이 그 신호다 (`index.html` 쪽에서 읽는다).
+    /* ★ 마지막 장을 넘기면 **질의응답 화면으로 간다** (사용자 요청).
+         한때 팀 소개로 되돌아갔는데, 질의응답은 발표와 성격이 다른 시간이라 앞 장을
+         다시 보여 주는 것보다 "이제 물어보세요" 라고 말하는 화면이 낫다.
        ⚠️ 여기 한 곳에만 두면 방향키·클릭·스와이프·휠·다음 버튼이 전부 따라온다.
           각 핸들러에 흩어 놓으면 하나 빠뜨린다. */
-    if(n>=this.total){ location.href='index.html?nobgm=1'; return; }
+    if(n>=this.total){ location.href='qna.html'; return; }
     this.i=Math.max(0,Math.min(n,this.total-1));
     this.slides.forEach((s,j)=>s.classList.toggle('visible',j===this.i));
     this.fill.style.width=((this.i+1)/this.total*100)+'%';
@@ -484,44 +501,12 @@ addEventListener('keydown',e=>{
 });
 </script>
 
-<!-- ═══ 팀 소개 화면에서 이어서 넘어온다 ══════════════════════════════════════
-     ★ 이 덱은 원래 단독 파일이었다. 팀 소개(index.html) 뒤에 붙이면서 두 가지를 더했다.
-       ① 앞 화면에서 틀고 있던 BGM 을 **끊기지 않게 이어받는다**
-       ② 그리고 4초에 걸쳐 걷어낸다 — 여기서부터는 말을 하는 자리라, 음악이 계속
-          깔리면 발표를 방해한다. 넘어오는 순간의 끊김만 없애는 것이 목적이다.
-     ⚠️ `assets/bgm.mp3` 는 앞 화면과 **같은 파일**이다(같은 폴더). 이미 캐시에 있어
-        다시 받지 않으므로, 이어 트는 데 시간이 안 걸린다.
-     ⚠️ `?t=` 없이 이 파일을 직접 열면 음악은 아예 안 튼다 — 단독으로 열었을 때
-        갑자기 노래가 나오는 것이 더 이상하다.
-     ⚠️ `m` 으로 끄고 켠다. 앞 화면과 같은 키다.
-     ═══════════════════════════════════════════════════════════════════════ -->
-<audio id="bgm" src="assets/bgm.mp3" preload="none"></audio>
-<script>
-(() => {
-  const at = parseFloat(new URLSearchParams(location.search).get('t') || '0');
-  if (!isFinite(at) || at <= 0) return;
-  const bgm = document.getElementById('bgm');
-  const VOL = 0.8, FADE = 4000;
-  bgm.volume = VOL;
-  try { bgm.currentTime = at; } catch(e){}
-  bgm.play().catch(() => {});
-  /* 자동재생이 막히면 첫 조작에서 한 번 더 — 발표자는 어차피 바로 넘긴다 */
-  const retry = () => { bgm.play().catch(() => {}); removeEventListener('pointerdown', retry); };
-  addEventListener('pointerdown', retry, { once: true });
-
-  const t0 = performance.now();
-  const fade = () => {
-    const k = Math.min(1, (performance.now() - t0) / FADE);
-    bgm.volume = VOL * (1 - k) * (1 - k);   /* 제곱 = 귀에 고르게 잦아든다 */
-    if (k < 1) requestAnimationFrame(fade); else bgm.pause();
-  };
-  requestAnimationFrame(fade);
-
-  addEventListener('keydown', e => {
-    if (e.key !== 'm' && e.key !== 'M') return;
-    if (bgm.paused) { bgm.volume = VOL; bgm.play().catch(() => {}); } else bgm.pause();
-  });
-})();
-</script>
+<!-- ═══ 여기서부터는 음악이 없다 ═══════════════════════════════════════════
+     ★ 한때 앞 화면의 BGM 을 이어받아 4초에 걸쳐 걷어냈는데, 그마저 뺐다 (사용자 요청 —
+       노란 화면과 팀 소개 화면까지만 나오고 다음 페이지로 넘어가면 없애 달라).
+     ⚠️ 그래서 여기에는 `<audio>` 도 이어 트는 코드도 없다. 앞 화면에서 넘어오는 순간
+        브라우저가 그 페이지를 버리면서 소리도 같이 멎는다 — 따로 끌 것이 없다.
+     ⚠️ 앞 화면이 `?t=`(재생 위치)를 더는 붙이지 않는다. 받는 쪽이 없어졌으니 붙일 이유도
+        없다 (`index.html` 참고). ═══════════════════════════════════════════════ -->
 </body>
 </html>
