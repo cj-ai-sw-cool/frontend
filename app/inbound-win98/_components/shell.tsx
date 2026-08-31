@@ -14,7 +14,7 @@ import {
   Terminal,
   X,
 } from "lucide-react";
-import { CaveEntrance } from "./cave-entrance";
+import { TruckDock } from "./truck-dock";
 import { ClockWindow } from "./clock-window";
 import { demo } from "@/lib/endpoints";
 import { w98, w98Toast, Btn, Etched, TrayBox } from "./win98-ui";
@@ -238,7 +238,7 @@ export function Win98Shell({ children }: { children: ReactNode }) {
         {/* 바탕화면 이스터에그. 창 뒤에 깔려 있어서 창을 끌어 내려야 보인다.
             ⚠️ 창보다 **먼저** 그린다 — 같은 스태킹 컨텍스트에서는 뒤에 온 형제가 위에 덮인다.
             ⚠️ main 에 `relative` 를 붙인 이유가 이것 하나다(이 절대 배치의 기준점). */}
-        <CaveEntrance />
+        <TruckDock />
 
         <div
           className={`${w98.raised} flex min-h-0 w-full flex-col bg-[color:var(--surface)] p-[2px]`}
