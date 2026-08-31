@@ -357,7 +357,7 @@ body.edit-mode [contenteditable="true"]{outline:1.5px dashed rgba(26,86,219,.55)
      ⚠️ 이 장에서 한 번 더 넘기면 팀 소개 화면으로 돌아간다 (아래 `go()` 참고). -->
 <section class="slide dark">
   <div class="mark" style="color:#6D9CF0;">Thank you</div>
-  <div class="chap" style="color:#6D9CF0;">A.LTS · 5조</div>
+  <div class="chap" style="color:#6D9CF0;">A.LTS · 2조</div>
   <div class="hdr gx" style="--delay:.06s;background:#2B4A7E;"></div>
   <div class="reg" style="left:119px;bottom:60px;"></div><div class="reg" style="right:119px;bottom:60px;"></div>
 
@@ -371,7 +371,7 @@ body.edit-mode [contenteditable="true"]{outline:1.5px dashed rgba(26,86,219,.55)
     <div class="rule gx" style="--delay:.24s;background:#6D9CF0;width:104px;height:5px;margin-top:44px;transform-origin:center;"></div>
   </div>
 
-  <div class="notes">맺는 장입니다. 여기서 한 번 더 넘기면 팀 소개 화면으로 돌아갑니다 — 질의응답 동안 팀원 얼굴이 떠 있도록 한 것이니, 넘긴 뒤에는 그대로 두세요. 음악은 나오지 않습니다.</div>
+  <div class="notes">맺는 장입니다. 여기서 한 번 더 넘기면 질의응답 화면으로 넘어갑니다. 그 화면에서는 앞으로 가는 키가 없으니 실수로 눌러도 안 넘어가고, 왼쪽 방향키로 이 장으로 돌아옵니다.</div>
 </section>
 
 </div></div>
@@ -402,7 +402,11 @@ class Deck{
     document.getElementById('prevBtn').onclick=()=>this.go(this.i-1);
     this.keys(); this.touch(); this.wheel(); this.click();
     setInterval(()=>this.paint(),500);
-    this.go(0);
+    /* ★ `?s=` 가 있으면 그 장부터 연다 (기본 0).
+         Q&A 에서 ← 로 돌아올 때 1장으로 튀지 않게 하려는 것이다 — 그냥 0 으로 열면
+         뒤로 간 사람이 앞으로 두 번 더 눌러야 제자리가 된다. */
+    const at=parseInt(new URLSearchParams(location.search).get('s')||'0',10);
+    this.go(Number.isFinite(at)?at:0);
     // 미리보기 iframe에서도 키가 먹도록 포커스를 잡아 둔다
     const vp=document.getElementById('deckViewport');
     if(vp){ vp.focus(); addEventListener('load',()=>vp.focus()); }
@@ -459,12 +463,12 @@ class Deck{
     },{passive:true});
   }
   go(n){
-    /* ★ 마지막 장을 넘기면 **팀 소개 화면으로 돌아간다** (사용자 요청).
-         질의응답 동안 팀원 얼굴이 떠 있게 하려는 것이라, 이번엔 음악을 뺀다 —
-         `?nobgm=1` 이 그 신호다 (`index.html` 쪽에서 읽는다).
+    /* ★ 마지막 장을 넘기면 **질의응답 화면으로 간다** (사용자 요청).
+         한때 팀 소개로 되돌아갔는데, 질의응답은 발표와 성격이 다른 시간이라 앞 장을
+         다시 보여 주는 것보다 "이제 물어보세요" 라고 말하는 화면이 낫다.
        ⚠️ 여기 한 곳에만 두면 방향키·클릭·스와이프·휠·다음 버튼이 전부 따라온다.
           각 핸들러에 흩어 놓으면 하나 빠뜨린다. */
-    if(n>=this.total){ location.href='index.html?nobgm=1'; return; }
+    if(n>=this.total){ location.href='qna.html'; return; }
     this.i=Math.max(0,Math.min(n,this.total-1));
     this.slides.forEach((s,j)=>s.classList.toggle('visible',j===this.i));
     this.fill.style.width=((this.i+1)/this.total*100)+'%';
