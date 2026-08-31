@@ -69,7 +69,11 @@ const FLASH_MS = 180;
  *    두었다(`public/team5/index.html`). 여기서 틀면 0.9초 뒤 이동하며 잘려 더 어색하다. */
 const TEAM_URL = "/team5/index.html";
 /** 상자를 누르는 그 순간 트는 곡. 넘어갈 페이지가 쓰는 것과 **같은 파일**이다 */
-const BGM_SRC = "/team5/assets/bgm-highlight.mp3";
+/* ★ 팀 소개 화면이 트는 것과 **같은 파일**이어야 한다 (사용자 지적 — 노래가 렉걸린다).
+     예전에는 여기만 `bgm-highlight.mp3` 를 봤는데, 넘어간 쪽은 `bgm.mp3` 를 본다.
+     내용은 같아도 **주소가 다르면 캐시가 따로**라, 화면이 바뀌는 순간 134KB 를 처음부터
+     다시 받았다. 곡이 이어지는 그 자리에서 정확히 끊긴 이유다. */
+const BGM_SRC = "/team5/assets/bgm.mp3";
 
 /* CJ 색 — 로고에서 뽑은 값 (`shell.tsx` 의 BrandMark 와 같다) */
 const CJ_BLUE = "#003087";
@@ -132,7 +136,10 @@ export function TruckDock() {
   const warm = useCallback(() => {
     if (warmed.current) return;
     warmed.current = true;
-    for (const u of [TEAM_URL, "/models/chest-split.glb", "/team5/assets/bg.jpg", "/team5/assets/quest-serif.woff", BGM_SRC]) {
+    /* ⚠️ 마인크래프트 상자 모델(10.4MB)을 **뺐다** (사용자 지적 — 노래가 렉걸린다).
+          연출에서 상자를 걷어냈는데 미리 받는 목록에는 남아 있어서, 마우스를 올리는
+          순간 10MB 를 받느라 정작 필요한 음악·배경이 뒤로 밀렸다. */
+    for (const u of [TEAM_URL, "/team5/assets/bg.jpg", "/team5/assets/quest-serif.woff", BGM_SRC]) {
       void fetch(u).catch(() => undefined);
     }
   }, []);

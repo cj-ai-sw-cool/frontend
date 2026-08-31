@@ -295,13 +295,13 @@ setTimeout(function(){ var el=document.getElementById('td-in'); if(el) el.remove
      ⚠️ 클릭으로는 안 넘긴다. 이 화면의 클릭은 이미 **BGM 을 켜는 일**을 하고 있어서
         (자동재생이 막혔을 때의 유일한 탈출구다), 넘기기까지 얹으면 음악을 켜려던
         클릭 한 번에 화면이 넘어가 버린다.
-     ⚠️ 재생 위치를 `?t=` 로 넘긴다 — 상자를 누른 순간부터 여기까지 한 곡으로 이어온
-        그 흐름을 다음 화면에서도 끊지 않는다 (`sdlc.html` 아래쪽 주석 참고). */
+     ⚠️ 재생 위치를 넘기지 않는다. 음악은 **이 화면까지만** 나온다 (사용자 요청) —
+        넘어가는 순간 이 페이지가 버려지면서 소리도 같이 멎는다. */
   const NEXT_KEYS = ['ArrowRight', 'PageDown', 'Enter'];
   addEventListener('keydown', e => {
     if (NEXT_KEYS.includes(e.key)){
       e.preventDefault();
-      location.href = 'sdlc.html?t=' + (bgm.currentTime || 0).toFixed(2);
+      location.href = 'sdlc.html';
       return;
     }
     if (e.key === 'm' || e.key === 'M'){ started = true; bgm.paused ? bgm.play() : bgm.pause(); return; }
