@@ -46,8 +46,18 @@ export function Box3DViewer({
   decalUrl,
   pigs = false,
   bare = false,
+  onReady,
   className = "",
 }: {
+  /**
+   * 장면이 **실제로 다 준비됐을 때** 한 번 불린다 (모델을 받아 세우기까지 끝난 뒤).
+   *
+   * 바탕화면 이스터에그가 쓴다. 거기서는 뚜껑을 열고 돼지를 보여 준 다음 다른 페이지로
+   * 넘어가는데, 그 시간을 **고정 타이머로 세면 안 된다** — 모델 받는 시간이 그때그때
+   * 달라서, 늦게 뜬 날에는 돼지가 튀어나오기도 전에 이미 넘어가 버린다
+   * (사용자 지적 — 돼지가 안 보이고 바로 넘어간다). 이 신호를 받은 뒤에 세야 맞는다.
+   */
+  onReady?: () => void;
   /**
    * 액자 없이 **상자만** 그린다 — 파인 테두리·바탕·아래 안내 문구를 모두 뺀다.
    *
@@ -1471,6 +1481,10 @@ type Tape = {
           vz: number;
           spin: number;
           age: number;
+          /** 스프라이트 세로 크기(월드) — 바닥에 **발을 딛게** 하려면 반쯤 띄워야 한다 */
+          size: number;
+          /** 몇 번 튀었나. 튈수록 옆으로 세게 밀어 화면 밖으로 내보낸다 */
+          hops: number;
         };
         const herd: Pig[] = [];
         const pigTextures: THREE_NS.Texture[] = [];
@@ -1514,8 +1528,11 @@ type Tape = {
             });
             const sprite = new THREE.Sprite(material);
 
-            /* 아기 돼지가 섞이도록 크기를 흩는다. 전부 같은 크기면 복사한 티가 난다 */
-            const size = 0.24 + Math.random() * 0.18;
+            /* 아기 돼지가 섞이도록 크기를 흩는다. 전부 같은 크기면 복사한 티가 난다.
+               ★ 0.36~0.62 → 0.26~0.44 (사용자 요청 — 좀 작게).
+                 돼지 크기는 **월드 단위**라 화면 크기와 무관하지만, 상자를 줄이면 카메라가
+                 그만큼 물러나므로 돼지도 같이 작아진다. 여기서 키워 되돌린다. */
+            const size = 0.26 + Math.random() * 0.18;
             sprite.scale.set(size * PIG_ASPECT, size, 1);
 
             /* 사방으로 고르게 흩어지되 완전히 규칙적이지는 않게 — 각도를 등분한 뒤 흔든다 */
@@ -1537,6 +1554,8 @@ type Tape = {
               vz: Math.sin(angle) * speed,
               spin: (Math.random() - 0.5) * 5,
               age: 0,
+              size,
+              hops: 0,
             });
           }
         };
@@ -1554,12 +1573,24 @@ type Tape = {
          * ⚠️ 1.05 를 곱해 조금 더 내려보낸다 — 정확히 경계에서 지우면 반쯤 잘린 돼지가
          *    깜빡이며 사라진다. 완전히 나간 뒤에 치운다.
          */
-        const pigFloor =
-          -Math.tan((camera.fov * Math.PI) / 360) *
-          camera.position.length() *
-          1.05;
+        /** 화면 아래 끝(월드 y). 위 계산 그대로, 여유분(1.05)만 뺀 정확한 경계 */
+        const screenBottom =
+          -Math.tan((camera.fov * Math.PI) / 360) * camera.position.length();
+        /** 화면 좌우 끝(월드 x) — 세로 절반에 화면 비율을 곱한 값 */
+        const screenSide = -screenBottom * camera.aspect;
 
-        /** 매 프레임 돼지를 한 걸음 날린다 — 포물선으로 떠올랐다가 화면 밖까지 떨어진다 */
+        /**
+         * 매 프레임 돼지를 한 걸음 날린다 — 솟았다가 **화면 아래 끝에 착지하고, 양옆으로
+         * 통통 튀어 나간다**.
+         *
+         * ★ 전에는 그냥 화면 밖으로 떨어져 사라졌다 (사용자 요청 — 바닥을 치고 착지한 다음
+         *   양옆으로 통통 튀어 사라지게).
+         * ⚠️ 화면 아래 끝을 **평평한 바닥으로 친다.** 원근 카메라에서 정확히 하려면 돼지의
+         *    깊이마다 경계가 달라야 하지만, 돼지는 앞뒤로 조금밖에 안 움직이고 이 연출은
+         *    만화적인 것이라 차이가 눈에 안 띈다. 위 `screenBottom` 도 같은 근사다.
+         * ⚠️ 튈 때마다 옆으로 **더 세게** 민다. 세로 힘만 깎으면 제자리에서 잦아들다 멈춰,
+         *    화면 아래에 돼지가 줄지어 남는다. 나가야 끝난다.
+         */
         const advancePigs = (delta: number) => {
           for (let index = herd.length - 1; index >= 0; index -= 1) {
             const pig = herd[index];
@@ -1572,10 +1603,29 @@ type Tape = {
             pig.sprite.position.z += pig.vz * delta;
             pig.sprite.material.rotation += pig.spin * delta;
 
-            /* 흐려지지 않는다 — 끝까지 또렷하게 떨어지다가 화면 밖에서 치워진다.
-               ⚠️ PIG_MAX_LIFE 는 안전장치다. 카메라가 바뀌어 pigFloor 를 영영 못 넘는 일이
+            /* 착지 — 스프라이트는 가운데가 기준이라 반만큼 띄워야 발이 바닥에 닿는다 */
+            const restY = screenBottom + pig.size * 0.42;
+            if (pig.sprite.position.y < restY && pig.vy < 0) {
+              pig.sprite.position.y = restY;
+              pig.vy = -pig.vy * PIG_BOUNCE;
+              pig.hops += 1;
+              /* 옆으로 밀어낸다. 아직 방향이 없으면(수직으로 떨어진 돼지) 아무 쪽으로나 */
+              const dir = pig.vx === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(pig.vx);
+              pig.vx += dir * PIG_HOP_PUSH;
+              pig.vz *= 0.5;
+              /* 구르던 회전은 바닥에 닿을 때마다 잦아든다 — 착지가 착지로 보인다 */
+              pig.spin *= 0.55;
+              /* 거의 안 튈 만큼 힘이 빠지면 굴러 나가게 둔다 */
+              if (Math.abs(pig.vy) < 0.3) pig.vy = 0;
+            }
+
+            /* 옆으로 나갔거나, 그래도 아래로 새 나갔을 때 치운다.
+               ⚠️ PIG_MAX_LIFE 는 안전장치다. 카메라가 바뀌어 어느 경계도 영영 못 넘는 일이
                   생기면 돼지가 무한히 쌓인다. 눈에 보일 일은 없는 값으로 잡아 둔다. */
-            if (pig.sprite.position.y < pigFloor || pig.age > PIG_MAX_LIFE) {
+            const gone =
+              Math.abs(pig.sprite.position.x) > screenSide + pig.size ||
+              pig.sprite.position.y < screenBottom - pig.size * 2;
+            if (gone || pig.age > PIG_MAX_LIFE) {
               scene.remove(pig.sprite);
               pig.sprite.material.dispose();
               herd.splice(index, 1);
@@ -2176,6 +2226,13 @@ type Tape = {
     setLidRef.current?.(lidOpen);
   }, [lidOpen, status]);
 
+  /* 준비가 끝났다고 바깥에 알린다 (위 `onReady` 설명 참고).
+     ⚠️ `status` 는 "ready" 로 한 번만 가고 그 뒤로 안 바뀌므로 중복 호출 걱정이 없다.
+        장면을 다시 만들면 "loading" 으로 돌아갔다가 다시 오는데, 그때는 알리는 것이 맞다. */
+  useEffect(() => {
+    if (status === "ready") onReady?.();
+  }, [status, onReady]);
+
   /* 포장 완료 → 뚜껑이 닫히고 테이프가 붙은 **뒤에** 실어 보내는 장면을 시작한다.
      ⚠️ 곧바로 시작하면 안 된다. 뚜껑이 닫히는 데 시간이 걸리는데, 그 사이에 피글린이
         들어오면 열린 상자를 밀고 나가는 그림이 된다. 닫히는 시간만큼 기다렸다 부른다.
@@ -2317,11 +2374,17 @@ const PIG_URLS = [
 ];
 /** 그림의 가로:세로 (726 × 673). 이 값으로 늘려야 돼지가 안 찌그러진다 */
 const PIG_ASPECT = 726 / 673;
-const PIG_COUNT = 9;
+/* ★ 9 → 20 (사용자 요청 — 더 많았으면). `pigs` 를 켜는 곳은 바탕화면 이스터에그뿐이라
+     출고 화면의 상자에는 영향이 없다. */
+const PIG_COUNT = 20;
 /** 중력(단위/초²). 실제 9.8 을 쓰면 화면 크기에 비해 너무 빨리 떨어져 눈에 안 남는다 */
 const PIG_GRAVITY = 3.2;
 /** 안전장치 — 어떤 이유로든 화면 밖으로 못 나간 돼지를 치우는 시간(초). 평소엔 안 걸린다 */
 const PIG_MAX_LIFE = 20;
+/** 바닥을 칠 때 남기는 세로 속도의 비율. 낮으면 한 번 튀고 말고, 높으면 오래 통통거린다 */
+const PIG_BOUNCE = 0.62;
+/** 한 번 튈 때마다 옆으로 더해 주는 속도 — 이것이 있어야 화면 밖으로 나간다 */
+const PIG_HOP_PUSH = 0.55;
 /** 돼지가 있는 상자의 넘침 폭. 화면 바닥까지 떨어질 거리를 벌어 준다 (위 spill 설명 참고) */
 const PIG_SPILL = 420;
 /** 뚜껑이 이만큼 열렸을 때 튀어나온다 (0 = 완전히 열림, 1 = 닫힘) */
