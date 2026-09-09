@@ -2,10 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-import { createNetherPortal } from "./nether-portal";
 import { createPackingStation } from "./packing-station";
-import { createInboundSim, DEMO_ITEMS } from "./inbound-sim";
-import { createSimAudio } from "./sim-audio";
 import { createExterior, HAZE } from "./warehouse-exterior";
 import InspectionRoom from "./inspection-room";
 
@@ -797,32 +794,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
   const [playing, setPlaying] = useState(false);
   const [stats, setStats] = useState(null);
   const [webglOk, setWebglOk] = useState(true);
-  /* 'map' | '3d'.
-     ★ 입고 화면에서 `?sim=1` 로 넘어왔으면 **처음부터 3D 로 연다.** 이 화면은 지도로 열리는데,
-       지도 탭에 선 채로 시뮬레이션만 돌리면 적재 영상이 숨은 탭 뒤에서 혼자 끝난다 (3D 판은
-       `display:none` 일 뿐 살아 있다).
-     ⚠️ 효과 안에서 `setTab` 을 부르지 않는다. 첫 렌더가 지도로 한 번 그려진 뒤 3D 로 다시
-        그려지는 낭비이고, 무엇보다 lint 가 막는다(effect 안의 동기 setState). 처음 값으로
-        정하면 그런 일이 아예 없다.
-     ⚠️ 초기화 함수 안에서 읽는다. 본문에서 바로 읽으면 렌더마다 주소를 다시 파싱한다. */
-  /* 입고 화면에서 넘어와 **바로 시뮬레이션을 시작할 자리인가.**
-     ⚠️ 주소(`?sim=1`)를 먼저 믿으면 안 된다. App Router 의 `router.push` 는 비동기라 새
-        화면이 먼저 그려지고 주소창이 나중에 바뀐다 — 여기가 붙는 순간 `window.location` 은
-        아직 입고 화면 주소다. 그래서 입고 화면이 남긴 **저장소 표시를 먼저 본다.**
-     ⚠️ 주소도 계속 본다. 주소를 직접 쳐서 들어오는 길(`?sim=1`)을 남겨 둬야 시연 중에
-        입고를 안 거치고도 시뮬레이션만 띄울 수 있다.
-     ⚠️ 여기서 표시를 **지우지 않는다.** 개발 모드(StrictMode)는 이 초기화 함수를 두 번
-        부르는데, 여기서 지우면 두 번째 호출이 거짓을 받는다. 지우는 것은 아래 효과가 한다. */
-  const [autoSim] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      if (window.sessionStorage.getItem("ws:sim") === "1") return true;
-    } catch { /* 저장소를 막아 둔 브라우저 — 주소로 넘어간다 */ }
-    try {
-      return new URLSearchParams(window.location.search).get("sim") === "1";
-    } catch { return false; }
-  });
-  const [tab, setTab] = useState(() => (autoSim ? "3d" : initialTab));
+  /* 'map' | '3d'. 기본은 지도 — `initialTab` 으로 3D 를 곧바로 열 수도 있다(위 doc 참고) */
+  const [tab, setTab] = useState(initialTab);
   /* 하단 타임라인이 펼쳐져 있는가. 기본은 접힘 - 이 화면의 주인공은 3D 창고인데
      폭 640px 짜리 패널이 늘 아래를 가리고 있었다 */
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -854,49 +827,9 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
      ⚠️ **자리는 여기서 안 다룬다.** 팝업은 3D 안의 한 점을 따라다녀야 하는데, 그 좌표를
         상태로 두면 매 프레임 리액트가 다시 그린다. 내용만 상태로 두고, 자리는 아래 틱이
         DOM 을 직접 옮긴다. */
-  /* 소리 손잡이와 켬/끔.
-     ⚠️ 씬을 다시 만들 때마다 새로 만들면 안 된다 — `AudioContext` 는 브라우저가 몇 개까지만
-        허락하고, 넘기면 그때부터 조용해진다. 화면이 사는 동안 한 벌만 쓴다.
-     ⚠️ 기본값은 **켬**이다. 시연에서 소리가 필요하면 끄기보다 켜 두는 쪽이 안전하다 —
-        발표 중에 조용하면 고장으로 보이지만, 시끄러우면 바로 끌 수 있다. */
-  /* ⚠️ `useRef` 에 렌더 중 값을 넣으면 안 된다(리액트 규칙 — 렌더는 순수해야 하고,
-     같은 렌더가 두 번 돌 수 있다). `useState` 의 **초기화 함수**는 딱 한 번만 불리므로
-     여기에 맞는 자리다. */
-  /* ★ 시뮬레이션 사운드 스위치. 곡은 `sim-audio.js` 에 따로 있다 — 여기서는 켜고 끄기만
-       한다. 시연 자리에 따라 소리를 빼야 할 때가 있어서 한 줄로 남겨 두었다.
-     ⚠️ 스위치를 여기 **하나만** 둔다. 호출부(start/stop/stow) 네 곳을 각각 주석 처리하면
-        다시 켤 때 한 곳을 빠뜨리기 쉽고, 그러면 배경음 없이 효과음만 나는 상태가 된다. */
-  const SIM_SOUND = true;
-  const [audio] = useState(() =>
-    (!SIM_SOUND || typeof window === "undefined" ? null : createSimAudio()));
-  /* 방금 넣은 칸 — 자막 아래 열 게이지가 쓴다. 다음 건이 시작되면 시뮬레이션이 null 을
-     보내 스스로 내려간다 (`inbound-sim` 의 `startNext` 참고) */
+  /* 방금 넣은 칸 — 자막 아래 열 게이지가 쓴다. 입고 적재 시뮬레이션이 걷힌 뒤로는
+     항상 null 이라 이 게이지는 그려지지 않는다. */
   const [placed, setPlaced] = useState(null);
-  const simRunRef = useRef(null);      // 시뮬레이션을 시작하는 손잡이 (씬이 채운다)
-
-  /* ── 입고 화면에서 넘어온 자동 시작 ──────────────────────────────
-     ★ 입고 3건을 다 등록하면 입고 화면이 `?sim=1` 을 달고 이리로 보낸다 (사용자 요청).
-       시연에서 입고와 적재는 한 장면이라, 도착해서 버튼을 한 번 더 누르면 흐름이 끊긴다.
-     ⚠️ 씬이 다 만들어진 **뒤에야** 손잡이(`simRunRef`)가 채워진다. 이 효과가 씬 효과보다
-        먼저 돌 수 있어서, 손잡이가 생길 때까지 짧게 지켜보다가 **한 번만** 부른다.
-     ⚠️ 부르고 나면 주소에서 `?sim=1` 을 지운다. 안 지우면 새로고침할 때마다 처음부터
-        다시 시작해서, 창고를 둘러보려는 순간마다 화면을 빼앗긴다.
-     ⚠️ `useSearchParams` 대신 `window.location` 을 읽는다. 이 화면은 ssr:false 라 창이 늘
-        있고, 훅을 쓰면 이 컴포넌트만을 위한 Suspense 경계를 세워야 한다. */
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    if (!autoSim) return undefined;
-    /* 탭은 위 `useState` 초기화에서 이미 3D 로 잡혔다 — 여기서는 씬이 준비되기만 기다린다 */
-    const t = window.setInterval(() => {
-      if (!simRunRef.current) return;
-      window.clearInterval(t);
-      /* 표시를 지운다 — 안 지우면 이 탭에서 창고 화면을 다시 열 때마다 또 시작한다 */
-      try { window.sessionStorage.removeItem("ws:sim"); } catch { /* 위 주석 참고 */ }
-      window.history.replaceState(null, "", window.location.pathname);
-      simRunRef.current(DEMO_ITEMS);
-    }, 120);
-    return () => window.clearInterval(t);
-  }, [autoSim]);
   /* ⚠️ 원본의 시계(`clock`)를 뺐다. 작업표시줄에만 쓰던 값인데 그 표시줄을 걷어냈으니,
      남겨 두면 아무도 안 보는 값을 위해 인터벌만 돈다. */
   const mapWrapRef = useRef(null);
@@ -904,7 +837,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
   const statsRef = useRef(null);  // 맵 캔버스가 읽는 최신 통계
   const simRef = useRef(null);    // 매 프레임 엔티티 위치 (3D 틱 → 2D 맵)
 
-  /* ★ 포탈이 바깥에 알리는 두 가지를 **ref 로 받는다.** 씬을 만드는 useEffect 는 한 번만
+  /* ★ 씬이 바깥(리액트 상태)에 알릴 일을 **ref 로 받는다.** 씬을 만드는 useEffect 는 한 번만
        돌기 때문에, 그 안에서 지금의 상태 함수를 직접 부르면 처음 값에 붙박인다.
        ref 를 거치면 언제 불려도 최신 것이 불린다. */
   const rootRef = useRef(null);   // 툴팁 좌표를 이 상자 기준으로 되돌리는 데 쓴다
@@ -913,10 +846,11 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
        `router.push` 는 클라이언트 전환이라 앱을 새로 내려받지 않는다(뒤로 가기도 된다). */
   const goPackingRef = useRef(null);
   /* 검수실이 열려 있는가. 씬을 만드는 effect 안의 키 처리기가 읽는다 —
-     상태를 직접 잡으면 첫 값에 붙박이므로 ref 로 넘긴다 */
+     상태를 직접 잡으면 첫 값에 붙박이므로 ref 로 넘긴다.
+     ⚠️ 검수실을 여는 손잡이(포탈 클릭)는 Stage 0 에서 포탈과 함께 걷혔다 — `inRoom`/
+        `setInRoom` 과 `<InspectionRoom>` 렌더 분기는 그대로 두었지만, 지금은 켤 방법이
+        없다. Stage 2 에서 재활용 여부와 새 진입점을 정한다. */
   const inRoomRef = useRef(false);
-  const onEnterPortalRef = useRef(null);
-  const onPortalHoverRef = useRef(null);
   const onStationFocusRef = useRef(null);
 
   /* 씬 쪽 손잡이를 최신 함수로 유지한다 (위 ref 설명 참고).
@@ -927,19 +861,6 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
   useEffect(() => { goPackingRef.current = () => router.push("/packing-win98"); }, [router]);
   /* 상태 함수는 리액트가 그대로 유지하므로 한 번만 걸어 두면 된다 */
   useEffect(() => { onStationFocusRef.current = setAtStation; }, []);
-
-  /* 씬 쪽 손잡이를 최신 함수로 유지한다 (위 ref 설명 참고).
-     ⚠️ 렌더 중에 ref 를 건드리면 안 된다 — 리액트가 화면을 그리는 도중에 바깥 값을 바꾸는
-        셈이라, 같은 렌더가 두 번 돌 때(개발 모드의 이중 실행) 결과가 갈린다.
-        의존성 없는 effect 에 두면 **그릴 것을 다 그린 뒤** 매번 갱신된다. */
-  useEffect(() => {
-    onPortalHoverRef.current = (hovered, x, y, w) => setPortalTip(hovered ? { x, y, w } : null);
-    onEnterPortalRef.current = () => {
-      if (inRoom) return;
-      setPortalTip(null);   // 검수실이 덮으면 커서가 포탈에서 벗어나는 걸 못 보므로 손으로 지운다
-      setInRoom(true);
-    };
-  });
 
   /* ── 씬 구성 (1회) ── */
   useEffect(() => {
@@ -1050,19 +971,6 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     const floorW = Math.max(...layout.rowWidths) + 11;
     const floorD = zMax - zMin;
     const floorCz = (zMax + zMin) / 2;
-
-    /* ── 네더 포탈 ────────────────────────────────────────────────────
-       창고 **왼쪽 통로 끝**에 세운다. 작업 통로(z = 0)의 서쪽 끝이라 랙에 가리지 않고,
-       카메라를 어디에 두어도 한 번은 눈에 들어온다.
-       ⚠️ 바닥 가장자리에서 한 칸 안쪽(1.6m)에 둔다. 딱 끝에 세우면 바닥 밖으로 빛무리가
-          삐져나가 허공에 떠 보인다.
-       ⚠️ +x(창고 안쪽)를 보게 돌린다. 밖을 보면 소용돌이가 안 보인다. */
-    const portal = createNetherPortal(THREE, {
-      position: [-floorW / 2 + 1.6, 0, 0],
-      rotationY: Math.PI / 2,
-      scale: 1,
-    });
-    scene.add(portal.group);
 
     /* 바닥 */
     const floorTex = makeFloorTexture(layout, floorW, floorD, floorCz);
@@ -1468,9 +1376,6 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     }
 
     /* 박스 (규격별 InstancedMesh) */
-    /* 입고 적재 시뮬레이션. 아래에서 만들지만 `applyDay` 가 먼저 참조하므로 여기서 선언한다
-       (선언 전에 읽으면 TDZ 로 터진다 — `let` 은 선언 줄을 지나야 읽을 수 있다) */
-    let inboundSim = null;
     const gradeMeshes = {};
     const rngB = mulberry32(1234);
     for (const z of layout.zones) {
@@ -2150,97 +2055,13 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     };
     const cur = { ...OVERVIEW }, des = { ...OVERVIEW };
 
-    /* ── 입고 적재 시뮬레이션 ──────────────────────────────────────────
-       ⚠️ AGV 경로 상수(`sideA`)와 크레인이 만들어진 **뒤에** 세운다. 로봇이 그 통로를 타고
-          가고, 예약 슬롯은 크레인이 서 있는 랙에서 고른다.
-       ⚠️ `applyDay` 가 이 객체를 참조하므로, 첫 `applyDay` 호출보다 먼저 있어야 한다. */
-    /* 시뮬레이션을 카메라가 따라가고 있나.
-       ★ **자리만 따라가고 각도는 사용자에게 남긴다.** 각도까지 붙들면 보고 싶은 쪽을 볼 수
-         없어 답답하고, 자리를 안 따라가면 로봇이 화면 밖으로 나가 버린다. 둘의 절충이다.
-       ⚠️ 화면을 끌거나 확대하면 따라가기를 끈다. 사용자가 손을 댔는데 카메라가 계속
-          제자리로 끌고 가면 "고장난 화면"이 된다. */
-    let followSim = false;
     /* Enter 한 바퀴에서 **출고 구역 정거장**에 서 있는가 (위 `OUTBOUND` 주석 참고).
        ⚠️ 카메라를 전체 보기로 되돌리는 곳에서는 이 값도 함께 내려야 한다. 안 그러면
           더블클릭으로 물러난 뒤 Enter 를 눌렀을 때 그 정거장을 건너뛰고 포스기로 간다. */
     let outboundStage = false;
-    /* 배송 로봇이 통로를 쓰는 중인가. 작업자·AGV 가 이 값을 보고 비켜선다 */
+    /* 배송 로봇이 통로를 쓰는 중인가. 작업자·AGV 가 이 값을 보고 비켜선다 — 입고 적재
+       시뮬레이션이 걷힌 뒤로는 항상 false 다. */
     let corridorBusy = false;
-    /* 시뮬레이션 카메라가 쓰는 값들. 궤도 값(`cur`/`des`)과 따로 두는 이유는 아래 틱의
-       주석 참고 — 궤도 감쇠로는 달리는 목표를 못 따라잡는다 */
-    /* 팝업이 따라다닐 3D 좌표와 남은 시간(초).
-       ⚠️ 리액트 상태가 아니라 이 안의 변수다 — 매 프레임 바뀌는 값이라 상태로 두면
-          초당 60번 다시 그린다. */
-
-    const camPos = new THREE.Vector3();
-    const camLook = new THREE.Vector3();
-    const wantPos = new THREE.Vector3();
-    /* 조준점 — 시뮬레이션이 주는 `focus` 를 **한 번 걸러 낸 값**.
-       ★ 화면이 어지러웠던 진짜 원인이 여기 있었다. `focus` 는 짐 그 자체인데, 포크가
-         뻗고 크레인이 승강할 때마다 짐이 잔떨림을 갖는다. 그것을 그대로 바라보면
-         **떨림이 곧 화면 회전**이 된다 — 사람의 눈은 위치 변화보다 각도 변화에
-         훨씬 예민해서, 몇 cm 의 떨림도 멀미로 온다.
-       ★ 그래서 카메라가 아니라 **보는 대상을 먼저** 안정시킨다. 이 값이 짐을 느리게
-         따라가고, 카메라는 이 값만 본다. 사람이 물건을 눈으로 좇을 때 머리가 물건의
-         잔떨림까지 따라가지 않는 것과 같다.
-       ⚠️ 카메라 **자리를 잡는 기준도 이 값**이어야 한다. 자리는 짐 기준, 시선은 걸러 낸
-         값 기준으로 두면 둘이 어긋나 화면이 미끄러지듯 흔들린다. */
-    const aim = new THREE.Vector3();
-    let filmAz = 0, filmPol = 1.18, filmDist = 3.4;
-
-    inboundSim = createInboundSim(THREE, {
-      scene,
-      layout,
-      gradeMeshes,
-      cranes,
-      /* 로봇이 나오고 돌아가는 자리 — 검수실로 가는 그 포탈이다.
-         ⚠️ 포탈 객체에서 직접 읽는다. 좌표를 여기 한 번 더 적으면 포탈을 옮겼을 때
-            로봇만 옛 자리에서 나온다 */
-      portalPos: [portal.group.position.x, 0, portal.group.position.z],
-      zeroMatrix: ZERO,
-      makeAGV: () => buildAGV({ tote: false }),
-      onStatus: (line) => setSimLine(line),
-      onPlaced: (p) => {
-        setPlaced(p);
-        if (p) audio?.stow();   // 칸에 들어간 그 순간에만 (지울 때는 말고)
-        /* ── 슬롯 반짝임 ────────────────────────────────────────────
-           ★ 물건이 들어간 칸이 잠깐 밝아졌다 가라앉는다 (사용자 요청). 글자 없이도
-             "여기 들어갔다"가 읽힌다.
-           ⚠️ **3D 안에서** 일어난다. 예전 팝업은 화면에 붙어 있어서 카메라가 움직이면
-              겉돌았는데, 인스턴스 색은 그 칸에 붙어 있으므로 카메라를 그대로 따라간다. */
-      },
-      /* 마지막에 카메라가 향할 곳 — 출고 구역 한가운데 (`outZone` 이 정한 자리) */
-      outboundAt: [
-        (outZone(floorW, floorCz).x0 + outZone(floorW, floorCz).x1) / 2,
-        1.4,
-        floorCz,
-      ],
-      /* 배송 로봇이 중앙 통로를 지나는 동안 **작업자와 순환 AGV 를 통로 밖으로 물린다.**
-         셋이 같은 통로를 쓰고 있어서 서로를 뚫고 지나갔다.
-         ⚠️ 멈추지 않고 **비켜서게** 한다. 멈춰 세우면 창고가 죽은 것처럼 보이고 2D 지도의
-            점들도 얼어붙는다. `yieldZ` 만큼 통로 밖으로 밀어 두고, 끝나면 되돌린다. */
-      clearCorridor: (busy) => {
-        corridorBusy = busy;
-      },
-    });
-    simRunRef.current = (items) => {
-      /* ⚠️ 지금 보고 있던 각을 넘겨준다. 도입부가 그 각을 붙들고 시작해야 버튼을 누른
-         순간 화면이 홱 돌지 않는다 (`inbound-sim` 의 `introAz` 참고). */
-      inboundSim.start(items);
-      setSimActive(true);
-      /* ⚠️ 여기가 **버튼을 누른 흐름 안**이라 소리를 켤 수 있다. 자동재생 정책 때문에
-         사용자 동작에서 떨어져 나오면 `AudioContext` 가 조용히 막힌다 */
-      audio?.start();
-      followSim = true;
-      /* 촬영 시작 — 지금 카메라 자리에서 이어 받는다. 0 에서 시작하면 첫 프레임에 카메라가
-         창고 원점으로 순간이동했다가 날아온다 */
-      camPos.copy(camera.position);
-      camLook.set(cur.tx, cur.ty, cur.tz);
-      aim.copy(camLook);   // 0 에서 시작하면 첫 프레임에 창고 원점을 본다
-      filmAz = cur.az;
-      filmPol = cur.pol;
-      filmDist = cur.r;
-    };
 
     const applyCam = () => {
       const t = new THREE.Vector3(cur.tx, cur.ty, cur.tz);
@@ -2262,13 +2083,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
        위한 게이트. 항상 막아 두지 않고 이 플래그로 게이트하는 이유는 onWindowContextMenu
        선언부 옆 주석 참고 */
     let rightDragActive = false;
-    /* 포탈에 마우스가 올라와 있는가. 상태가 아니라 지역 변수다 -
-       매 프레임 읽는 값이라 상태로 두면 초당 60번 리렌더가 돈다.
-       (주의) **쓰는 곳보다 위에** 둔다. `let` 은 선언 줄을 지나기 전에는 읽을 수 없어서,
-          아래 `focusAt`/`onHover` 보다 뒤에 두면 호출 시점에 따라 터진다. */
-    let portalHovered = false;
     /* 마우스가 올라와 있는 작업대 (없으면 null). 매 프레임 읽는 값이라 상태로 두면
-       초당 60번 리렌더가 돈다 — 포탈 쪽과 같은 이유다 */
+       초당 60번 리렌더가 돈다 */
     let hoveredStation = null;
     /* 카메라가 지금 어느 작업대를 들여다보고 있나 (없으면 null).
        ★ 두 단계로 나눈 이유: 멀리서 누르자마자 라우트가 바뀌면, 무엇을 눌렀는지 보지도
@@ -2310,11 +2126,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       );
       ray.setFromCamera(nd, camera);
 
-      /* ★ 포탈을 **먼저** 본다. 포탈 판이 바닥·랙보다 앞에 있어도, 일반 클릭 판정은
-         "가장 가까운 것"을 고르므로 소용돌이의 투명한 부분에서 뒤가 잡힐 수 있다.
-         따로 먼저 검사하면 그 어긋남이 없다. */
-      /* 출고 포스기 — 포탈과 같은 이유로 따로 먼저 검사한다. 클릭 판정용 판이 투명해서
-         일반 판정에 맡기면 뒤에 있는 랙이 잡힌다 */
+      /* 출고 포스기 — 클릭 판정용 판이 투명해서 일반 판정에 맡기면 뒤에 있는 랙이
+         잡힌다. 따로 먼저 검사한다. */
       for (const st of stations) {
         if (ray.intersectObjects(st.pickTargets, false).length === 0) continue;
         if (focusedStation === st) {
@@ -2323,17 +2136,6 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
           setStation(st);
           focusStation(st);             // 처음 눌렀다 → 다가가서 보여 준다
         }
-        return;
-      }
-
-      const portalHit = ray.intersectObjects(portal.pickTargets, false);
-      if (portalHit.length > 0) {
-        /* 호버 상태를 손으로 되돌린다. 이제 화면이 검수실로 덮이므로 마우스가 포탈에서
-           벗어나는 순간을 못 본다 — 그대로 두면 돌아온 뒤에도 커서가 계속 손 모양이고,
-           툴팁도 "이미 올라와 있다"고 여겨 다시 안 뜬다. */
-        portalHovered = false;
-        el.style.cursor = "";
-        onEnterPortalRef.current?.();
         return;
       }
 
@@ -2355,14 +2157,13 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       setStation(null);   // 다른 데를 봤으면 작업대에서 눈을 뗀 것이다
     };
     const onDown = (e) => {
-      followSim = false;   // 사용자가 손을 댔다 (위 `followSim` 주의 참고)
       ptrs.set(e.pointerId, [e.clientX, e.clientY]);
       el.setPointerCapture(e.pointerId);
       clickInfo = ptrs.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
       if (e.button === 2) rightDragActive = true;
     };
-    /* 마우스가 포탈 위에 있는지 본다. 끌고 있는 중에는 보지 않는다 —
-       화면을 돌리는 동안 커서가 포탈을 스쳐도 반응하면 안 된다 */
+    /* 마우스가 작업대 위에 있는지 본다. 끌고 있는 중에는 보지 않는다 —
+       화면을 돌리는 동안 커서가 작업대를 스쳐도 반응하면 안 된다 */
     const onHover = (e) => {
       if (ptrs.size > 0) return;
       const rect = el.getBoundingClientRect();
@@ -2375,30 +2176,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       const overStation = stations.find((st) => ray.intersectObjects(st.pickTargets, false).length > 0) ?? null;
       if (overStation !== hoveredStation) {
         hoveredStation = overStation;
-        if (overStation) el.style.cursor = "pointer";
+        el.style.cursor = overStation ? "pointer" : "";
       }
-
-      const next = ray.intersectObjects(portal.pickTargets, false).length > 0;
-      if (next === portalHovered) {
-        if (!next && !hoveredStation) el.style.cursor = "";
-        return; // 바뀔 때만 알린다
-      }
-
-      portalHovered = next;
-      el.style.cursor = next ? "pointer" : "";
-
-      /* (경고) 화면 좌표를 그대로 넘기면 안 된다. 이 앱은 1600x1004 고정 무대를
-         `transform: scale()` 로 줄여 놓았고, 툴팁은 그 무대 **안에** 놓인다. 무대 안에서는
-         길이 단위가 배율만큼 다르므로, 루트 상자 기준으로 되돌리고 배율로 나눠 준다. */
-      const root = rootRef.current;
-      let x = e.clientX, y = e.clientY;
-      if (root) {
-        const rr = root.getBoundingClientRect();
-        const k = root.offsetWidth > 0 ? rr.width / root.offsetWidth : 1;
-        x = (e.clientX - rr.left) / (k || 1);
-        y = (e.clientY - rr.top) / (k || 1);
-      }
-      onPortalHoverRef.current?.(next, x, y, root ? root.offsetWidth : 0);
     };
     el.addEventListener("pointermove", onHover);
 
@@ -2466,30 +2245,6 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       /* 글자를 치고 있는 중이면 언제나 넘긴다 — 카메라가 남의 타자를 가로채면 안 된다 */
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
-      /* ── 시뮬레이션에서 빠져나오기 ────────────────────────────────
-         ★ 적재가 끝나면 `outro` 가 출고 쪽을 비춘 채 멈추는데, 그동안에도 카메라는
-           시뮬레이션 것이다(`running` 이 참으로 남는다). 놓아 주지 않으면 아래에서
-           `des` 를 바꿔 봐야 매 프레임 덮어써진다.
-         ⚠️ **버튼 걸러내기보다 먼저** 와야 한다. 시뮬레이션을 버튼으로 시작하면 그
-            버튼에 포커스가 남고, Enter 는 브라우저가 그 버튼의 클릭으로 바꿔 보낸다 —
-            나가려고 누른 Enter 가 시뮬레이션을 **다시 시작**시켰다. 여기서 가로채고
-            `preventDefault` 로 그 클릭 합성을 막는다.
-         ⚠️ 여기서 **돌아간다.** 같은 Enter 로 포스기까지 한 번에 가면 빠져나온 창고
-            화면을 보지도 못하고 다음 곳으로 끌려간다. 한 번 더 누르면 그때 간다.
-         ⚠️ 시뮬레이션이 매 프레임 지금 카메라를 `cur`/`des` 에 되받아 적어 두므로,
-            `des` 만 전체 보기로 바꾸면 서 있던 자리에서 부드럽게 물러난다. */
-      if (followSim || inboundSim?.running) {
-        e.preventDefault();
-        inboundSim?.finish();
-        followSim = false;
-        setSimActive(false);
-        audio?.stop();
-        setStation(null);
-        outboundStage = false;   // 시뮬레이션에서 나오면 한 바퀴를 처음부터
-        exterior.setDeparting(false);
-        Object.assign(des, OVERVIEW);
-        return;
-      }
 
       if (tag === "BUTTON") return;   // 평소에는 버튼이 Enter 를 먼저 가진다
       e.preventDefault();
@@ -2526,7 +2281,6 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       /* ⚠️ 확대도 따라가기를 끈다. 시뮬레이션이 거리를 매 프레임 잡고 있어서, 켜 둔 채
          휠을 돌리면 두 값이 서로 밀며 화면이 떤다. 손을 대면 카메라를 넘겨주는 쪽이 맞다. */
       /* 손을 대면 조작이 필요해진다 — 감춰 둔 패널을 돌려준다 */
-      followSim = false;
       setSimActive(false);
       des.r = Math.min(58, Math.max(6, des.r * (1 + e.deltaY * 0.0011)));
     };
@@ -2550,11 +2304,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         const series = REAL_INV[g.invKey];
         const occ = Math.min(0.99, Math.max(0.015, (series[d] / INV_PEAK[g.invKey]) * 0.95));
         const n = Math.round(occ * gm.total);
-        /* ⚠️ 입고 시뮬레이션이 예약한 칸은 건너뛴다. 안 그러면 날짜 슬라이더를 움직이는
-           순간 방금 로봇이 넣은 상자가 그 자리에서 사라진다 (`inbound-sim.js` 의 같은 주의). */
-        const skip = inboundSim?.reserved.get(g.id);
         for (let i = 0; i < gm.total; i++) {
-          if (skip?.includes(i)) continue;
           gm.im.setMatrixAt(i, gm.rank[i] < n ? gm.mats[i] : ZERO);
         }
         gm.im.instanceMatrix.needsUpdate = true;
@@ -2597,13 +2347,10 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       for (const w of workers) {
         const s = w.s, m = w.m;
         if (s.mode === "walk") {
-          /* ★ 배송 로봇과 마주치게 생기면 **돌아선다** (사용자 지적 — 막힌 길이면
-               돌아가야 한다). 옆으로 비키는 것만으로는 좁은 통로에서 정면으로 스쳐
-               지나가는 그림이 나온다.
-             ⚠️ 로봇은 통로를 **+x 로만** 간다. 그래서 정면으로 부딪히는 경우는 작업자가
-                -x 로 걸을 때뿐이다. 돌아서는 방향을 +x 한쪽으로 고정해야 로봇이 지나간
-                뒤에 다시 돌아서는 제자리걸음이 안 생긴다. */
-          const botX = corridorBusy ? inboundSim?.botX : undefined;
+          /* ★ 배송 로봇과 마주치게 생기면 **돌아선다** — 막힌 길이면 돌아가야 한다.
+               지금은 배송 로봇이 지나가는 장면이 없어 `corridorBusy` 가 항상 false 라
+               이 분기는 실행되지 않는다(통로를 쓰는 다른 기능이 생기면 되살아난다). */
+          const botX = undefined;
           if (botX !== undefined && s.dir < 0 && botX < s.x && s.x - botX < 3.4) s.dir = 1;
           s.x += s.dir * s.speed * dt;
           if (s.x > patrolBound) { s.x = patrolBound; s.dir = -1; }
@@ -2808,118 +2555,17 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
          ⚠️ 움직이는 것들을 **카메라보다 먼저** 갱신한다. 예전에는 렌더 뒤에 있어서 카메라가
             늘 **한 프레임 전의 자리**를 보고 있었다 — 초당 60프레임이면 6.2m/s 로 달리는
             로봇이 매 프레임 10cm 씩 앞서 나간다. 화면이 못 따라오는 것처럼 보이던 원인이다. */
-      portal.update(dt, portalHovered);   // dt 는 위에서 이미 0.05 로 잘려 있다
       exterior.update(dt);   // 도크 상차 장면 (뒷문·롤러·피글린)
       for (const st of stations) st.update(dt, st === hoveredStation, st === focusedStation);
-      inboundSim?.update(dt);
 
-      if (inboundSim?.running && followSim) {
-        /* ── 시뮬레이션 카메라 (영화처럼) ────────────────────────────
-           ★ 궤도 컨트롤(`des` → `cur` 감쇠)을 **거치지 않고 카메라를 직접 몬다.** 그 감쇠는
-             프레임마다 9% 씩 좁히는 고정 비율이라, 목표가 가만히 있을 때는 부드럽지만
-             목표가 매 프레임 도망가면 영원히 따라잡지 못한다. 실제로 화면이 뒤처져 보였다.
-           ★ 대신 **지수 감쇠**를 쓴다: `1 - exp(-k·dt)`. 프레임률이 달라져도 같은 시간에
-             같은 만큼 좁혀지고, k 를 크게 잡아 바짝 붙일 수 있다.
-           ⚠️ 카메라가 볼 점과 설 자리를 따로 감쇠한다. 보는 쪽을 더 빠르게(k 6) 해야 시선이
-              짐에 붙어 있고, 자리를 느리게(k 3) 해야 카메라가 미끄러지듯 따라온다. 둘을 같은
-              값으로 두면 딱딱한 리그에 매단 것처럼 보인다.
-           ⚠️ 이 값도 함께 낮췄다. 자리만 느리고 목표가 빠르면 카메라가 늘 뒤처진 채 끌려가는데,
-              그 어긋남이 화면을 흔들리게 만든다 — 두 값은 같이 움직여야 한다. */
-        const cam = inboundSim.cam;
-        const f = inboundSim.focus;
-
-        /* 각도·거리·높이 모두 시뮬레이션이 장면에 맞게 정해 준다(`inbound-sim` 의 `cam`).
-           여기서는 **옮기기만** 한다 — 장면이 바뀌면 값이 갈리고, 그 사이를 이 감쇠가
-           이어 주므로 컷이 아니라 카메라가 걸어서 옮겨 가는 그림이 된다.
-           ★ 계수를 절반 아래로 낮췄다 (사용자 요청 — 화면이 정신없다). 1.0~1.1 이면 한 장면에서
-             다음 장면으로 옮겨 가는 데 2~3초가 걸린다. 그 느림이 곧 "내려앉는다 / 올라간다"는
-             동작으로 읽힌다 — 빠르면 그냥 순간이동이고, 이 화면의 어지러움이 거기서 왔다.
-           ⚠️ 각도를 거리보다 조금 더 느리게 옮긴다(1.0 : 1.1). 방향이 먼저 홱 돌면 장면이
-              바뀐 게 아니라 카메라가 튄 것처럼 보인다. */
-        /* ★ 짐이 빨라진 만큼(`inbound-sim` 의 속도 주석) 계수를 함께 올렸다: 1.0/1.1 → 1.3/1.4.
-             짐만 빨라지면 카메라가 뒤처진 채 끌려가고, 그 어긋남이 곧 어지러움이다. */
-        /* ★ 각도·거리를 **감쇠하지 않고 그대로 쓴다** (사용자 지적 — 마지막 적재에서 시야가
-             슬롯을 통과한다).
-             원인이 여기 있었다. 통로(az -π/2)에서 골목(az ≈ 0)으로 각을 서서히 돌리면,
-             그 **중간 각들이 만드는 자리**가 통로도 골목도 아닌 랙 한가운데다 — 구면 좌표를
-             보간하면 카메라가 호를 그리며 지나가기 때문이다. 자리를 직선으로 옮기면 그런
-             중간 지점이 안 생긴다.
-           ⚠️ 부드러움은 여기서 만들지 않는다. 아래 `camPos.lerp` 가 **직선으로** 따라가고,
-              `aim` 이 시선을 걸러 준다 — 두 겹이면 충분하다. */
-        filmAz = cam.az;
-        filmDist = cam.dist;
-        filmPol = cam.pol;
-
-        /* 짐의 잔떨림을 먼저 걸러 낸다 (위 `aim` 주석 참고). 카메라 자리와 시선이 **둘 다**
-           이 값을 기준으로 잡혀야 어긋나지 않는다 */
-        /* ── 위아래는 더 빨리 따라간다 ─────────────────────────────
-           ★ 크레인이 짐을 올릴 때 화면이 뒤늦게 따라 올라갔다 (사용자 지적). 크레인은
-             3.6m/s 로 오르는데 감쇠 2.4 는 90% 따라잡는 데 1초가 걸려서, 짐이 화면 위로
-             빠져나갔다가 뒤늦게 가운데로 돌아온다.
-           ⚠️ 그렇다고 **전체를 빠르게 하면 안 된다.** 예전에 어지럽다고 한 원인이 가로
-              방향의 급한 추적이었다. 크레인 승강은 세로 한 축뿐이므로, **y 만** 빠르게
-              하고 x·z 는 그대로 둔다 — 흔들림은 가로에서 오고 지연은 세로에서 왔다. */
-        const kA = 1 - Math.exp(-2.4 * dt), kAy = 1 - Math.exp(-5.0 * dt);
-        aim.x += (f.x - aim.x) * kA;
-        aim.z += (f.z - aim.z) * kA;
-        aim.y += (f.y - aim.y) * kAy;
-
-        const sinP = Math.sin(filmPol);
-        wantPos.set(
-          aim.x + filmDist * sinP * Math.sin(filmAz),
-          aim.y + filmDist * Math.cos(filmPol),
-          aim.z + filmDist * sinP * Math.cos(filmAz),
-        );
-        /* ⚠️ 카메라가 내려갈 수 있는 **바닥 높이**를 지킨다. 각을 낮추면 화면이 훨씬
-           현장 같아지지만, 구역 통로(폭 1.7m, 양쪽이 랙) 옆에서는 그대로 선반을 뚫는다.
-           얼마까지 내려가도 되는지는 지금 무엇을 보는지 아는 쪽이 안다 — `cam.minY` 다. */
-        if (wantPos.y < cam.minY) wantPos.y = cam.minY;
-        /* ★ 골목에서 빠져나오는 동안은 **x 를 붙든다** (`inbound-sim` 의 `EXIT_HOLD` 참고).
-             카메라 자리를 직선으로 당기다 보니, 골목에서 통로로 나오는 것과 다음 구역으로
-             x 를 옮기는 것이 겹쳐 그 대각선이 사이의 랙을 관통했다. x 를 잠깐 묶어 두면
-             통로로 먼저 나온 다음에 통로를 타고 옮겨 간다 — 사람이 걷는 길과 같다. */
-        if (cam.corridorFirst) wantPos.x = camPos.x;
-        /* ★ 반대로 **들어갈 때는 z 를 붙든다** (`inbound-sim` 의 `ENTER_HOLD` 참고).
-             통로를 따라 그 골목의 x 까지 먼저 가고, 거기서 꺾어 들어간다. 안 붙들면
-             통로에서 골목 깊숙한 곳까지 대각선으로 질러가며 랙 줄을 관통한다. */
-        if (cam.alignFirst) wantPos.z = camPos.z;
-        /* ★ 자리와 시선의 감쇠를 **거의 같게** 맞췄다 (3.0 / 6.0 → 2.0 / 2.6). 시선이
-             자리보다 두 배 빠르면, 카메라가 아직 옮겨 가는 중에 고개만 먼저 홱 돌아간다
-             — 그 어긋남이 "화면이 미끄러진다"는 느낌의 정체다. 사람이 걸으며 무엇을 볼
-             때 머리와 몸은 거의 같은 속도로 돈다.
-           ⚠️ 느리게 잡을수록 부드럽지만 그만큼 뒤처진다. 2.0 이면 90% 따라잡는 데
-              1.15초 — 짐이 6.2m/s 로 가도 화면 안에 남는다. */
-        const kP = 1 - Math.exp(-2.0 * dt), kPy = 1 - Math.exp(-4.4 * dt);
-        camPos.x += (wantPos.x - camPos.x) * kP;
-        camPos.z += (wantPos.z - camPos.z) * kP;
-        camPos.y += (wantPos.y - camPos.y) * kPy;
-        const kL = 1 - Math.exp(-2.6 * dt), kLy = 1 - Math.exp(-5.4 * dt);
-        camLook.x += (aim.x - camLook.x) * kL;
-        camLook.z += (aim.z - camLook.z) * kL;
-        camLook.y += (aim.y - camLook.y) * kLy;
-        camera.position.copy(camPos);
-        camera.lookAt(camLook);
-
-        /* 끝나는 순간 궤도가 엉뚱한 자리에서 이어지지 않게, 지금 카메라를 궤도 값으로
-           **되돌려 적어 둔다.** 이렇게 해 두면 시뮬레이션이 끝나도 화면이 튀지 않는다 */
-        const off = camPos.clone().sub(camLook);
-        cur.r = des.r = Math.max(0.5, off.length());
-        cur.pol = des.pol = Math.acos(Math.min(1, Math.max(-1, off.y / cur.r)));
-        cur.az = des.az = Math.atan2(off.x, off.z);
-        cur.tx = des.tx = camLook.x;
-        cur.ty = des.ty = camLook.y;
-        cur.tz = des.tz = camLook.z;
-      } else {
-        if (!inboundSim?.running) followSim = false;
-        /* 카메라 감쇠 (평소) */
-        cur.az += (des.az - cur.az) * 0.09;
-        cur.pol += (des.pol - cur.pol) * 0.09;
-        cur.r += (des.r - cur.r) * 0.09;
-        cur.tx += (des.tx - cur.tx) * 0.09;
-        cur.ty += (des.ty - cur.ty) * 0.09;
-        cur.tz += (des.tz - cur.tz) * 0.09;
-        applyCam();
-      }
+      /* 카메라 감쇠 (평소) */
+      cur.az += (des.az - cur.az) * 0.09;
+      cur.pol += (des.pol - cur.pol) * 0.09;
+      cur.r += (des.r - cur.r) * 0.09;
+      cur.tx += (des.tx - cur.tx) * 0.09;
+      cur.ty += (des.ty - cur.ty) * 0.09;
+      cur.tz += (des.tz - cur.tz) * 0.09;
+      applyCam();
 
       /* ── 슬롯 팝업 자리 ──
          3D 의 한 점을 화면 좌표로 옮긴다: `project` 가 -1~1 의 정규화 좌표를 주므로 화면
@@ -2946,10 +2592,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
 
     return () => {
       el.removeEventListener("pointermove", onHover);
-      portal.dispose();
       exterior.dispose();
       for (const st of stations) st.dispose();
-      inboundSim?.dispose();
       cancelAnimationFrame(raf);
       ro.disconnect();
       el.removeEventListener("pointerdown", onDown);
@@ -2961,13 +2605,10 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("contextmenu", onWindowContextMenu);
-      audio?.stop();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-    /* `audio` 는 `useState` 초기화로 한 번만 만들어져 바뀌지 않는다 — 넣어도 씬을
-       다시 만들지 않는다 */
-  }, [audio]);
+  }, []);
 
   useEffect(() => { apiRef.current?.applyDay(day); }, [day]);
   useEffect(() => {
@@ -3361,19 +3002,6 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
                 <button className="w98-btn" onClick={() => { setTab("map"); setSel(null); apiRef.current?.setHighlight(null); }}>◀ 지도</button>
                 <button className="w98-btn" onClick={() => { setSel(null); apiRef.current?.setHighlight(null); apiRef.current?.resetView(); }}>전체 보기</button>
                 <span style={{ fontWeight: "bold", marginLeft: 4 }}>3D VIEW — {sel ? GRADES.find((g) => g.id === sel)?.name : "전체"}</span>
-                {/* 입고 적재 시뮬레이션 — 입고 화면에서 넘어오지 않았을 때 손으로 돌리는 길 */}
-                <button
-                  className="w98-btn"
-                  style={{ marginLeft: "auto" }}
-                  /* ⚠️ 누른 뒤 **포커스를 놓는다.** 안 놓으면 이 버튼이 Enter 를 계속
-                     물고 있어서, 시뮬레이션에서 나가려고 누른 Enter 가 이 버튼을 다시
-                     눌러 처음부터 되돌린다. 위 `onKey` 에서도 막지만, 애초에 영화가
-                     시작된 뒤에 시작 버튼이 포커스를 쥐고 있을 이유가 없다. */
-                  onClick={(e) => { e.currentTarget.blur(); simRunRef.current?.(DEMO_ITEMS); }}
-                  title="상품 3건을 입고 문에서 받아 등급별 슬롯까지 적재한다"
-                >
-                  ▶ 입고 적재 시뮬레이션
-                </button>
               </div>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');
