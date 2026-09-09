@@ -68,8 +68,6 @@ export default function PackingV2Page() {
    * 포장 완료 순간 배송단위가 사라지면서 **닫히는 동작을 볼 새가 없다**.
    */
   const [isLidOpen, setIsLidOpen] = useState(false);
-  /* 포장이 끝나 상자를 실어 보내는 중인가 — 3D 쪽이 이 값을 보고 피글린을 들여보낸다 */
-  const [isShipping, setIsShipping] = useState(false);
   /**
    * 어느 3D 모델을 띄울 것인가 — 둘을 눈으로 비교하려고 둔 전환이다 (사용자 요청).
    * ⚠️ 화면 상태일 뿐 계약과 무관하다. 어느 쪽을 쓸지 정해지면 이 상태와 헤더 버튼을 지우고
@@ -252,7 +250,6 @@ export default function PackingV2Page() {
   const handleComplete = useCallback(() => {
     if (shipment === undefined) return;
     setIsLidOpen(false);
-    setIsShipping(true);
     completePacking.mutate(shipment.shipmentId, {
       onSuccess: (result) => {
         toast.success(
@@ -260,7 +257,6 @@ export default function PackingV2Page() {
           w98Toast.success,
         );
         window.setTimeout(() => {
-          setIsShipping(false);
           setShipmentId(null);
           setBarcode("");
           setActualQty({});
@@ -389,7 +385,6 @@ export default function PackingV2Page() {
               innerCm={effectiveBox?.innerCm ?? null}
               name={effectiveBox ? boxLabel(effectiveBox.name) : null}
               lidOpen={isLidOpen}
-              shipAway={isShipping}
               pigs={activeModel.pigs ?? false}
               className="min-h-0 flex-1"
             />
@@ -452,13 +447,9 @@ export default function PackingV2Page() {
  * ⚠️ `_components/chest-3d.tsx` 의 LID_SECONDS 와 같은 값이어야 한다 — 여기가 더 짧으면
  *    닫히다 만 채로 상자가 사라지고, 더 길면 다 닫힌 상자를 멀뚱히 보고 있게 된다.
  */
-/* 포장 완료를 누르고 화면을 비우기까지 기다리는 시간.
-   ★ 1900 → **5600ms**. 뚜껑이 닫히고(약 1.2초) 피글린이 오른쪽에서 걸어와(약 1.4초) 상자를
-     밀고 왼쪽으로 사라지기까지(약 2.6초) 걸리는 시간이다. 예전 값으로 두면 배송단위가
-     먼저 지워지면서 상자가 통째로 언마운트돼, 밀려 나가는 장면이 중간에 끊긴다.
-   ⚠️ 이 값은 `box-3d-viewer` 의 실어 보내기 장면과 짝이다. 그쪽 속도(`SHIP`)를 바꾸면
-      여기도 같이 늘려야 한다. */
-const LID_CLOSE_MS = 5600;
+/* 포장 완료를 누르고 화면을 비우기까지 기다리는 시간 — 뚜껑이 다 닫힐 때까지(약 1.9초)다.
+   먼저 지워지면 배송단위가 사라지면서 상자가 통째로 언마운트돼, 닫히는 장면이 중간에 끊긴다. */
+const LID_CLOSE_MS = 1900;
 
 /* ── 3D 모델 ────────────────────────────────────────────────────────────────
    둘 다 **코드로 만든다** — GLB 파일을 쓰지 않는다 (사용자 요청: 크랙 없애기).

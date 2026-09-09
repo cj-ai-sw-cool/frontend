@@ -7,7 +7,6 @@ import {
   buildLowPolyChest,
   type LowPolyBox,
 } from "./low-poly-boxes";
-import { createPiglin } from "./piglin";
 import { w98 } from "./win98-ui";
 
 /**
@@ -41,7 +40,6 @@ export function Box3DViewer({
   innerCm,
   name,
   lidOpen,
-  shipAway = false,
   pixelScale = 3,
   decalUrl,
   pigs = false,
@@ -83,15 +81,6 @@ export function Box3DViewer({
    */
   lidOpen: boolean;
   /**
-   * 포장이 끝나 **상자를 실어 보낼 때** 참이 된다.
-   *
-   * 뚜껑이 닫히고 테이프가 붙은 뒤, 좀비화 피글린이 오른쪽에서 걸어와 상자를 왼쪽으로
-   * 밀고 함께 화면 밖으로 나간다.
-   * ⚠️ 이 동작이 끝날 때까지 이 컴포넌트가 살아 있어야 한다. `page.tsx` 가 배송단위를
-   *    비우면 상자가 통째로 언마운트되므로, 그쪽 `LID_CLOSE_MS` 가 이 시간보다 길어야 한다.
-   */
-  shipAway?: boolean;
-  /**
    * 몇 배로 축소해 그릴 것인가 = **도트의 굵기**. 1 이면 도트 없이 또렷하게 그린다.
    * 마크 상자는 굵게(3), 택배 상자는 1 — 골판지가 도트로 보이면 택배 상자가 아니다.
    */
@@ -123,8 +112,6 @@ export function Box3DViewer({
   const spill = pigs ? PIG_SPILL : SPILL;
   /** 뚜껑을 여닫는 손잡이. 3D 쪽이 채워 주고, lidOpen 과 더블클릭이 같이 쓴다 */
   const setLidRef = useRef<((open: boolean) => void) | null>(null);
-  /* 상자를 실어 보내는 장면을 시작하는 손잡이. 3D 쪽이 채운다 */
-  const shipRef = useRef<(() => void) | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "failed">(
     "loading",
   );
@@ -1996,157 +1983,15 @@ type Tape = {
         const reduceMotion = window.matchMedia(
           "(prefers-reduced-motion: reduce)",
         ).matches;
-        /* ── 상자를 실어 보내는 장면 ────────────────────────────────────
-           오른쪽 밖에서 피글린이 걸어와 상자에 닿으면, 둘이 함께 왼쪽으로 밀려 나간다.
-           ★ 사람 실제 비율(상자의 네 배)로 두면 이 작은 칸을 통째로 먹는다. 상자보다
-             조금 큰 정도로 줄여, 미는 사람인 것만 읽히게 한다.
-           ⚠️ 미는 동안 상자의 자동 회전을 멈춘다. 밀려 나가면서 제자리 회전까지 하면
-              밀리는 것이 아니라 굴러가는 것으로 보인다. */
-        const hauler = createPiglin(THREE, 1.25);
-        hauler.grp.visible = false;
-        hauler.grp.rotation.y = -Math.PI / 2;   // 왼쪽(-x)을 보고 선다
-        hauler.lArm.rotation.x = -1.35;         // 두 팔로 민다
-        hauler.rArm.rotation.x = -1.35;
-        scene.add(hauler.grp);
-
-        /* ⚠️ 이 값들이 `page.tsx` 의 `LID_CLOSE_MS`(5600) 안에 들어가야 한다. 지금은
-           대기 1.20 + 걸어오기 1.35 + 밀어내기 1.74 = 4.29초로 1.3초 남는다.
-           미는 속도를 늦추면 그만큼 저쪽도 늘려야 장면이 중간에 끊기지 않는다. */
-        const SHIP = { start: 2.1, reach: 0.62, exit: -2.0, walk: 1.1, push: 1.15 };
-        let shipPhase: "idle" | "walk" | "push" | "done" = "idle";
-        let shipStep = 0;   // 걸음 위상
-
-        /* ── 발자국 ─────────────────────────────────────────
-           ★ 밀고 나가는 동안 발자국이 찍힌다 (사용자 요청). 흰 화면에 피글린만 미끄러지듯
-             지나가면 걷는 것이 아니라 떠서 가는 것으로 보인다 — 발이 땅에 닿는 박자를
-             남겨 주는 것만으로 무게가 생긴다.
-           ⚠️ 피글린은 `rotation.y = -π/2` 로 서 있다. 두 발의 좌우 간격은 월드에서 **z 축**
-              으로 벌어진다 — x 로 벌리면 앞뒤로 겹쳐 한 줄로 찍힌다.
-           ⚠️ 미리 만들어 두고 **돌려 쓴다.** 한 번 지나갈 때 열 개 남짓이라 큰 차이는
-              아니지만, 재질을 프레임마다 만들면 그때마다 셰이더가 새로 컴파일된다. */
-        const stepTexture = (() => {
-          const canvas = document.createElement("canvas");
-          canvas.width = 64;
-          canvas.height = 64;
-          const c = canvas.getContext("2d")!;
-          c.fillStyle = "#6b4b2e";
-          /* 고양이 발바닥 — 발가락 젤리 네 개가 부채꼴로 앞에, 그 뒤에 큰 발바닥 하나.
-             ⚠️ 발가락은 바깥쪽 둘을 **기울여** 심는다. 넷을 나란히 두면 발이 아니라
-                단추 네 개로 보인다 — 부채꼴로 벌어져야 발가락으로 읽힌다. */
-          const beans: [number, number, number, number, number][] = [
-            [15, 24, 6.0, 7.4, -0.55],   // 새끼발가락
-            [27, 15, 6.4, 8.0, -0.18],
-            [40, 15, 6.4, 8.0, 0.18],
-            [52, 24, 6.0, 7.4, 0.55],
-            [33, 45, 15.5, 13.0, 0],     // 발바닥
-          ];
-          for (const [cx, cy, rx, ry, tilt] of beans) {
-            c.beginPath();
-            c.ellipse(cx, cy, rx, ry, tilt, 0, Math.PI * 2);
-            c.fill();
-          }
-          const t = new THREE.CanvasTexture(canvas);
-          t.colorSpace = THREE.SRGBColorSpace;
-          return t;
-        })();
-        const STEP_LIFE = 1.1;   // 발자국이 남아 있는 시간(초)
-        const stepGeo = new THREE.PlaneGeometry(0.19, 0.22);
-        const steps = Array.from({ length: 14 }, () => {
-          const mat = new THREE.MeshBasicMaterial({
-            map: stepTexture, transparent: true, opacity: 0, depthWrite: false,
-          });
-          const mesh = new THREE.Mesh(stepGeo, mat);
-          mesh.rotation.x = -Math.PI / 2;   // 바닥에 눕는다
-          mesh.visible = false;
-          scene.add(mesh);
-          return { mesh, mat, life: 0 };
-        });
-        let stepNext = 0;    // 다음에 쓸 자리 (가장 오래된 것부터 덮어쓴다)
-        let stepBeat = -1;   // 마지막으로 찍은 걸음 번호 (shipStep = 0 에서의 값이 -1 이다)
-        const dropStep = (x: number, side: number) => {
-          const s = steps[stepNext % steps.length]!;
-          stepNext += 1;
-          s.mesh.position.set(x, -0.499, side * 0.08);
-          /* ⚠️ 발가락이 **걸어가는 쪽**을 봐야 한다. 판을 눕히면(`rotation.x = -π/2`)
-             그림의 위쪽이 월드 -z 를 향하는데, 피글린은 -x 로 걷는다. 판 안에서 90°
-             더 돌려야 발가락이 진행 방향으로 선다 — 안 돌리면 발자국이 옆을 보고 찍힌다. */
-          s.mesh.rotation.z = Math.PI / 2 + side * 0.12;   // 발끝을 살짝 바깥으로
-          s.mesh.visible = true;
-          s.life = STEP_LIFE;
-        };
-        const advanceSteps = (delta: number) => {
-          for (const s of steps) {
-            if (s.life <= 0) continue;
-            s.life -= delta;
-            if (s.life <= 0) { s.mesh.visible = false; s.mat.opacity = 0; continue; }
-            const k = s.life / STEP_LIFE;
-            s.mat.opacity = k * 0.55;
-            /* 찍힐 때 살짝 퍼졌다가 가라앉는다 — "샥" 하는 박자는 크기 변화에서 나온다 */
-            s.mesh.scale.setScalar(1.18 - 0.18 * k);
-          }
-        };
-
-        const startShip = () => {
-          if (shipPhase !== "idle") return;
-          hauler.grp.position.set(SHIP.start, -0.5, 0);
-          hauler.grp.visible = true;
-          /* ⚠️ 상자를 제자리로 되돌린다. 한 화면에서 두 번 포장하면(다음 배송단위를 스캔)
-             지난번에 밀려 나간 자리에서 시작해, 시작하자마자 사라진 것처럼 보인다 */
-          pivot.position.x = 0;
-          pivot.visible = true;
-          /* ⚠️ 지난번 발자국을 지운다. 안 지우면 두 번째 포장에서 아무도 걷지 않은
-               자리에 먼저 발자국이 남아 있다 */
-          for (const st of steps) { st.life = 0; st.mesh.visible = false; st.mat.opacity = 0; }
-          stepBeat = Math.floor((shipStep - Math.PI / 2) / Math.PI);
-          shipPhase = "walk";
-        };
-        shipRef.current = startShip;
-
-        const advanceShip = (delta: number) => {
-          if (shipPhase === "idle" || shipPhase === "done") return;
-          const speed = shipPhase === "walk" ? SHIP.walk : SHIP.push;
-          hauler.grp.position.x -= speed * delta;
-          /* 걸음 — 다리는 서로 반대로, 속도에 맞춰 흔든다. 미는 동안에는 보폭을 줄인다 */
-          shipStep += delta * (shipPhase === "walk" ? 9 : 6);
-          const swing = Math.sin(shipStep) * (shipPhase === "walk" ? 0.7 : 0.45);
-          /* 발이 땅에 닿는 순간에만 찍는다 — 다리가 가장 앞으로 나간 때(위상 π/2)가
-             발뒤꿈치가 닿는 자리다. 매 프레임 찍으면 발자국이 아니라 줄이 된다.
-             ⚠️ 위상을 반바퀴(π)로 나눠 **칸이 바뀔 때**를 잡는다. `sin` 값을 직접 보면
-                그 근처에서 여러 프레임 연속으로 걸려 같은 자리에 겹쳐 찍힌다. */
-          const beat = Math.floor((shipStep - Math.PI / 2) / Math.PI);
-          if (beat > stepBeat) {
-            stepBeat = beat;
-            /* 땅에 닿는 발은 몸보다 앞에 있다. 피글린은 -x 로 걸으므로 앞은 작은 x 다 */
-            dropStep(hauler.grp.position.x - 0.26, beat % 2 === 0 ? -1 : 1);
-          }
-          hauler.lLeg.rotation.x = swing;
-          hauler.rLeg.rotation.x = -swing;
-          if (shipPhase === "walk") {
-            if (hauler.grp.position.x <= SHIP.reach) shipPhase = "push";
-            return;
-          }
-          pivot.position.x -= speed * delta;   // 상자가 함께 밀려 나간다
-          /* ⚠️ 둘을 **같은 순간에** 감춘다. 상자는 피글린보다 한 걸음 앞서 가므로, 각자
-             자기 자리에서 사라지게 두면 하나가 먼저 없어지고 다른 하나만 남아 어색하다.
-             기준은 **앞서 가는 상자**다 — 상자가 왼쪽 끝을 넘는 순간이 장면의 끝이다. */
-          if (pivot.position.x <= SHIP.exit) {
-            shipPhase = "done";
-            hauler.grp.visible = false;
-            pivot.visible = false;
-          }
-        };
-
         const clock = new THREE.Clock();
         let frame = 0;
 
         const tick = () => {
           frame = requestAnimationFrame(tick);
           const delta = clock.getDelta();
-          if (!touched && !reduceMotion && shipPhase === "idle") pivot.rotation.y += delta * 0.35;
+          if (!touched && !reduceMotion) pivot.rotation.y += delta * 0.35;
           advanceLid(delta);
           advancePigs(delta);
-          advanceShip(delta);
-          advanceSteps(delta);
           renderer.render(scene, camera);
         };
         tick();
@@ -2158,9 +2003,6 @@ type Tape = {
           surface.removeEventListener("pointermove", onMove);
           surface.removeEventListener("pointerup", onUp);
           surface.removeEventListener("pointercancel", onUp);
-          shipRef.current = null;
-          hauler.dispose();
-          stepTexture.dispose();   // 캔버스 텍스처라 씬 정리에 안 걸린다 (테이프와 같은 이유)
           mixer.stopAllAction();
           lowPoly?.dispose();
           // 테이프 결은 캔버스로 만든 텍스처라 씬 정리에 안 걸린다 — 따로 버린다
@@ -2232,17 +2074,6 @@ type Tape = {
   useEffect(() => {
     if (status === "ready") onReady?.();
   }, [status, onReady]);
-
-  /* 포장 완료 → 뚜껑이 닫히고 테이프가 붙은 **뒤에** 실어 보내는 장면을 시작한다.
-     ⚠️ 곧바로 시작하면 안 된다. 뚜껑이 닫히는 데 시간이 걸리는데, 그 사이에 피글린이
-        들어오면 열린 상자를 밀고 나가는 그림이 된다. 닫히는 시간만큼 기다렸다 부른다.
-     ⚠️ 3D 가 준비되기 전에 `shipAway` 가 참이 되면 손잡이가 비어 있다 — `status` 를
-        의존성에 넣어 준비된 뒤에도 한 번 더 확인한다 (위 뚜껑 동기화와 같은 이유). */
-  useEffect(() => {
-    if (!shipAway || status !== "ready") return;
-    const t = window.setTimeout(() => shipRef.current?.(), 1200);
-    return () => window.clearTimeout(t);
-  }, [shipAway, status]);
 
   return (
     /* ★ 크기를 스스로 정하지 않고 부모를 꽉 채운다 — 상자를 크게 보고 싶다는 요구로

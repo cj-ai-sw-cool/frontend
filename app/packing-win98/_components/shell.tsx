@@ -15,7 +15,6 @@ import {
 import { TruckDock } from "./truck-dock";
 import { ClockWindow } from "./clock-window";
 import { w98, Btn, Etched, TrayBox } from "./win98-ui";
-import { Minesweeper } from "@/components/common/minesweeper";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { w98Toast } from "@/lib/win98-toast";
@@ -327,10 +326,6 @@ export function Win98Shell({ children }: { children: ReactNode }) {
             <LayoutGrid className="size-3.5 text-[color:var(--primary)]" aria-hidden />
             Start
           </Btn>
-
-          {/* 이스터에그 — 진짜로 돌아가는 지뢰찾기. 화면 넷이 같은 것을 쓴다
-              (`components/common/minesweeper.tsx` 머리말 참고) */}
-          <Minesweeper />
 
           <div className={`${w98.sunken} mx-1 h-5 w-[2px]`} aria-hidden />
 

@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  FlaskConical,
-  LayoutDashboard,
-  LogOut,
-  PackageCheck,
-  PackagePlus,
-  Settings,
-  type LucideIcon,
-} from "lucide-react";
+import { FlaskConical, LogOut, Settings, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV } from "@/lib/nav";
@@ -19,9 +11,6 @@ import { cn } from "@/lib/utils";
  *
  * 화면 목록의 정본은 `lib/nav.ts` 다(팀 공유 파일이라 수정하지 않는다).
  * 아이콘은 화면 정의가 아니라 표현이므로 그쪽에 넣지 않고 여기서 href 로 붙인다.
- *
- * `owner`(P1/P2/P3)는 여기 표시하지 않는다 — 담당자 표기는 팀 내부 정보라
- * 현장 작업자에게는 의미가 없다. 홈 화면 카드에는 그대로 남겨 뒀다.
  *
  * 색은 전부 `--sidebar*` 토큰 클래스로만 쓴다. 팔레트를 갈아끼워도 이 파일은 그대로다.
  *
@@ -51,15 +40,12 @@ import { cn } from "@/lib/utils";
  *  주석의 이름은 디자인 확정본이 쓰는 Material Symbols 이름 — 라이브러리 결정이 나면
  *  이 표만 바꾸면 되도록 대응을 남겨 둔다. */
 const NAV_ICON: Record<string, LucideIcon | undefined> = {
-  "/inbound": PackagePlus, // 입고 = 물건이 들어옴 (확정본: input)
-  // win98 스킨 화면 셋 — 실험·데모용이라 확정본에 대응되는 아이콘이 없다.
+  // win98 스킨 화면 넷 — 실험·데모용이라 확정본에 대응되는 아이콘이 없다.
   // 플라스크로 묶어 "본 화면이 아니라 별도 스킨"임을 목록에서 바로 알 수 있게 한다.
   "/inbound-win98": FlaskConical,
   "/packing-win98": FlaskConical,
-  "/warehouse-win98": FlaskConical,
   "/analytics-win98": FlaskConical,
-  "/packing": PackageCheck, // 출고 포장 = 담고 확인해서 내보냄 (확정본: package_2)
-  "/dashboard": LayoutDashboard, // (확정본: dashboard)
+  "/warehouse-win98": FlaskConical,
 };
 
 /** 하단 고정 줄 2개. ⚠️ **동작이 없다** — 확정본에 있으니 자리는 만들지만
