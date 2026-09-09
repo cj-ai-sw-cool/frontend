@@ -14,13 +14,11 @@
  *    두 계약이 v0.5 에서 삭제됐다 (D-21). 미등록 바코드는 1-1 에서 "코리안넷 마스터에 없는
  *    상품"으로 안내하고 흐름을 종료하므로 임시 마스터를 만들 이유가 없고, 분류는 1-1 응답의
  *    categoryL/categoryM 을 표시만 하므로 목록 조회도 필요 없다.
- *
- * 여기에만 있는 것은 시연용 바코드 발급 하나다.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { demo, inbound, queryKeys } from "@/lib/endpoints";
-import type { ConfirmRequest, DemoNextBarcode, DemoStatus } from "@/lib/types";
+import { inbound, queryKeys } from "@/lib/endpoints";
+import type { ConfirmRequest } from "@/lib/types";
 
 export interface ConfirmVariables {
   sessionId: number;
@@ -112,34 +110,5 @@ export function useProductImages(productId: number | null) {
     queryKey: queryKeys.productImages(productId ?? -1),
     queryFn: () => inbound.productImages(productId as number),
     enabled: productId !== null,
-  });
-}
-
-/**
- * 다음 시연 바코드 발급 (`POST /admin/demo/inbound/next-barcode`).
- *
- * 시연장에 스캐너가 없어 화면의 버튼이 이 API 로 바코드를 받아 스캔 칸을 채운다.
- * 다 쓰면 서버가 204 를 주므로 결과가 `null` 이다 — 에러가 아니라 "더 줄 게 없다"이다.
- */
-export function useNextDemoBarcode() {
-  return useMutation<DemoNextBarcode | null, Error, void>({
-    mutationFn: () => demo.nextBarcode(),
-  });
-}
-
-/**
- * 시연 상태 조회 (`GET /admin/demo/status`).
- *
- * 입고 세 건이 다 끝났는지 볼 때 쓴다 — 다 끝났으면 화면이 창고 적재 시뮬레이션으로 넘어간다.
- *
- * ⚠️ 조회인데 `useQuery` 가 아니라 `useMutation` 이다. 화면에 늘 떠 있어야 하는 값이 아니라
- *    **입고가 한 건 끝난 그 순간에만** 궁금한 값이라서다. 쿼리로 두면 캐시된 옛 값을 보고
- *    판정하거나, 안 쓰는 동안에도 폴링이 돈다.
- * ⚠️ 같은 판정을 `useNextDemoBarcode` 로 하면 안 된다. 그쪽은 바코드를 **소비**해서,
- *    확인하는 것만으로 다음 상품 하나를 건너뛴다.
- */
-export function useDemoStatus() {
-  return useMutation<DemoStatus, Error, void>({
-    mutationFn: () => demo.status(),
   });
 }

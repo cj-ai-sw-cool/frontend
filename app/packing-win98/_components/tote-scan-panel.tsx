@@ -19,11 +19,9 @@ import { Btn, Field, Panel, TrayBox, w98 } from "./win98-ui";
  *   작업자가 토트를 헷갈리지 않게 하는 것이 목적이고, 안내와 에러가 자리를 나눠 쓰므로
  *   패널 높이가 상태에 따라 흔들리지 않는다.
  *
- * Scan 버튼 하나가 두 가지를 한다(사용자 지시: "scan 버튼을 누르면 토트 바코드 번호가
- * 칸에 뜨고 품목·박스 추천이 나타난다") — 칸이 비어 있으면 시연장에 없는 스캐너 대신 다음
- * 시연 토트를 받아 칸을 채우고 그 값으로 스캔하고, 칸에 값이 있으면(직접 입력·재현·디버깅)
- * 그 값 그대로 스캔한다. 버튼을 둘로 나누면 시연에서 "Scan 을 눌렀는데 빈 칸이라 에러만
- * 뜨는" 장면이 나온다.
+ * 토트 바코드는 입력란에 직접 쳐서 스캔한다(Enter · Scan). 시연용 다음 토트 자동 발급은
+ * 후계 기능(리빈 완성 큐, Stage 8)이 들어올 때까지 비활성이다 — 칸이 비어 있으면 Scan 을
+ * 누를 수 없다.
  */
 export function ToteScanPanel({
   value,
@@ -32,15 +30,10 @@ export function ToteScanPanel({
   isPending,
   error,
   summary,
-  onNextTote,
-  isNextPending,
-  hasNextTote,
   lines,
   linesLoading,
   selectedLineId,
   onSelectLine,
-  onLoad,
-  isLoadPending,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -49,29 +42,14 @@ export function ToteScanPanel({
   error?: string | null;
   /** 스캔에 성공했을 때만 채워진다 */
   summary: { lineName: string; seqNo: number; toteBarcode: string | null } | null;
-  /** 다음 시연 토트를 받아 칸을 채우고 스캔까지 실행한다 */
-  onNextTote: () => void;
-  isNextPending: boolean;
-  /** 지금 고른 라인에 아직 받아 올 토트가 있는지. 라인을 안 골랐어도 false 로 둔다 */
-  hasNextTote: boolean;
   lines: Line[];
   linesLoading: boolean;
   selectedLineId: number | null;
   onSelectLine: (lineId: number) => void;
-  /** 대기 중인 주문 한 묶음을 투입하고 고른 라인의 배송 내역을 채운다 */
-  onLoad: () => void;
-  isLoadPending: boolean;
 }) {
-  const isBusy = isPending || isNextPending;
+  const isBusy = isPending;
   const isManualEntry = value.trim().length > 0;
-  /* 칸이 비어 있을 때는 다음 토트가 있어야 누를 수 있다. 값이 있으면 그 값으로 언제나
-     스캔할 수 있다(라인·재고와 무관하게 특정 바코드를 짚는 자리라 hasNextTote 를 안 본다). */
-  const canPressScan = !isBusy && (isManualEntry || hasNextTote);
-
-  const handlePressScan = () => {
-    if (isManualEntry) onScan();
-    else onNextTote();
-  };
+  const canPressScan = !isBusy && isManualEntry;
 
   return (
     <Panel title="토트 스캔" className="shrink-0" bodyClassName="flex-row items-center gap-3">
@@ -100,18 +78,16 @@ export function ToteScanPanel({
         />
         <Btn
           disabled={!canPressScan}
-          onClick={handlePressScan}
+          onClick={onScan}
           title={
             isManualEntry
               ? "입력한 바코드로 조회합니다"
-              : hasNextTote
-                ? "다음 시연 토트를 불러와 조회합니다"
-                : "이 라인은 포장할 토트가 없습니다"
+              : "Stage 8: 리빈 완성 큐로 대체"
           }
           className="flex h-10 items-center gap-1.5 px-4 text-[15px] font-bold"
         >
           <ScanBarcode className="size-5" aria-hidden />
-          {isNextPending ? "불러오는 중…" : isPending ? "조회 중…" : "Scan"}
+          {isPending ? "조회 중…" : "Scan"}
         </Btn>
       </form>
 
@@ -146,12 +122,11 @@ export function ToteScanPanel({
           </select>
         )}
         <Btn
-          disabled={isBusy || isLoadPending || selectedLineId === null}
-          onClick={onLoad}
-          title="대기 중인 주문 한 묶음을 투입하고 이 라인의 배송 내역을 불러옵니다"
+          disabled
+          title="Stage 6: 웨이브 생성으로 대체"
           className="h-9 shrink-0 px-3 text-[14px]"
         >
-          {isLoadPending ? "투입 중…" : "Load"}
+          Load
         </Btn>
       </div>
 
