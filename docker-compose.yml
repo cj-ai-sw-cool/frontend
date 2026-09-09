@@ -10,9 +10,9 @@ services:
     environment:
       BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8000}
       API_KEY: ${API_KEY:-}
-      DEMO_USER: ${DEMO_USER:-}
+      APP_USER: ${APP_USER:-}
       # 비어 있으면 아무도 못 막는다 — 시연 서버에서는 반드시 채운다
-      DEMO_PASSWORD: ${DEMO_PASSWORD:?DEMO_PASSWORD 를 .env 에 넣으세요}
+      APP_PASSWORD: ${APP_PASSWORD:?APP_PASSWORD 를 .env 에 넣으세요}
     networks:
       - backend
     ports:
