@@ -781,14 +781,22 @@ function buildAGV({ tote = false } = {}) {
 
 /* ═══════════════════ 컴포넌트 ═══════════════════ */
 /**
- * @param {{ initialTab?: "map" | "3d" }} props
+ * @param {{ initialTab?: "map" | "3d", onReady?: (api: { applyDay: (day: number) => void, setHighlight: (id: string | null) => void, flyTo: (id: string) => void, resetView: () => void }) => void }} props
  *   `initialTab` — 어느 판으로 열 것인가. 기본은 지도.
  *   ★ 분석 화면이 이 컴포넌트를 전체 화면으로 띄울 때 곧바로 3D 로 열기 위해 받는다.
  *     열고 나서 탭을 바꾸는 방법도 있지만, 그러면 지도가 한 프레임 그려졌다 사라져 깜빡인다.
+ *   `onReady` — `apiRef` 는 이 컴포넌트 안의 ref 라 밖에서 부를 수 없었다(Stage 1,
+ *     docs/tasks/2026-09-09-stage1-master-handoff.md §3 S1.4c). 씬이 만들어져 api
+ *     (`applyDay`/`setHighlight`/`flyTo`/`resetView`) 가 준비되는 순간 부모에게 그 핸들을
+ *     넘긴다 — 분석 화면의 "마스터" 창이 로케이션 행을 클릭했을 때 이 핸들로 3D 를 움직인다.
  */
-export default function WarehouseSlot3D({ initialTab = "map" }) {
+export default function WarehouseSlot3D({ initialTab = "map", onReady }) {
   const mountRef = useRef(null);
   const apiRef = useRef(null);
+  /* `onReady` 를 매 렌더 새 함수로 넘겨도 아래 큰 이펙트([] 의존성)를 다시 돌리지 않도록
+     ref 로 받아 둔다 — 이 파일의 `goPackingRef` 와 같은 패턴이다. */
+  const onReadyRef = useRef(onReady);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   const [day, setDay] = useState(29);
   const [sel, setSel] = useState(null);
   const [playing, setPlaying] = useState(false);
@@ -2335,6 +2343,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     const resetView = () => { Object.assign(des, OVERVIEW); setStation(null); };
 
     apiRef.current = { applyDay, setHighlight, flyTo, resetView };
+    onReadyRef.current?.(apiRef.current);
 
     /* ── 루프 ── */
     const clock = new THREE.Clock();

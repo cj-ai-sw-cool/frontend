@@ -1,10 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FlowPanel } from "./_components/flow-panel";
+import { MasterWindow, type WarehouseApi } from "./_components/master-window";
 import { MonthlyPanel } from "./_components/monthly-panel";
-import { Panel, Sunken, w98 } from "./_components/win98-ui";
+import { Btn, Panel, Sunken, w98 } from "./_components/win98-ui";
 
 /* 창고 맵은 캔버스와 `ResizeObserver` 를 쓰므로 서버에서 그릴 수 없다.
    ⚠️ `ssr: false` 를 빼면 빌드 시 정적 생성 단계에서 `window` 를 찾다가 터진다. */
@@ -73,22 +74,70 @@ export default function AnalyticsPage() {
   const [full, setFull] = useState(false);
   const close = useCallback(() => setFull(false), []);
 
-  /* Esc 로 닫는다.
-     ⚠️ 리스너는 **떠 있을 때만** 붙인다. 늘 붙여 두면 3D 를 열지도 않았는데 Esc 를 가로채,
-        나중에 이 화면에 팝업이나 입력이 생겼을 때 그쪽 Esc 를 먹는다.
+  /* "마스터" 창(화주·로케이션, Stage 1 S1.4c)이 떠 있는가 */
+  const [showMaster, setShowMaster] = useState(false);
+
+  /* `WarehouseSlot3D` 가 `onReady` 로 넘긴 api 핸들. 3D 가 닫히면(`full=false`) 씬이
+     통째로 언마운트되므로 그 핸들도 같이 비운다 — 지워진 three.js 씬을 계속 붙들고
+     있다가 나중에 불러 터지는 사고를 막는다. */
+  const warehouseApiRef = useRef<WarehouseApi | null>(null);
+  useEffect(() => {
+    if (!full) warehouseApiRef.current = null;
+  }, [full]);
+
+  /* 마스터 창의 로케이션 행을 3D 가 아직 없을 때(닫혀 있을 때) 눌렀다면, 여는 동안
+     "이 존으로 가라"를 잠깐 들고 있다가 `onReady` 가 오면 그때 적용한다. */
+  const pendingZoneRef = useRef<string | null>(null);
+
+  const handleWarehouseReady = useCallback((api: WarehouseApi) => {
+    warehouseApiRef.current = api;
+    const pending = pendingZoneRef.current;
+    if (pending) {
+      pendingZoneRef.current = null;
+      api.setHighlight(pending);
+      api.flyTo(pending);
+    }
+  }, []);
+
+  /**
+   * 마스터 창의 로케이션 행 클릭 — 이 창을 닫고 3D 전체 화면으로 넘어가면서 그 존을
+   * 강조한다("3D 전체 ▶" 와 같은 전환). 3D 가 이미 열려 있으면 바로 부르고, 닫혀 있으면
+   * 여는 동안 `pendingZoneRef` 에 담아 뒀다가 `handleWarehouseReady` 에서 적용한다.
+   *
+   * ⚠️ **존 단위까지만 움직인다.** `flyTo`/`setHighlight` 가 랙 번호는 받지 않는다 —
+   *    자세한 내용은 `master-window.tsx` 머리말과 인수인계 보고 참고.
+   */
+  const locateZone = useCallback(
+    (zoneCode: string) => {
+      setShowMaster(false);
+      if (full && warehouseApiRef.current) {
+        warehouseApiRef.current.setHighlight(zoneCode);
+        warehouseApiRef.current.flyTo(zoneCode);
+      } else {
+        pendingZoneRef.current = zoneCode;
+        setFull(true);
+      }
+    },
+    [full],
+  );
+
+  /* Esc 로 닫는다 — 마스터 창이 떠 있으면 그것부터, 아니면 3D 전체 화면을 닫는다.
+     ⚠️ 리스너는 **둘 중 하나라도 떠 있을 때만** 붙인다. 늘 붙여 두면 아무것도 안 열었는데
+        Esc 를 가로채, 나중에 이 화면에 다른 팝업이 생겼을 때 그쪽 Esc 를 먹는다.
      ⚠️ `capture` 로 받는다. 3D 판은 자기 캔버스에 포인터 이벤트를 잡아 두는데, 키 이벤트가
         그 안에서 멈추는 경우가 있어 버블링만 기다리면 놓칠 수 있다. */
   useEffect(() => {
-    if (!full) return;
+    if (!full && !showMaster) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        setFull(false);
+        if (showMaster) setShowMaster(false);
+        else setFull(false);
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [full]);
+  }, [full, showMaster]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -106,7 +155,15 @@ export default function AnalyticsPage() {
         {/* ★ 지도를 **가장 넓고 높은 칸**에 둔 이유: 가로 33m x 세로 22m 짜리 그림이라
             가로로 넉넉해야 구역 이름과 채움 수가 겹치지 않고 다 들어간다.
             ⚠️ 이 지도는 창고 화면의 사본이다 — `warehouse-map.jsx` 머리말 주의 참고. */}
-        <Panel title="실시간 창고 맵" className="min-h-0 min-w-0 flex-1">
+        <Panel
+          title="실시간 창고 맵"
+          right={
+            <Btn onClick={() => setShowMaster(true)} className="px-3 py-1 text-[12px]">
+              마스터
+            </Btn>
+          }
+          className="min-h-0 min-w-0 flex-1"
+        >
           <Sunken className="flex min-h-0 flex-1 flex-col p-1.5">
             <WarehouseMap onOpen3D={() => setFull(true)} />
           </Sunken>
@@ -146,7 +203,7 @@ export default function AnalyticsPage() {
           ⚠️ z-200 은 분석 창(z-60)·공용 헤더(z-50)·네비(z-40)보다 위다. */}
       {full && (
         <div className="fixed top-0 left-0 z-[200] h-[1004px] w-[1600px] bg-[#10151C]">
-          <WarehouseSlot3D initialTab="3d" />
+          <WarehouseSlot3D initialTab="3d" onReady={handleWarehouseReady} />
           <button
             type="button"
             onClick={close}
@@ -156,6 +213,11 @@ export default function AnalyticsPage() {
           </button>
         </div>
       )}
+
+      {/* ── 마스터 창(화주·로케이션, Stage 1 S1.4c) ──────────────────────
+          z-[210] — 3D 전체 화면(z-200)보다 위다. 3D 가 닫혀 있을 때 열어도 문제없다:
+          `locateZone` 이 로케이션 행 클릭에서 이 창을 닫고 3D 를 대신 연다. */}
+      {showMaster && <MasterWindow onClose={() => setShowMaster(false)} onLocateZone={locateZone} />}
     </div>
   );
 }
