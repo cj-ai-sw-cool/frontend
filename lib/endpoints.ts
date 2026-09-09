@@ -9,15 +9,21 @@ import type {
   CompleteResponse,
   ConfirmRequest,
   ConfirmResponse,
+  CreateSellerRequest,
   DashboardSummary,
   LinesResponse,
+  Location,
+  LocationsQuery,
   MeasurementResponse,
+  Page,
   ProductImagesResponse,
   ScanResponse,
+  Seller,
   ShipmentDetail,
   ShipmentListItem,
   ShipmentStatus,
   StockInResponse,
+  Zone,
 } from "./types";
 
 /* ── P1 입고 ─────────────────────────────────────────────── */
@@ -88,6 +94,39 @@ export const dashboard = {
   summary: () => api.get<DashboardSummary>("/dashboard/summary"),
 };
 
+/* ── 마스터 — 화주·존·로케이션 (Stage 1) ─────────────────────
+   정본: backend/docs/02-system/02-data-model.md §1, docs/tasks/
+   2026-09-09-stage1-master-handoff.md §2. */
+export const master = {
+  /** 화주 목록 */
+  sellers: () => api.get<Seller[]>("/sellers"),
+
+  /** 화주 등록 — code 중복은 409 CONFLICT */
+  createSeller: (body: CreateSellerRequest) => api.post<Seller>("/sellers", body),
+
+  /** 존 목록 — 3D·2D 레이아웃(`lib/zone-layout.ts`)과 로케이션 탭의 존 단이 함께 읽는다 */
+  zones: () => api.get<Zone[]>("/zones"),
+
+  /** 로케이션 목록 — zone·rack·type 전부 선택, Spring Page 로 온다 */
+  locations: (params?: LocationsQuery) =>
+    api.get<Page<Location>>(`/locations${toQueryString(params)}`),
+
+  /** 로케이션 단건 — 없으면 404 */
+  location: (code: string) => api.get<Location>(`/locations/${code}`),
+};
+
+function toQueryString(params?: LocationsQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.zone !== undefined) qs.set("zone", params.zone);
+  if (params.rack !== undefined) qs.set("rack", String(params.rack));
+  if (params.type !== undefined) qs.set("type", params.type);
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.size !== undefined) qs.set("size", String(params.size));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
 /** TanStack Query 키 — 무효화 대상을 한곳에서 관리한다 */
 export const queryKeys = {
   productImages: (id: number) => ["products", id, "images"] as const,
@@ -97,4 +136,7 @@ export const queryKeys = {
   lineShipments: (lineId: number, status?: ShipmentStatus) =>
     ["lines", lineId, "shipments", status ?? "ALL"] as const,
   shipment: (id: number) => ["shipments", id] as const,
+  sellers: ["sellers"] as const,
+  zones: ["zones"] as const,
+  locations: (params?: LocationsQuery) => ["locations", params ?? {}] as const,
 };
