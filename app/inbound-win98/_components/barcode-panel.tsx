@@ -8,11 +8,11 @@ import { Btn, Field, Panel, Sunken, w98 } from "./win98-ui";
  * 1-1 진입점 — 목업의 `Barcode Data` 패널. 이 화면의 시작이다.
  * 못 찾은 바코드도 200 + UNKNOWN 이라(§1-1) 이 패널의 에러 자리는 평소 비어 있다.
  *
- * 목업의 키보드 버튼은 다음 시연 바코드를 받아 칸을 채우고 곧바로 조회한다. 시연장에
- * 스캐너가 없어 이 버튼이 스캐너를 대신한다. 다 쓰면 서버가 204 를 주고 버튼이 잠긴다.
+ * 바코드는 입력란에 직접 쳐서 조회한다(Enter · Scan) — 아래 EAN-13 그래픽이 조회한
+ * 값을 사람이 눈으로 대조하는 수단이다.
  *
- * ★ 입력란 아래 EAN-13 그래픽은 목업에 없다. 그래도 남긴 이유: 조회한 값을 사람이 눈으로
- *   대조하는 유일한 수단이라(스캐너가 오독하면 여기서만 드러난다) 없애면 기능이 사라진다.
+ * 키보드 버튼은 시연용 바코드 자동 발급이 쓰던 자리다. 후계 기능(ASN 미검수 품목
+ * 선택, Stage 3)이 들어올 때까지 자리만 남기고 비활성화했다.
  */
 export function BarcodePanel({
   value,
@@ -21,9 +21,6 @@ export function BarcodePanel({
   onScan,
   isPending,
   error,
-  onNextBarcode,
-  isNextPending,
-  hasNextBarcode,
 }: {
   value: string;
   scannedValue: string;
@@ -31,14 +28,9 @@ export function BarcodePanel({
   onScan: () => void;
   isPending: boolean;
   error?: string | null;
-  /** 다음 시연 바코드를 받아 칸을 채우고 조회까지 실행한다 */
-  onNextBarcode: () => void;
-  isNextPending: boolean;
-  /** 아직 남은 시연 상품이 있는지. 다 쓰면 버튼을 잠근다 */
-  hasNextBarcode: boolean;
 }) {
   const canScan = value.trim().length > 0 && !isPending;
-  const isBusy = isPending || isNextPending;
+  const isBusy = isPending;
 
   return (
     <Panel title="바코드" className="shrink-0">
@@ -70,17 +62,11 @@ export function BarcodePanel({
           className="h-10 min-w-0 flex-1 text-[22px] tabular-nums tracking-wide"
         />
 
-        {/* 다음 시연 바코드 — 스캐너 자리다. 받은 값으로 곧바로 1-1 까지 실행한다.
-            한 번 더 Enter 를 치게 만들면 스캐너를 흉내 내는 목적이 반감된다. */}
+        {/* 시연용 바코드 자동 발급 버튼이 있던 자리 — 후계 기능 대기 중이라 비활성이다 */}
         <Btn
-          disabled={isBusy || !hasNextBarcode}
-          onClick={onNextBarcode}
-          title={
-            hasNextBarcode
-              ? "다음 시연 상품의 바코드를 불러옵니다"
-              : "입고 시연 상품을 모두 사용했습니다"
-          }
-          aria-label="다음 바코드 불러오기"
+          disabled
+          title="Stage 3: ASN 미검수 품목으로 대체"
+          aria-label="다음 바코드 불러오기 — 준비 중"
           className="flex h-10 shrink-0 items-center justify-center px-2.5"
         >
           <Keyboard className="size-5" aria-hidden />

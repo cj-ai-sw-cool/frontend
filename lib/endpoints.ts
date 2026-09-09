@@ -10,11 +10,6 @@ import type {
   ConfirmRequest,
   ConfirmResponse,
   DashboardSummary,
-  DemoNextBarcode,
-  DemoStatus,
-  DemoNextTote,
-  DemoReleasedOrders,
-  DemoResetSummary,
   LinesResponse,
   MeasurementResponse,
   ProductImagesResponse,
@@ -87,49 +82,6 @@ export const outbound = {
 };
 
 /* ── P3 대시보드 ─────────────────────────────────────────── */
-/* ── 시연 조작 ───────────────────────────────────────────── */
-
-export const demo = {
-  /**
-   * 시연을 처음 상태로 되돌린다. 주문·측정·재고 원장을 비우고 상품과 대기열을 다시 만든다.
-   *
-   * 다른 호출과 달리 `/api/v1` 이 아니라 `/api/demo/reset` 으로 간다 — 비밀번호를 확인하는
-   * 자리가 필요해서다. 확인은 서버에서만 하고 화면은 입력값을 넘기기만 한다.
-   */
-  reset: async (password: string): Promise<DemoResetSummary> => {
-    const response = await fetch("/api/demo/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-    const body = (await response.json()) as DemoResetSummary & { message?: string };
-    if (!response.ok) throw new Error(body.message ?? "초기화에 실패했습니다.");
-    return body;
-  },
-
-  /**
-   * 다음 시연 바코드 하나. 다 쓰면 서버가 204 라 본문이 없다 — 그때 `null` 을 돌려준다.
-   * 리셋하면 처음부터 다시 나온다.
-   */
-  nextBarcode: () =>
-    api.postOrNull<DemoNextBarcode>("/admin/demo/inbound/next-barcode"),
-
-  /**
-   * 다음 시연 토트 하나 — 그 라인에 포장할 게 남지 않으면 서버가 204 라 `null` 이다.
-   * 리셋하면 처음부터 다시 나온다.
-   */
-  /** 대기 중인 주문 한 묶음 투입 — 더 없으면 204 라 `null` */
-  releaseOrders: () => api.postOrNull<DemoReleasedOrders>("/admin/demo/orders/next"),
-
-  /**
-   * 시연 상태 조회 — 읽기 전용. 입고가 다 끝났는지 볼 때 쓴다.
-   * ⚠️ 같은 판정을 `nextBarcode()` 로 하면 안 된다. 그쪽은 바코드를 **소비**한다.
-   */
-  status: () => api.get<DemoStatus>("/admin/demo/status"),
-
-  nextTote: (lineId: number) =>
-    api.postOrNull<DemoNextTote>(`/admin/demo/outbound/next-tote?lineId=${lineId}`),
-};
 
 export const dashboard = {
   /** 2-1 전체 현황 */

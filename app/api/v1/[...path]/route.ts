@@ -2,7 +2,7 @@
  * 백엔드로 넘기는 통로 (D-26).
  *
  * next.config.ts 의 rewrites 로는 요청 헤더를 붙일 수 없어 여기서 직접 넘긴다. 백엔드는
- * 인터넷에 열려 있고 로그인이 없어서 `X-Demo-Key` 를 요구하는데, 그 열쇠를 브라우저에 내려보내면
+ * 인터넷에 열려 있고 로그인이 없어서 `X-Api-Key` 를 요구하는데, 그 열쇠를 브라우저에 내려보내면
  * 막는 의미가 없다. 그래서 서버에서만 붙인다 — 화면은 열쇠를 모른 채 `/api/v1/...` 을 부른다.
  *
  * 화면 자체는 proxy.ts 의 계정으로 막혀 있으므로, 여기까지 오는 요청은 이미 팀원이다.
@@ -10,7 +10,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN ?? "http://127.0.0.1:8000";
-const API_KEY = process.env.DEMO_API_KEY ?? "";
+const API_KEY = process.env.API_KEY ?? "";
 
 /** 백엔드가 판단에 쓰지 않거나, 넘기면 오히려 깨지는 헤더는 뺀다. */
 const DROPPED = new Set([
@@ -28,7 +28,7 @@ async function forward(request: NextRequest, path: string[]): Promise<NextRespon
   request.headers.forEach((value, key) => {
     if (!DROPPED.has(key.toLowerCase())) headers.set(key, value);
   });
-  if (API_KEY) headers.set("X-Demo-Key", API_KEY);
+  if (API_KEY) headers.set("X-Api-Key", API_KEY);
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
 

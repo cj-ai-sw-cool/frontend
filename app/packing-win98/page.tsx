@@ -14,8 +14,6 @@ import { ShipmentItemsPanel } from "./_components/shipment-items-panel";
 import { ToteScanPanel } from "./_components/tote-scan-panel";
 import { useLines } from "./_data/use-lines";
 import { useLineShipments } from "./_data/use-line-shipments";
-import { useNextTote } from "./_data/use-next-tote";
-import { useReleaseOrders } from "./_data/use-release-orders";
 import {
   useBoxTypes,
   useCompletePacking,
@@ -68,8 +66,6 @@ export default function PackingV2Page() {
    * 포장 완료 순간 배송단위가 사라지면서 **닫히는 동작을 볼 새가 없다**.
    */
   const [isLidOpen, setIsLidOpen] = useState(false);
-  /* 포장이 끝나 상자를 실어 보내는 중인가 — 3D 쪽이 이 값을 보고 피글린을 들여보낸다 */
-  const [isShipping, setIsShipping] = useState(false);
   /**
    * 어느 3D 모델을 띄울 것인가 — 둘을 눈으로 비교하려고 둔 전환이다 (사용자 요청).
    * ⚠️ 화면 상태일 뿐 계약과 무관하다. 어느 쪽을 쓸지 정해지면 이 상태와 헤더 버튼을 지우고
@@ -83,12 +79,6 @@ export default function PackingV2Page() {
    * 이 값은 그 패널만 바꾸고, 스캔된 배송단위가 실제로 어느 라인 소속인지와는 무관하다.
    */
   const [selectedLineId, setSelectedLineId] = useState<number | null>(null);
-  /**
-   * 지금 고른 라인에 아직 받아 올 다음 토트가 있는가 (`remaining > 0`).
-   * 라인마다 남은 개수가 다르므로 라인을 바꾸면 다시 true 로 되돌린다(handleSelectLine).
-   */
-  const [hasNextTote, setHasNextTote] = useState(true);
-
   /* ── 데이터 ────────────────────────────────────────────── */
   const scan = useToteScan(); // 3-5
   const shipmentQuery = useShipmentDetail(shipmentId); // 3-2
@@ -97,8 +87,6 @@ export default function PackingV2Page() {
   const overrideBox = useOverrideBox(); // 3-3
   const completePacking = useCompletePacking(); // 3-8
   const linesQuery = useLines(); // 라인 목록 — LINE 탭
-  const nextTote = useNextTote(); // 시연용 다음 토트 발급
-  const releaseOrders = useReleaseOrders(); // 시연용 주문 투입
 
   const shipment = shipmentQuery.data;
   const boxes = useMemo<BoxType[]>(
@@ -168,59 +156,10 @@ export default function PackingV2Page() {
   /** 입력창에서 Enter · Scan 버튼 — 지금 입력창에 있는 값으로 조회한다 */
   const handleScan = useCallback(() => runScan(barcode), [runScan, barcode]);
 
-  /**
-   * LINE 탭 — 라인을 바꾸면 그 라인 기준으로 "남은 토트가 있다"고 다시 가정한다.
-   * 실제 값은 다음 토트 버튼을 눌러야 알지만, 그 전까지 잠가 둘 근거가 없다(버튼을 눌러
-   * 봐야 그 라인이 이미 다 끝났는지 알 수 있다 — 서버가 그 순간 204 로 알려 준다).
-   */
+  /** LINE 탭 — 배송 내역 조회(3-1)가 이 값을 바로 쓴다 */
   const handleSelectLine = useCallback((lineId: number) => {
     setSelectedLineId(lineId);
-    setHasNextTote(true);
   }, []);
-
-  /**
-   * 시연 주문 투입 — 리셋 직후에는 주문이 대기열에만 있어 화면에 아무것도 없다. 한 묶음을
-   * 풀면 그 라인의 배송 내역이 생긴다. 더 넣을 게 없으면 서버가 빈 응답을 주므로 그대로 알린다.
-   */
-  const handleLoad = useCallback(() => {
-    releaseOrders.mutate(undefined, {
-      onSuccess: (result) => {
-        if (result === null) {
-          toast.info("더 투입할 주문이 없습니다.", w98Toast.notice);
-          return;
-        }
-        toast.success(
-          `주문 ${result.orders}건이 들어왔습니다. 배송단위 ${result.shipments}건, 남은 묶음 ${result.remaining}개.`,
-          w98Toast.success,
-        );
-      },
-      onError: (error) => toast.error(error.message, w98Toast.notice),
-    });
-  }, [releaseOrders]);
-
-  /**
-   * 시연장에 스캐너가 없어 이 버튼이 스캐너를 대신한다. 서버가 다음 토트를 주면
-   * 곧바로 3-5 까지 실행한다 — 한 번 더 Enter 를 치게 하면 스캐너 흉내라는 목적이 반감된다.
-   * 그 라인에 남은 게 없으면 204 로 `null` 이 오고, 그때 버튼을 잠근다.
-   */
-  const handleNextTote = useCallback(() => {
-    if (effectiveLineId === null) return;
-    nextTote.mutate(effectiveLineId, {
-      onSuccess: (issued) => {
-        if (issued === null) {
-          setHasNextTote(false);
-          toast.info(
-            "이 라인은 포장할 토트를 모두 사용했습니다. 다른 라인을 골라 보세요.",
-            w98Toast.notice,
-          );
-          return;
-        }
-        setHasNextTote(issued.remaining > 0);
-        runScan(issued.toteBarcode);
-      },
-      onError: (error) => toast.error(error.message, w98Toast.notice),
-    });
-  }, [effectiveLineId, nextTote, runScan]);
 
   const handleActualQtyChange = useCallback(
     (productId: number, qty: number) => {
@@ -252,7 +191,6 @@ export default function PackingV2Page() {
   const handleComplete = useCallback(() => {
     if (shipment === undefined) return;
     setIsLidOpen(false);
-    setIsShipping(true);
     completePacking.mutate(shipment.shipmentId, {
       onSuccess: (result) => {
         toast.success(
@@ -260,7 +198,6 @@ export default function PackingV2Page() {
           w98Toast.success,
         );
         window.setTimeout(() => {
-          setIsShipping(false);
           setShipmentId(null);
           setBarcode("");
           setActualQty({});
@@ -293,15 +230,10 @@ export default function PackingV2Page() {
                 toteBarcode: shipment.tote?.barcode ?? null,
               }
         }
-        onNextTote={handleNextTote}
-        isNextPending={nextTote.isPending}
-        hasNextTote={hasNextTote && effectiveLineId !== null}
         lines={lines}
         linesLoading={linesQuery.isLoading}
         selectedLineId={effectiveLineId}
         onSelectLine={handleSelectLine}
-        onLoad={handleLoad}
-        isLoadPending={releaseOrders.isPending}
       />
 
       <div className="flex min-h-0 flex-1 gap-2">
@@ -389,7 +321,6 @@ export default function PackingV2Page() {
               innerCm={effectiveBox?.innerCm ?? null}
               name={effectiveBox ? boxLabel(effectiveBox.name) : null}
               lidOpen={isLidOpen}
-              shipAway={isShipping}
               pigs={activeModel.pigs ?? false}
               className="min-h-0 flex-1"
             />
@@ -452,13 +383,9 @@ export default function PackingV2Page() {
  * ⚠️ `_components/chest-3d.tsx` 의 LID_SECONDS 와 같은 값이어야 한다 — 여기가 더 짧으면
  *    닫히다 만 채로 상자가 사라지고, 더 길면 다 닫힌 상자를 멀뚱히 보고 있게 된다.
  */
-/* 포장 완료를 누르고 화면을 비우기까지 기다리는 시간.
-   ★ 1900 → **5600ms**. 뚜껑이 닫히고(약 1.2초) 피글린이 오른쪽에서 걸어와(약 1.4초) 상자를
-     밀고 왼쪽으로 사라지기까지(약 2.6초) 걸리는 시간이다. 예전 값으로 두면 배송단위가
-     먼저 지워지면서 상자가 통째로 언마운트돼, 밀려 나가는 장면이 중간에 끊긴다.
-   ⚠️ 이 값은 `box-3d-viewer` 의 실어 보내기 장면과 짝이다. 그쪽 속도(`SHIP`)를 바꾸면
-      여기도 같이 늘려야 한다. */
-const LID_CLOSE_MS = 5600;
+/* 포장 완료를 누르고 화면을 비우기까지 기다리는 시간 — 뚜껑이 다 닫힐 때까지(약 1.9초)다.
+   먼저 지워지면 배송단위가 사라지면서 상자가 통째로 언마운트돼, 닫히는 장면이 중간에 끊긴다. */
+const LID_CLOSE_MS = 1900;
 
 /* ── 3D 모델 ────────────────────────────────────────────────────────────────
    둘 다 **코드로 만든다** — GLB 파일을 쓰지 않는다 (사용자 요청: 크랙 없애기).
