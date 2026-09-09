@@ -101,7 +101,7 @@ export function useStockIn() {
 /**
  * 1-6 제품 원본 이미지 — **확정 후** 사진의 출처다.
  * 확정 전에는 1-3 응답의 `images` 를 그대로 쓰고, 확정 뒤에는 세션이 닫히므로 이쪽으로 옮긴다.
- * (출고 포장 화면도 같은 API 를 쓴다 — `app/packing-win98/_data/use-shipment-detail.ts`)
+ * (출고 포장 화면도 같은 API 를 쓴다 — `app/packing/_data/use-shipment-detail.ts`)
  *
  * `page.tsx` 는 1-4 확정에 성공한 뒤에만 이 훅을 켠다(그 전에는 productId 자리에 null 을 준다).
  */

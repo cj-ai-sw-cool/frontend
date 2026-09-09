@@ -103,56 +103,28 @@ function AnalyticsIcon({ className }: { className?: string }) {
   );
 }
 
-/** 창고 — 선반 3단에 상자가 얹힌 모습 */
-function WarehouseIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 16 16" shapeRendering="crispEdges" className={className} aria-hidden>
-      {/* 선반 기둥 둘 + 칸 셋 */}
-      <path d="M2 2h1v12H2z" fill="#8a7318" stroke="#000000" />
-      <path d="M13 2h1v12h-1z" fill="#8a7318" stroke="#000000" />
-      <path d="M2 6h12v1H2z" fill="#8a7318" stroke="#000000" />
-      <path d="M2 10h12v1H2z" fill="#8a7318" stroke="#000000" />
-      {/* 칸마다 놓인 상자 */}
-      <path d="M4 3h3v3H4z" fill="#c8a06a" stroke="#000000" />
-      <path d="M9 4h3v2H9z" fill="#c8a06a" stroke="#000000" />
-      <path d="M4 8h4v2H4z" fill="#c8a06a" stroke="#000000" />
-      <path d="M10 7h3v3h-3z" fill="#c8a06a" stroke="#000000" />
-    </svg>
-  );
-}
 
+/* 창고 3D 단독 라우트는 Stage 1 에서 제거됐다(docs/tasks/2026-09-09-stage1-master-
+   handoff.md §3 S1.4a) — 분석 화면이 같은 3D 를 "3D 전체 ▶"로 이미 렌더해 단독 화면이
+   중복이었다. 그 화면을 태스크바·목차에서 가리던 `hidden` 항목도 함께 지웠다. */
 const SCREENS: Screen[] = [
   {
-    href: "/inbound-win98",
+    href: "/inbound",
     label: "Inbound",
     windowTitle: "INBOUND REGISTRATION — 입고 등록",
     icon: InboundIcon, // 목업: inventory_2
   },
   {
-    href: "/packing-win98",
+    href: "/packing",
     label: "Packing",
     windowTitle: "OUTBOUND PACKING — 출고 포장",
     icon: PackingIcon, // 목업: desktop_windows
   },
   {
-    /* 창고 — 슬롯 점유를 2D 지도와 3D 로 본다.
-       ★ **목차에서 뺐다** (사용자 결정). 분석 화면의 실시간 창고 맵을 누르면 같은 3D 가
-         전체 화면으로 열리므로, 같은 곳으로 가는 문이 둘일 이유가 없다. 주소로는 그대로
-         열린다 — 화면 자체를 지운 것이 아니라 목차에서만 감춘 것이다.
-       ⚠️ 이 화면만 three.js 를 쓴다. 3D 판이 `display:none` 일 때도 시뮬레이션은 계속
-          돌아야 2D 지도가 실시간이라, 안 보이는 판도 DOM 에 남겨 둔다
-          (`_components/warehouse-slot-3d.jsx` 주석 참고). */
-    hidden: true,
-    href: "/warehouse-win98",
-    label: "Warehouse",
-    windowTitle: "WAREHOUSE — 슬롯 창고 현황",
-    icon: WarehouseIcon,
-  },
-  {
     /* 분석 — **아직 비어 있는 화면**이다(자리와 생김새만 잡아 둔 뼈대).
        그래도 목록에 넣는 이유: 잠긴 버튼으로 두면 "언젠가 생긴다"는 뜻이 되는데, 실제로는
        이미 열 수 있는 화면이고 안에서 스스로 `준비 중` 이라고 말한다. 그쪽이 정직하다. */
-    href: "/analytics-win98",
+    href: "/analytics",
     label: "Storage",
     windowTitle: "ANALYTICS — 분석",
     icon: AnalyticsIcon, // 목업: analytics
@@ -161,7 +133,6 @@ const SCREENS: Screen[] = [
 
 export function Win98Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-
   const active = SCREENS.find((screen) => pathname.startsWith(screen.href)) ?? SCREENS[0];
 
   /** 시계 팝업이 열려 있는가. 태스크바 트레이의 시계를 누르면 토글된다 */
@@ -270,10 +241,7 @@ export function Win98Shell({ children }: { children: ReactNode }) {
           </div>
 
           {/* 창 내용 — 좌측 네비 + 화면 */}
-          {/* ⚠️ 아래 여백만 절반으로 줄였다(p-2 → pb-1). 버튼이 창 바닥에 조금 더 붙고,
-                 늘어나는 칸(Product Manifest)이 그만큼 커진다. 좌우·위는 그대로 둔다 —
-                 win98 창은 안쪽 여백이 사방으로 같아야 베벨이 제대로 보인다. */}
-          <div className="flex min-h-0 flex-1 gap-2 px-2 pt-2 pb-1">
+          <div className="flex min-h-0 flex-1 gap-2 p-2">
             <SideNav activeHref={active.href} />
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
           </div>
@@ -361,7 +329,8 @@ function clamp(value: number, min: number, max: number): number {
 
    ⚠️ 항목 이름은 목업의 Dashboard / Inventory / Analytics 대신 **실제 화면 이름**이다.
       이 목차는 장식이 아니라 진짜로 화면을 오가는 수단이라, 없는 화면 이름을 달면 눌렀을 때
-      갈 곳이 없다. 세 번째 자리(Analytics)만 목업 이름을 그대로 뒀다 — 이 스킨에 아직
+      갈 곳이 없다. 세 번째 자리도 목업 이름(Analytics)을 버리고 하는 일로 바꿨다 — 입고 → 보관 → 포장이라
+      세 탭이 물류 흐름 순서가 된다. 이 화면의 중심이 실시간 창고 맵과 3D 창고 입구라서다 — 이 스킨에 아직
       대시보드가 없어서 잠근 자리이기 때문이다. */
 function SideNav({ activeHref }: { activeHref: string }) {
   return (
@@ -391,7 +360,7 @@ function SideNav({ activeHref }: { activeHref: string }) {
                올린 세로 배치 + py-5**. 한 칸이 약 92px 이다.
 
                ★ 가로 배치를 버린 이유는 높이가 아니라 **글자가 잘려서**다. 아이콘과 글자가
-                 한 줄에 서면 w-32 안에서 글자가 쓸 수 있는 폭이 70px 남짓이라 `Analytics` 가
+                 한 줄에 서면 w-32 안에서 글자가 쓸 수 있는 폭이 70px 남짓이라 `Storage` 가
                  `Analyt…` 로 잘렸다. 세로로 쌓으면 글자가 칸 폭을 통째로 쓰므로 잘릴 일이
                  없다 — "가독성"에서 제일 먼저 고칠 것은 크기가 아니라 잘림이었다.
                ⚠️ 그래서 `truncate` 도 뗐다. 폭이 충분한데 truncate 를 남겨 두면, 나중에

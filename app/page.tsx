@@ -10,7 +10,7 @@ export default function Home() {
           풀필먼트 검수-포장 판단 시스템
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          화면 4개 · 명세는 docs 저장소가 정본
+          화면 3개 · 명세는 docs 저장소가 정본
         </p>
       </div>
 

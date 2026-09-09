@@ -858,7 +858,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         셈이라, 같은 렌더가 두 번 돌 때(개발 모드의 이중 실행) 결과가 갈린다.
         의존성 없는 effect 에 두면 **그릴 것을 다 그린 뒤** 매번 갱신된다. */
   const router = useRouter();
-  useEffect(() => { goPackingRef.current = () => router.push("/packing-win98"); }, [router]);
+  useEffect(() => { goPackingRef.current = () => router.push("/packing"); }, [router]);
   /* 상태 함수는 리액트가 그대로 유지하므로 한 번만 걸어 두면 된다 */
   useEffect(() => { onStationFocusRef.current = setAtStation; }, []);
 

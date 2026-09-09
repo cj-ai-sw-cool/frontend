@@ -20,17 +20,16 @@ const WarehouseMap = dynamic(() => import("./_components/warehouse-map"), {
 /**
  * 창고 3D — 지도를 누르면 전체 화면으로 뜬다.
  *
- * ★ 이 컴포넌트만은 **창고 라우트에서 그대로 가져온다.** 이 저장소는 win98 화면마다
- *   `_components` 를 따로 갖는 것이 규칙이지만, 그 규칙은 셸(타이틀바·태스크바·네비)처럼
- *   화면마다 다르게 만지고 싶은 것들을 위한 것이다. 이건 2,000줄짜리 three.js 씬이고
- *   지금도 계속 손보는 중이라, 복사본을 두면 두 벌이 반드시 어긋난다 — 한 화면에서만
- *   트럭이 바뀌거나 조명이 다른 사고가 난다.
- *   (2D 지도는 반대다. 그쪽은 3D 씬 없이 혼자 돌아야 해서 사본이 필요했다.)
+ * ★ 이 컴포넌트는 원래 별도 창고 라우트가 소유했다. 그 라우트를 지우면서(Stage 1,
+ *   docs/tasks/2026-09-09-stage1-master-handoff.md §3 S1.4a) 분석 화면이 유일한
+ *   소유자가 됐다 — 분석 화면이 같은 3D 를 "3D 전체 ▶"로 이미 렌더했으므로 단독
+ *   화면은 중복이었다. 파일은 내용 변경 없이 위치만 `_components/` 아래로 옮겼다.
+ *   2,000줄짜리 three.js 씬이라 지금도 계속 손보는 중이니 사본을 두지 않는다.
  * ⚠️ `ssr: false` 여야 한다. three.js 가 모듈 최상단에서 `document` 를 만진다.
  * ⚠️ 눌렀을 때만 불러온다 — 분석 화면을 열 때마다 3D 번들을 받아 오면 첫 로딩이 무거워진다.
  */
 const WarehouseSlot3D = dynamic(
-  () => import("../warehouse-win98/_components/warehouse-slot-3d"),
+  () => import("./_components/warehouse-slot-3d"),
   {
     ssr: false,
     loading: () => (

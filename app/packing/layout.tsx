@@ -4,11 +4,11 @@ import { Win98Shell } from "./_components/shell";
 import styles from "./_styles/win98.module.css";
 
 /**
- * `/packing-win98` 전용 레이아웃 — Windows 98 스킨의 출고 포장 화면.
+ * `/packing` 전용 레이아웃 — Windows 98 스킨의 출고 포장 화면.
  *
  * ★ 이 라우트는 **완전히 독립**이다 (사용자 결정). 셸(`_components/shell.tsx`), 공용 조각
  *   (`_components/win98-ui.tsx`), 스타일(`_styles/win98.module.css`)을 이웃 라우트
- *   `/inbound-win98` 와 **공유하지 않고 각자 한 벌씩** 갖는다.
+ *   `/inbound` 와 **공유하지 않고 각자 한 벌씩** 갖는다.
  *
  *   ⚠️ 그래서 여기를 고쳐도 옆 화면은 안 바뀐다 — 그게 목적이다(디자인을 화면별로 따로
  *      만지기 위해 라우트 그룹 `app/(win98)/` 를 해체하고 각자 복사해 왔다).
