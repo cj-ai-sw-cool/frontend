@@ -17,7 +17,10 @@ export type ApiErrorCode =
   | "BOX_TYPE_NOT_FOUND"
   | "INVALID_STATE"
   | "OUT_OF_STOCK"
-  | "VALIDATION_ERROR";
+  | "VALIDATION_ERROR"
+  /** 마스터 데이터 유일성 위반(Stage 1) — 예: 화주 코드 중복 */
+  | "CONFLICT"
+  | "LOCATION_NOT_FOUND";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -230,10 +233,9 @@ export interface CompleteResponse {
 
 /* ── 4. 마스터 — 화주·존·로케이션 (Stage 1) ─────────────────────────────
    정본: backend/docs/02-system/02-data-model.md §1, docs/tasks/
-   2026-09-09-stage1-master-handoff.md §2. `Location` 은 §1.2 의 `location`
-   테이블 컬럼을 그대로 camelCase 로 옮긴 것이다 — 응답의 정확한 필드 목록은
-   §2 에 명시되지 않아, 이미 응답이 명시된 `Zone`(존 테이블 컬럼 1:1)과 같은
-   규칙을 따랐다. 백엔드가 실제로 다르게 준다면 여기부터 맞춘다. */
+   2026-09-09-stage1-master-handoff.md §2. 필드는 백엔드 응답 DTO
+   (SellerResponse/ZoneResponse/LocationResponse, backend/src/main/java/com/
+   awesome/backend/{seller,location}/controller/)를 그대로 옮겼다. */
 
 export type SellerStatus = "ACTIVE" | "INACTIVE";
 
@@ -279,13 +281,15 @@ export interface Zone {
 export type LocationType = "BIN" | "TOTE" | "REBIN_SLOT" | "RECEIVING" | "PACKING";
 export type LocationStatus = "ACTIVE" | "BLOCKED";
 
-/** `GET /locations` 항목 / `GET /locations/{code}` 단건 */
+/**
+ * `GET /locations` 항목 / `GET /locations/{code}` 단건.
+ * `zoneCode`·좌표·치수는 BIN 에만 있다 — 토트·슬롯·입고장·포장대는 전부 null 이다.
+ */
 export interface Location {
   id: number;
   code: string;
   type: LocationType;
-  /** BIN 만 필수. 그 외 타입은 null */
-  zoneId: number | null;
+  zoneCode: string | null;
   rackNo: number | null;
   levelNo: number | null;
   colNo: number | null;
