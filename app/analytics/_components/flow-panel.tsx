@@ -47,8 +47,10 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 "use client";
 
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
+import { toLayoutZones } from "@/lib/zone-layout";
+import { useZones } from "../_data/use-master";
 import { FAINT, FILL, INK, MUTED, TRACK } from "./clean-ui";
 import { w98 } from "./win98-ui";
 import { REAL_IN, REAL_OUT, REAL_STOCK, gradeStats, DEMO_DAY } from "./warehouse-data";
@@ -164,7 +166,12 @@ export function FlowPanel({ day = DEMO_DAY }: { day?: number }) {
   const stock = REAL_STOCK[day] ?? 0;
   const delta = inn - out;
 
-  const stats = gradeStats(day);
+  /* 슬롯 점유율은 이제 `GET /zones` 응답으로 계산한다(Stage 1 S1.5) — 로딩 중이거나
+     아직 안 받았으면 0%로 둔다. 존 목록은 몇 안 되는 작은 응답이라 깜빡임이 눈에 띄지
+     않는다(마스터 창·지도·3D 가 같은 쿼리 키를 공유해 캐시도 같이 쓴다). */
+  const { data: zones } = useZones();
+  const layoutZones = useMemo(() => (zones ? toLayoutZones(zones) : null), [zones]);
+  const stats = layoutZones ? gradeStats(day, layoutZones) : [];
   const filled = stats.reduce((s, g) => s + g.filled, 0);
   const total = stats.reduce((s, g) => s + g.total, 0);
   const occ = total > 0 ? filled / total : 0;

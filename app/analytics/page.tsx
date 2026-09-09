@@ -72,37 +72,41 @@ const WarehouseSlot3D = dynamic(
 export default function AnalyticsPage() {
   /* 3D 전체 화면이 떠 있는가 */
   const [full, setFull] = useState(false);
-  const close = useCallback(() => setFull(false), []);
 
   /* "마스터" 창(화주·로케이션, Stage 1 S1.4c)이 떠 있는가 */
   const [showMaster, setShowMaster] = useState(false);
 
-  /* `WarehouseSlot3D` 가 `onReady` 로 넘긴 api 핸들. 3D 가 닫히면(`full=false`) 씬이
-     통째로 언마운트되므로 그 핸들도 같이 비운다 — 지워진 three.js 씬을 계속 붙들고
-     있다가 나중에 불러 터지는 사고를 막는다. */
+  /* 마스터 창의 로케이션 행을 클릭했을 때 3D 를 처음 열면서 강조할 존.
+     ⚠️ **`onReady` 뒤에 imperative 하게 부르지 않는다.** `WarehouseSlot3D` 는 마운트되면
+        "씬 구성" 이펙트 다음에 `[sel]` 이펙트가 도는데, 그 이펙트가 초기값(null)을 보고
+        `resetView()` 를 불러 flyTo 를 덮어써 버린다(경쟁 상태). 그래서 마운트 **전에** 이
+        존을 `initialHighlight` 프롭으로 넘겨 `WarehouseSlot3D` 의 `sel` 초기값 자체로
+        삼는다 — 그러면 그 `[sel]` 이펙트 자신이 최초 1회 flyTo 를 불러 준다. */
+  const [highlightZone, setHighlightZone] = useState<string | null>(null);
+
+  const close = useCallback(() => {
+    setFull(false);
+    setHighlightZone(null);
+  }, []);
+
+  /* `WarehouseSlot3D` 가 `onReady` 로 넘긴 api 핸들 — 3D 가 이미 열려 있을 때 마스터
+     창에서 다른 로케이션을 누르면 이 핸들로 바로 옮긴다(위 경쟁 상태가 마운트 시점에만
+     해당하므로, 이미 마운트된 뒤에는 직접 불러도 안전하다).
+     3D 가 닫히면(`full=false`) 씬이 통째로 언마운트되므로 핸들도 같이 비운다 — 지워진
+     three.js 씬을 계속 붙들고 있다가 나중에 불러 터지는 사고를 막는다. */
   const warehouseApiRef = useRef<WarehouseApi | null>(null);
   useEffect(() => {
     if (!full) warehouseApiRef.current = null;
   }, [full]);
 
-  /* 마스터 창의 로케이션 행을 3D 가 아직 없을 때(닫혀 있을 때) 눌렀다면, 여는 동안
-     "이 존으로 가라"를 잠깐 들고 있다가 `onReady` 가 오면 그때 적용한다. */
-  const pendingZoneRef = useRef<string | null>(null);
-
   const handleWarehouseReady = useCallback((api: WarehouseApi) => {
     warehouseApiRef.current = api;
-    const pending = pendingZoneRef.current;
-    if (pending) {
-      pendingZoneRef.current = null;
-      api.setHighlight(pending);
-      api.flyTo(pending);
-    }
   }, []);
 
   /**
    * 마스터 창의 로케이션 행 클릭 — 이 창을 닫고 3D 전체 화면으로 넘어가면서 그 존을
-   * 강조한다("3D 전체 ▶" 와 같은 전환). 3D 가 이미 열려 있으면 바로 부르고, 닫혀 있으면
-   * 여는 동안 `pendingZoneRef` 에 담아 뒀다가 `handleWarehouseReady` 에서 적용한다.
+   * 강조한다("3D 전체 ▶" 와 같은 전환). 3D 가 이미 열려 있으면 api 핸들로 바로 부르고,
+   * 닫혀 있으면 `highlightZone` 에 담아 `initialHighlight` 프롭으로 새로 연다(위 주의 참고).
    *
    * ⚠️ **존 단위까지만 움직인다.** `flyTo`/`setHighlight` 가 랙 번호는 받지 않는다 —
    *    자세한 내용은 `master-window.tsx` 머리말과 인수인계 보고 참고.
@@ -114,7 +118,7 @@ export default function AnalyticsPage() {
         warehouseApiRef.current.setHighlight(zoneCode);
         warehouseApiRef.current.flyTo(zoneCode);
       } else {
-        pendingZoneRef.current = zoneCode;
+        setHighlightZone(zoneCode);
         setFull(true);
       }
     },
@@ -203,7 +207,11 @@ export default function AnalyticsPage() {
           ⚠️ z-200 은 분석 창(z-60)·공용 헤더(z-50)·네비(z-40)보다 위다. */}
       {full && (
         <div className="fixed top-0 left-0 z-[200] h-[1004px] w-[1600px] bg-[#10151C]">
-          <WarehouseSlot3D initialTab="3d" onReady={handleWarehouseReady} />
+          <WarehouseSlot3D
+            initialTab="3d"
+            onReady={handleWarehouseReady}
+            initialHighlight={highlightZone}
+          />
           <button
             type="button"
             onClick={close}

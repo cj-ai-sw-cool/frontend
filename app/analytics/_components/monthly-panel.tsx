@@ -59,8 +59,10 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { toLayoutZones } from "@/lib/zone-layout";
+import { useZones } from "../_data/use-master";
 import { FAINT, FILL, FILL_WEAK, INK, MUTED, RULE, TRACK } from "./clean-ui";
 import { w98 } from "./win98-ui";
 import { REAL_DATES, REAL_IN, REAL_OUT, REAL_USAGE, gradeStats, DEMO_DAY } from "./warehouse-data";
@@ -157,6 +159,14 @@ const BOX_SPEC = [
 const VISIBLE = 3;
 
 export function MonthlyPanel() {
+  /* 규격별 재고는 이제 `GET /zones` 응답으로 계산한다(Stage 1 S1.5) — 로딩 중이면
+     빈 배열로 둔다(아래 렌더가 "—" 로 보여준다). */
+  const { data: zones } = useZones();
+  const layoutZones = useMemo(() => (zones ? toLayoutZones(zones) : null), [zones]);
+  /* `BOX_SPEC` 은 실제 포장 박스 6종(1~6호)뿐이라 G(냉동)는 대응이 없다 — G 는 재고
+     매핑도 없는 존이라(위 `warehouse-data.js` gradeStats 참고) 이 칸에서는 아예 뺀다. */
+  const boxStats = layoutZones ? gradeStats(DEMO_DAY, layoutZones).filter((g) => g.g.invKey !== null) : [];
+
   const all = byMonth();
   /* 보이는 창의 **첫 달** 번호. 실측이 석 달뿐이라 지금은 늘 0 이다 */
   /* 처음에는 **실측 석 달**이 보이게 연다. 0 으로 두면 지어낸 1~3월부터 뜬다 */
@@ -309,7 +319,7 @@ export function MonthlyPanel() {
             ⚠️ 여섯 줄이 남는 높이를 나눠 갖는다(`flex-1`). 줄 높이를 못 박으면 창 높이가
                조금만 달라져도 마지막 줄이 잘리거나 아래가 휑하다. */}
         <div className="mt-2 flex min-h-0 flex-1 flex-col">
-          {gradeStats(DEMO_DAY).map((g, i) => {
+          {boxStats.map((g, i) => {
             const spec = BOX_SPEC[i];
             const pct = g.occ * 100;
             /* 임계를 넘긴 규격만 굵게. 색을 안 쓰므로 굵기가 유일한 강조다 */

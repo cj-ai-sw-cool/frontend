@@ -9,23 +9,23 @@
      그래서 여기서는 **2D 만으로 자족하는 사본**을 만들었다. 물동량 데이터와 배치 계산은
      같은 것을 쓰고(아래), 움직이는 것들만 시간 함수로 직접 그린다.
 
-   ⚠️ 배치 상수(`GRADES` · `computeLayout` · `CORRIDOR` …)와 실측 데이터는 창고 화면에서
-      **복사해 온 것**이다. 이 저장소는 win98 화면마다 `_components` 를 따로 갖는 것을
-      규칙으로 삼는다(다른 화면들과 같은 방식). 창고 쪽 규격이나 데이터를 바꾸면 여기도
-      같이 바꿔야 한다 — 자동으로 따라오지 않는다.
+   ⚠️ 배치(존 규격·랙 배치)는 더 이상 이 화면이 들고 있지 않다(Stage 1, docs/tasks/
+      2026-09-09-stage1-master-handoff.md §3 S1.5). `GET /zones` 응답을 `lib/zone-layout.ts`
+      의 `computeLayout` 에 넘긴다 — 3D(`warehouse-slot-3d.jsx`)와 같은 함수라, 존 규격을
+      바꾸려면 백엔드 시드만 바꾸면 된다.
    ⚠️ 움직이는 것들은 **시연용 궤적**이다. 창고 화면의 상태 기계(적재/하역/대기)를 옮겨
       오지 않았고, 정해진 경로를 일정 속도로 도는 것뿐이다. 지도가 "살아 있다"를 보이는 게
       목적이지 동작을 재현하는 게 아니다.
    ═══════════════════════════════════════════════════════════════════════════ */
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 
-/* 배치·재고는 `warehouse-data.js` 한 곳에서 온다 — 규격별 재고 패널과 **같은 숫자**를
+import { CORRIDOR, computeLayout, toLayoutZones } from "@/lib/zone-layout";
+import { useZones } from "../_data/use-master";
+/* 실측 물동량은 `warehouse-data.js` 한 곳에서 온다 — 규격별 재고 패널과 **같은 숫자**를
    써야 해서 꺼내 놓았다. 그 파일 머리말 참고. */
-import {
-  REAL_INV, INV_PEAK, MAP_FONT, MAP_FLOOR, CORRIDOR, computeLayout, DEMO_DAY,
-} from "./warehouse-data";
+import { REAL_INV, INV_PEAK, MAP_FONT, MAP_FLOOR, DEMO_DAY } from "./warehouse-data";
 /* ── 닫힌 경로 위의 한 점 ────────────────────────────────────────────────
    `t` 는 0~1. 변의 길이에 비례해 나눠 걷는다 — 꼭짓점마다 같은 시간을 주면 짧은 변에서
    느려지고 긴 변에서 빨라져, 도는 물체의 속도가 들쭉날쭉해 보인다. */
@@ -64,11 +64,16 @@ export default function WarehouseMap({ onOpen3D }) {
        움직임은 아래 AGV·지게차·작업자가 만든다 — 그쪽이 "실시간"을 맡고, 재고 숫자는
        시연 기준일에 붙박이로 둔다. 시연 중에 짚어 말할 숫자가 흔들리면 안 된다. */
 
+  /* 배치는 `GET /zones` 에서 온다(Stage 1 S1.5). 아직 안 받았으면 캔버스를 그리지 않고
+     아래에서 "레이아웃 불러오는 중" 을 보여준다. */
+  const { data: zones } = useZones();
+  const layoutZones = useMemo(() => (zones ? toLayoutZones(zones) : null), [zones]);
+
   useEffect(() => {
     const wrap = wrapRef.current, cvs = canvasRef.current;
-    if (!wrap || !cvs) return;
+    if (!wrap || !cvs || !layoutZones) return;
 
-    const layout = computeLayout();
+    const layout = computeLayout(layoutZones);
     const floorW = Math.max(...layout.rowWidths) + 11;
     /* 반드시 들어가야 하는 세로 범위 — 랙 양 끝에 **구역 라벨이 설 자리**까지 포함한다.
        뒤쪽(2.3m)이 앞쪽(1.6m)보다 넉넉한 이유는 A·B·C 라벨이 랙 **위**에 붙기 때문이다. */
@@ -217,8 +222,11 @@ export default function WarehouseMap({ onOpen3D }) {
       const labels = [];
       for (const z of layout.zones) {
         const col = z.g.color;
-        const occ = Math.min(0.99, Math.max(0.015,
-          (REAL_INV[z.g.invKey][d] / INV_PEAK[z.g.invKey]) * 0.95));
+        /* G(냉동)처럼 `invKey` 가 없는 존은 실측 재고 배열이 없다 — 점유 0 으로 둔다
+           (Stage 1 S1.5, 브리프 §3 "G는 null → 점유 0으로 렌더"). */
+        const occ = z.g.invKey
+          ? Math.min(0.99, Math.max(0.015, (REAL_INV[z.g.invKey][d] / INV_PEAK[z.g.invKey]) * 0.95))
+          : 0;
         const rx = X(z.x0 - 0.35), ry = Y(z.zStart - ZONE_PAD);
         const rw = (z.width + 0.7) * scale, rh = (z.len + ZONE_PAD * 2) * scale;
 
@@ -379,8 +387,15 @@ export default function WarehouseMap({ onOpen3D }) {
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, []);
+  }, [layoutZones]);
 
+  if (!layoutZones) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-[#10151C] text-[13px] text-[#8FA3B8]">
+        레이아웃 불러오는 중…
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
