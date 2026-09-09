@@ -1,6 +1,14 @@
 "use client";
 
-import { LayoutDashboard, LogOut, PackageCheck, PackagePlus, Settings, type LucideIcon } from "lucide-react";
+import {
+  FlaskConical,
+  LayoutDashboard,
+  LogOut,
+  PackageCheck,
+  PackagePlus,
+  Settings,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV } from "@/lib/nav";
@@ -44,6 +52,12 @@ import { cn } from "@/lib/utils";
  *  이 표만 바꾸면 되도록 대응을 남겨 둔다. */
 const NAV_ICON: Record<string, LucideIcon | undefined> = {
   "/inbound": PackagePlus, // 입고 = 물건이 들어옴 (확정본: input)
+  // win98 스킨 화면 셋 — 실험·데모용이라 확정본에 대응되는 아이콘이 없다.
+  // 플라스크로 묶어 "본 화면이 아니라 별도 스킨"임을 목록에서 바로 알 수 있게 한다.
+  "/inbound-win98": FlaskConical,
+  "/packing-win98": FlaskConical,
+  "/warehouse-win98": FlaskConical,
+  "/analytics-win98": FlaskConical,
   "/packing": PackageCheck, // 출고 포장 = 담고 확인해서 내보냄 (확정본: package_2)
   "/dashboard": LayoutDashboard, // (확정본: dashboard)
 };

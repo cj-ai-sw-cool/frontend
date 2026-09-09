@@ -84,3 +84,52 @@ npx tsc --noEmit   # 타입
 npm run lint       # ESLint
 npm run build      # 프로덕션 빌드 (standalone 산출)
 ```
+
+## 시연 서버에 띄우기 (팀원 전용)
+
+화면은 EC2 에서 돌고 **비밀번호를 아는 사람만** 들어온다. 팀원이 각자 다른 망에서
+접속하므로 IP 로는 거를 수 없어 `proxy.ts` 가 Basic 인증으로 전체 경로를 막는다
+(`/api/v1/*` 포함 — 화면을 거치지 않고 API 만 부르는 것도 막힌다).
+
+```bash
+# EC2 에서
+git clone https://github.com/cj-ai-sw/frontend.git ~/frontend && cd ~/frontend
+cp .env.example .env
+# .env 에 DEMO_PASSWORD 를 채운다. BACKEND_ORIGIN 은 기본값(host.docker.internal:8000)이면 된다.
+sudo docker compose up -d --build
+```
+
+백엔드 호출은 `app/api/v1/[...path]/route.ts` 가 대신한다. 여기서 `DEMO_API_KEY` 를
+`X-Demo-Key` 헤더로 붙이므로 **열쇠는 서버에만 있고 브라우저에는 내려가지 않는다**
+(backend D-26). 화면 접근용 계정(`Authorization`)은 백엔드로 넘기지 않는다.
+
+프론트 컨테이너는 백엔드 compose 가 만든 네트워크(`backend_default`)에 얹혀 `backend:8000` 으로
+부른다. 그래서 **백엔드 포트를 인터넷에 열지 않아도** 화면이 동작한다. 백엔드가 먼저 떠 있어야
+하고, 네트워크 이름이 다르면 `.env` 의 `BACKEND_NETWORK` 로 바꾼다.
+
+접속은 `http://<서버주소>:3000` 이고 브라우저가 아이디·비밀번호를 묻는다. `.env` 의
+`DEMO_USER` / `DEMO_PASSWORD` 와 맞아야 들어온다 — `DEMO_USER` 를 비워 두면 아이디는
+검사하지 않는다.
+
+`DEMO_PASSWORD` 를 비우면 게이트가 꺼진다 — 로컬 개발은 지금까지처럼 그대로 돌아간다.
+
+> Basic 인증은 자격증명을 요청마다 보낸다. 시연 서버에 HTTPS 가 없으므로 같은 망을 엿볼 수
+> 있는 사람에게는 비밀번호가 노출된다. 시연 전용 비밀번호를 쓰고 끝나면 버린다.
+
+## 자동 배포 (Vercel)
+
+`develop` 에 머지되면 `.github/workflows/deploy-vercel.yml` 이 프로덕션으로 올린다.
+
+Vercel 의 Git 연동은 쓰지 않는다 — Hobby 플랜에서는 조직 소유 저장소를 연결할 수 없다.
+대신 CLI 가 소스를 직접 올리며, 이 경로에는 그 제한이 없다.
+
+필요한 저장소 시크릿 세 가지다.
+
+| 시크릿 | 값 |
+|---|---|
+| `VERCEL_TOKEN` | vercel.com/account/tokens 에서 발급 |
+| `VERCEL_ORG_ID` | `.vercel/project.json` 의 `orgId` |
+| `VERCEL_PROJECT_ID` | `.vercel/project.json` 의 `projectId` |
+
+환경변수는 저장소에 복제하지 않는다. 워크플로가 `vercel pull` 로 Vercel 에서 받아 오므로,
+값을 바꿀 때는 Vercel 쪽만 고치면 된다.
