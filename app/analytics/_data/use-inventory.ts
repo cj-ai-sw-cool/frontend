@@ -10,6 +10,7 @@
  * 2026-09-10-stage2-inventory-core-handoff.md §3.
  */
 
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { inventory, queryKeys } from "@/lib/endpoints";
 import type { AdjustInventoryRequest, StockQuery } from "@/lib/types";
@@ -57,6 +58,28 @@ export function useDailyInventory(from: string, to: string) {
     queryKey: queryKeys.dailyInventory(from, to),
     queryFn: () => inventory.daily(from, to),
   });
+}
+
+/**
+ * 오늘 기준 최근 N일 — 흐름·월간 패널이 함께 쓴다(브리프 §3 S2.8 "GET /inventory/daily?
+ * from=오늘−30&to=오늘"). 두 패널이 같은 방식으로 날짜를 계산해야 쿼리 키가 같아지고,
+ * 그래야 TanStack Query 가 요청을 하나로 합친다 — 각자 `new Date()` 를 부르면 아주 드물게
+ * 자정을 사이에 두고 하루가 어긋날 수 있어, 이 훅 하나로 계산을 모은다.
+ */
+export function useRecentDailyInventory(days = 30) {
+  const { from, to } = useMemo(() => recentRange(days), [days]);
+  return useDailyInventory(from, to);
+}
+
+function recentRange(days: number): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - days);
+  return { from: toISODate(from), to: toISODate(to) };
+}
+
+function toISODate(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 /**

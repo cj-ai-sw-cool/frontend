@@ -26,11 +26,9 @@
    ── 한 번에 보이는 달 ──────────────────────────────────────────────────────
    ★ 좌우로 넘길 수 있게 했다 (사용자 요청). 한 화면에 **석 달**만 놓는다 — 폭 340 에
      여섯 막대가 들어가면 값 글자가 서로 겹친다.
-   ⚠️ **실측은 2024-08 ~ 10 석 달뿐이고, 나머지 아홉 달은 지어낸 값이다** (사용자 결정 —
-      시연에서 열두 달을 넘겨 보고 싶다). 그 아홉 달은 `DEMO_MONTHS` 에 있고 `real: false`
-      가 붙는다. 화면에서도 그 달이 보일 때는 기간 옆에 `예시 포함` 이라고 적는다.
-      ⚠️ 실제 데이터가 들어오면 `DEMO_MONTHS` 에서 그 달을 **지워야** 한다. 남겨 두면
-         지어낸 값이 실측을 덮는다 — 아래 병합이 실측을 먼저 놓고 빈 달만 채운다.
+   ★ Stage 2 — 지어낸 열두 달 배열을 걷어냈다(브리프 §3 S2.8). 이제
+     `GET /inventory/daily?from=오늘−30&to=오늘` 이 실제로 쌓인 원장만큼만 보여준다.
+     최근 30일이라 대개 한두 달치라 화면에 빈칸이 남을 수 있다 — 그게 지금의 실제 데이터다.
 
    ── 세로 배분 ──────────────────────────────────────────────────────────────
    ⚠️ 상자 셋의 높이를 내용에 맡겼더니 아래에 **126px 이 빈 채로** 남았다 (사용자 지적).
@@ -61,37 +59,13 @@
 
 import { useMemo, useState } from "react";
 
-import { toLayoutZones } from "@/lib/zone-layout";
-import { useZones } from "../_data/use-master";
+import type { DailyInventory } from "@/lib/types";
+import { useRecentDailyInventory, useZonesSummary } from "../_data/use-inventory";
 import { FAINT, FILL, FILL_WEAK, INK, MUTED, RULE, TRACK } from "./clean-ui";
 import { w98 } from "./win98-ui";
-import { REAL_DATES, REAL_IN, REAL_OUT, REAL_USAGE, gradeStats, DEMO_DAY } from "./warehouse-data";
-
-/* ── 지어낸 달 ─────────────────────────────────────────────────────────────
-   ⚠️ **실측이 아니다.** 시연에서 열두 달을 넘겨 보려고 채운 값이다 (위 머리말 참고).
-   ★ 아무 숫자나 넣지 않고 실측이 말하는 이야기에 이어 붙였다: 실측 사용률이 8월 1일에
-     21.7% 에서 시작해 9월에 68% 까지 오르므로, **그 앞은 창고가 차 오르던 시기**이고
-     10월부터는 출고가 입고를 앞질러 빠지는 시기다. 앞쪽 일곱 달은 물동량이 작고 소진율이
-     100% 아래, 뒤쪽 두 달은 소진율이 100% 위다. 이 앞뒤가 안 맞으면 넘겨 보는 순간
-     지어낸 값인 것이 티가 난다.
-   ⚠️ 값을 **고정해 둔다.** 난수로 만들면 새로 그릴 때마다 숫자가 바뀌어, 시연 중에
-      화면을 다시 열면 다른 값이 나온다. */
-const DEMO_MONTHS = [
-  { key: "2024-01", inn: 4120, out: 1980, usage: 6.2 },
-  { key: "2024-02", inn: 5340, out: 3260, usage: 7.8 },
-  { key: "2024-03", inn: 6910, out: 4880, usage: 9.6 },
-  { key: "2024-04", inn: 8470, out: 6540, usage: 11.9 },
-  { key: "2024-05", inn: 10220, out: 8110, usage: 14.2 },
-  { key: "2024-06", inn: 12860, out: 10470, usage: 16.8 },
-  { key: "2024-07", inn: 16540, out: 13920, usage: 19.5 },
-  { key: "2024-11", inn: 15280, out: 18640, usage: 55.0 },
-  { key: "2024-12", inn: 13910, out: 17220, usage: 48.5 },
-];
 
 type Month = {
   key: string;      // "2024-08"
-  /** 실측인가. 거짓이면 `DEMO_MONTHS` 에서 온 값이다 */
-  real: boolean;
   label: string;    // "8월"
   inn: number;
   out: number;
@@ -100,43 +74,29 @@ type Month = {
   usage: number;    // 그 달 평균 사용률(%)
 };
 
-/** 일자별 실측을 달로 묶는다. 날짜 문자열이 ISO 라 앞 7글자가 곧 달이다 */
-function byMonth(): Month[] {
+/** 일별 응답(최근 30일)을 달로 묶는다. 날짜 문자열이 ISO 라 앞 7글자가 곧 달이다 */
+function byMonth(daily: DailyInventory[]): Month[] {
   const acc = new Map<string, { inn: number; out: number; u: number[] }>();
-  REAL_DATES.forEach((iso, i) => {
-    const k = String(iso).slice(0, 7);
+  for (const row of daily) {
+    const k = row.date.slice(0, 7);
     const a = acc.get(k) ?? { inn: 0, out: 0, u: [] };
-    a.inn += REAL_IN[i] ?? 0;
-    a.out += REAL_OUT[i] ?? 0;
-    a.u.push(REAL_USAGE[i] ?? 0);
+    a.inn += row.receivedQty;
+    a.out += row.shippedQty;
+    a.u.push(row.utilizationPct);
     acc.set(k, a);
-  });
-  const shape = (
-    key: string, inn: number, out: number, usage: number, real: boolean,
-  ): Month => ({
-    key,
-    label: `${Number(key.slice(5))}월`,
-    real,
-    inn,
-    out,
-    net: inn - out,
-    /* ⚠️ 입고가 0 인 달이 생기면 나눗셈이 무한대가 된다. 지금 값들에는 없지만, 데이터가
-       늘면 언제든 생길 수 있어 여기서 막는다 */
-    burn: inn > 0 ? out / inn : 0,
-    usage,
-  });
-
-  const real = [...acc.entries()].map(([key, a]) =>
-    shape(key, a.inn, a.out, a.u.reduce((s, v) => s + v, 0) / Math.max(1, a.u.length), true));
-
-  /* ⚠️ 실측을 **먼저** 담고, 그 달이 없을 때만 지어낸 값을 채운다. 순서가 뒤바뀌면 실측이
-     덮인다 (위 머리말 주의 참고). */
-  const seen = new Set(real.map((m) => m.key));
-  const filled = DEMO_MONTHS
-    .filter((d) => !seen.has(d.key))
-    .map((d) => shape(d.key, d.inn, d.out, d.usage, false));
-
-  return [...real, ...filled].sort((a, b) => (a.key < b.key ? -1 : 1));
+  }
+  return [...acc.entries()]
+    .map(([key, a]) => ({
+      key,
+      label: `${Number(key.slice(5))}월`,
+      inn: a.inn,
+      out: a.out,
+      net: a.inn - a.out,
+      /* ⚠️ 입고가 0 인 달이 생기면 나눗셈이 무한대가 된다 */
+      burn: a.inn > 0 ? a.out / a.inn : 0,
+      usage: a.u.reduce((s, v) => s + v, 0) / Math.max(1, a.u.length),
+    }))
+    .sort((a, b) => (a.key < b.key ? -1 : 1));
 }
 
 const W = 340, H = 214, PAD_B = 26;
@@ -159,25 +119,30 @@ const BOX_SPEC = [
 const VISIBLE = 3;
 
 export function MonthlyPanel() {
-  /* 규격별 재고는 이제 `GET /zones` 응답으로 계산한다(Stage 1 S1.5) — 로딩 중이면
-     빈 배열로 둔다(아래 렌더가 "—" 로 보여준다). */
-  const { data: zones } = useZones();
-  const layoutZones = useMemo(() => (zones ? toLayoutZones(zones) : null), [zones]);
-  /* `BOX_SPEC` 은 실제 포장 박스 6종(1~6호)뿐이라 G(냉동)는 대응이 없다 — G 는 재고
-     매핑도 없는 존이라(위 `warehouse-data.js` gradeStats 참고) 이 칸에서는 아예 뺀다. */
-  const boxStats = layoutZones ? gradeStats(DEMO_DAY, layoutZones).filter((g) => g.g.invKey !== null) : [];
+  /* Stage 2 — 흐름 패널과 **같은 응답**(브리프 §3 S2.8) 을 쓴다. 같은 훅을 부르므로
+     TanStack Query 가 요청을 하나로 합친다(두 훅이 계산하는 날짜가 같아 쿼리 키가 같다). */
+  const { data: daily } = useRecentDailyInventory();
+  const all = useMemo(() => byMonth(daily ?? []), [daily]);
 
-  const all = byMonth();
-  /* 보이는 창의 **첫 달** 번호. 실측이 석 달뿐이라 지금은 늘 0 이다 */
-  /* 처음에는 **실측 석 달**이 보이게 연다. 0 으로 두면 지어낸 1~3월부터 뜬다 */
-  const firstReal = Math.max(0, all.findIndex((m) => m.real));
-  const [from, setFrom] = useState(firstReal);
-  const start = Math.max(0, Math.min(from, all.length - VISIBLE));
+  /* 규격별 재고는 `GET /zones/summary` 로 그린다. `BOX_SPEC` 은 실제 포장 박스 6종(1~6호)
+     뿐이라 G(냉동)는 대응이 없다 — 존 코드로 걸러 뺀다(A~F 는 코드 오름차순이 곧
+     1호~6호 순서와 같다, `lib/zone-layout.ts` 의 `INV_KEY_BY_CODE` 와 같은 대응). */
+  const { data: zonesSummary } = useZonesSummary();
+  const boxStats = useMemo(
+    () => (zonesSummary ?? []).filter((z) => z.code !== "G").slice().sort((a, b) => (a.code < b.code ? -1 : 1)),
+    [zonesSummary],
+  );
+
+  /* 보이는 창의 **첫 달** 번호. 데이터가 들어오기 전에는 null 로 두고, 들어오면 **가장
+     최근 석 달**이 보이게 연다 — 30일치라 대개 한두 달뿐이라도 그중 최신 쪽이다. */
+  const [from, setFrom] = useState<number | null>(null);
+  const start = Math.max(0, Math.min(from ?? Math.max(0, all.length - VISIBLE), all.length - VISIBLE));
   const months = all.slice(start, start + VISIBLE);
   /* ⚠️ 막대 눈금은 **보이는 석 달**에서만 잡는다. 전체에서 잡으면 넘길 때마다 눈금이
      그대로라 창마다 막대가 다 짧아 보이는 달이 생긴다 — 비교는 한 화면 안에서 한다. */
   const peak = Math.max(1, ...months.flatMap((m) => [m.inn, m.out]));
-  const n = months.length;
+  /* 데이터가 아직 없으면(n=0) 폭 나눗셈이 무한대가 된다 — 최소 1로 막는다 */
+  const n = Math.max(1, months.length);
   const canPrev = start > 0;
   const canNext = start + VISIBLE < all.length;
 
@@ -195,12 +160,10 @@ export function MonthlyPanel() {
           <div className="flex items-center gap-1.5">
             {/* 보이는 기간은 **데이터에서 읽는다.** 손으로 적어 두면 넘겼을 때 그대로 남는다 */}
             <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>
-              {months[0]?.key} ~ {months[months.length - 1]?.key.slice(5)}
+              {months.length === 0
+                ? "데이터 없음"
+                : `${months[0]?.key} ~ ${months[months.length - 1]?.key.slice(5)}`}
             </span>
-            {/* 지어낸 달이 섞여 있으면 말해 준다 — 실측 옆에 말없이 놓이면 안 된다 */}
-            {months.some((m) => !m.real) && (
-              <span className="text-[10px]" style={{ color: FAINT }}>예시 포함</span>
-            )}
             {/* ⚠️ 못 넘길 때는 **끄되 감추지 않는다.** 사라졌다 나타나면 그 자리에서 제목이
                 밀리고, 넘길 수 있는 화면인지도 알 수 없다 */}
             <button
@@ -319,14 +282,14 @@ export function MonthlyPanel() {
             ⚠️ 여섯 줄이 남는 높이를 나눠 갖는다(`flex-1`). 줄 높이를 못 박으면 창 높이가
                조금만 달라져도 마지막 줄이 잘리거나 아래가 휑하다. */}
         <div className="mt-2 flex min-h-0 flex-1 flex-col">
-          {boxStats.map((g, i) => {
+          {boxStats.map((z, i) => {
             const spec = BOX_SPEC[i];
-            const pct = g.occ * 100;
+            const pct = z.binCount > 0 ? (z.occupiedBins / z.binCount) * 100 : 0;
             /* 임계를 넘긴 규격만 굵게. 색을 안 쓰므로 굵기가 유일한 강조다 */
-            const hot = g.occ > 0.85;
+            const hot = pct > 85;
             return (
               <div
-                key={g.g.id}
+                key={z.code}
                 className="flex min-h-0 flex-1 items-center gap-3"
                 style={i === 0 ? undefined : { borderTop: `1px solid ${RULE}` }}
               >
@@ -336,7 +299,7 @@ export function MonthlyPanel() {
                     {spec?.no}
                   </div>
                   {/* 구역 기호 — 아래 지도가 A~F 로 말하므로 잇는 고리만 남긴다 */}
-                  <div className="mt-0.5 text-[10px] leading-none" style={{ color: FAINT }}>{g.g.code}</div>
+                  <div className="mt-0.5 text-[10px] leading-none" style={{ color: FAINT }}>{z.code}</div>
                 </div>
 
                 <div className="min-w-0 flex-1">
@@ -345,10 +308,10 @@ export function MonthlyPanel() {
                       className={`text-[16px] tabular-nums ${hot ? "font-bold" : "font-semibold"}`}
                       style={{ color: INK }}
                     >
-                      {g.filled.toLocaleString()}
+                      {z.occupiedBins.toLocaleString()}
                     </span>
                     <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>
-                      /{g.total.toLocaleString()}
+                      /{z.binCount.toLocaleString()}
                     </span>
                     <span className="ml-auto text-[12px] tabular-nums" style={{ color: hot ? INK : MUTED }}>
                       {pct.toFixed(1)}%
