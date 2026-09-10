@@ -40,12 +40,11 @@ import { cn } from "@/lib/utils";
  *  주석의 이름은 디자인 확정본이 쓰는 Material Symbols 이름 — 라이브러리 결정이 나면
  *  이 표만 바꾸면 되도록 대응을 남겨 둔다. */
 const NAV_ICON: Record<string, LucideIcon | undefined> = {
-  // win98 스킨 화면 넷 — 실험·데모용이라 확정본에 대응되는 아이콘이 없다.
+  // win98 스킨 화면 셋 — 실험·데모용이라 확정본에 대응되는 아이콘이 없다.
   // 플라스크로 묶어 "본 화면이 아니라 별도 스킨"임을 목록에서 바로 알 수 있게 한다.
-  "/inbound-win98": FlaskConical,
-  "/packing-win98": FlaskConical,
-  "/analytics-win98": FlaskConical,
-  "/warehouse-win98": FlaskConical,
+  "/inbound": FlaskConical,
+  "/packing": FlaskConical,
+  "/analytics": FlaskConical,
 };
 
 /** 하단 고정 줄 2개. ⚠️ **동작이 없다** — 확정본에 있으니 자리는 만들지만

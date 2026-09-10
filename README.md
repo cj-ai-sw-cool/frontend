@@ -95,7 +95,7 @@ npm run build      # 프로덕션 빌드 (standalone 산출)
 # EC2 에서
 git clone https://github.com/cj-ai-sw/frontend.git ~/frontend && cd ~/frontend
 cp .env.example .env
-# .env 에 DEMO_PASSWORD 를 채운다. BACKEND_ORIGIN 은 기본값(host.docker.internal:8000)이면 된다.
+# .env 에 APP_PASSWORD 를 채운다. BACKEND_ORIGIN 은 기본값(host.docker.internal:8000)이면 된다.
 sudo docker compose up -d --build
 ```
 
@@ -108,10 +108,10 @@ sudo docker compose up -d --build
 하고, 네트워크 이름이 다르면 `.env` 의 `BACKEND_NETWORK` 로 바꾼다.
 
 접속은 `http://<서버주소>:3000` 이고 브라우저가 아이디·비밀번호를 묻는다. `.env` 의
-`DEMO_USER` / `DEMO_PASSWORD` 와 맞아야 들어온다 — `DEMO_USER` 를 비워 두면 아이디는
+`APP_USER` / `APP_PASSWORD` 와 맞아야 들어온다 — `APP_USER` 를 비워 두면 아이디는
 검사하지 않는다.
 
-`DEMO_PASSWORD` 를 비우면 게이트가 꺼진다 — 로컬 개발은 지금까지처럼 그대로 돌아간다.
+`APP_PASSWORD` 를 비우면 게이트가 꺼진다 — 로컬 개발은 지금까지처럼 그대로 돌아간다.
 
 > Basic 인증은 자격증명을 요청마다 보낸다. 시연 서버에 HTTPS 가 없으므로 같은 망을 엿볼 수
 > 있는 사람에게는 비밀번호가 노출된다. 시연 전용 비밀번호를 쓰고 끝나면 버린다.

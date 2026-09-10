@@ -17,7 +17,10 @@ export type ApiErrorCode =
   | "BOX_TYPE_NOT_FOUND"
   | "INVALID_STATE"
   | "OUT_OF_STOCK"
-  | "VALIDATION_ERROR";
+  | "VALIDATION_ERROR"
+  /** 마스터 데이터 유일성 위반(Stage 1) — 예: 화주 코드 중복 */
+  | "CONFLICT"
+  | "LOCATION_NOT_FOUND";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -226,5 +229,99 @@ export interface CompleteResponse {
   packedAt: string;
   /** 대시보드 처리량 +1 즉시 반영값 */
   line: { lineId: number; packedCount: number };
+}
+
+/* ── 4. 마스터 — 화주·존·로케이션 (Stage 1) ─────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §1, docs/tasks/
+   2026-09-09-stage1-master-handoff.md §2. 필드는 백엔드 응답 DTO
+   (SellerResponse/ZoneResponse/LocationResponse, backend/src/main/java/com/
+   awesome/backend/{seller,location}/controller/)를 그대로 옮겼다. */
+
+export type SellerStatus = "ACTIVE" | "INACTIVE";
+
+/** `GET /sellers` 항목 / `POST /sellers` 응답 */
+export interface Seller {
+  id: number;
+  code: string;
+  name: string;
+  status: SellerStatus;
+}
+
+/** `POST /sellers` 요청 */
+export interface CreateSellerRequest {
+  code: string;
+  name: string;
+}
+
+export type TempZone = "AMBIENT" | "CHILLED" | "FROZEN";
+
+/**
+ * `GET /zones` 항목 — 3D·2D 레이아웃(`lib/zone-layout.ts`)과 로케이션 탭의
+ * 존 단이 함께 읽는다. `locationCount` 는 그 존 소속 BIN 로케이션 수다.
+ */
+export interface Zone {
+  code: string;
+  name: string;
+  tempZone: TempZone;
+  /** 세 변 합 상한(cm). null = 상한 없음 */
+  gradeCapCm: number | null;
+  binWidthCm: number;
+  binHeightCm: number;
+  rackPairs: number;
+  rackSingles: number;
+  cols: number;
+  levels: number;
+  /** 3D 배치 줄 — 0 뒷줄, 1 앞줄 */
+  rowNo: number;
+  /** 줄 안 순서 */
+  orderInRow: number;
+  locationCount: number;
+}
+
+export type LocationType = "BIN" | "TOTE" | "REBIN_SLOT" | "RECEIVING" | "PACKING";
+export type LocationStatus = "ACTIVE" | "BLOCKED";
+
+/**
+ * `GET /locations` 항목 / `GET /locations/{code}` 단건.
+ * `zoneCode`·좌표·치수는 BIN 에만 있다 — 토트·슬롯·입고장·포장대는 전부 null 이다.
+ */
+export interface Location {
+  id: number;
+  code: string;
+  type: LocationType;
+  zoneCode: string | null;
+  rackNo: number | null;
+  levelNo: number | null;
+  colNo: number | null;
+  widthCm: number | null;
+  lengthCm: number | null;
+  heightCm: number | null;
+  maxWeightKg: number | null;
+  status: LocationStatus;
+}
+
+/** `GET /locations` 쿼리 — 전부 선택(§2 S1.2) */
+export interface LocationsQuery {
+  zone?: string;
+  rack?: number;
+  type?: LocationType;
+  page?: number;
+  size?: number;
+}
+
+/**
+ * Spring Data `Page<T>` 응답 — `GET /locations` 목록이 이 형식으로 온다.
+ * 실무에서 실제로 쓰이는 필드만 옮겼다(`pageable`·`sort` 등 메타 필드는 제외).
+ */
+export interface Page<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  /** 0-based 페이지 번호 */
+  number: number;
+  size: number;
+  first: boolean;
+  last: boolean;
+  empty: boolean;
 }
 

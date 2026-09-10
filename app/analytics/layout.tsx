@@ -4,11 +4,11 @@ import { Win98Shell } from "./_components/shell";
 import styles from "./_styles/win98.module.css";
 
 /**
- * `/inbound-win98` 전용 레이아웃 — Windows 98 스킨의 입고 등록 화면.
+ * `/analytics` 전용 레이아웃 — Windows 98 스킨의 분석 화면.
  *
  * ★ 이 라우트는 **완전히 독립**이다 (사용자 결정). 셸(`_components/shell.tsx`), 공용 조각
  *   (`_components/win98-ui.tsx`), 스타일(`_styles/win98.module.css`)을 이웃 라우트
- *   `/packing-win98` 와 **공유하지 않고 각자 한 벌씩** 갖는다.
+ *   `/inbound` 와 **공유하지 않고 각자 한 벌씩** 갖는다.
  *
  *   ⚠️ 그래서 여기를 고쳐도 옆 화면은 안 바뀐다 — 그게 목적이다(디자인을 화면별로 따로
  *      만지기 위해 라우트 그룹 `app/(win98)/` 를 해체하고 각자 복사해 왔다).
@@ -83,7 +83,7 @@ const robotoMono = Roboto_Mono({
   subsets: ["latin"],
 });
 
-export default function InboundWin98Layout({ children }: { children: ReactNode }) {
+export default function AnalyticsWin98Layout({ children }: { children: ReactNode }) {
   return (
     <div
       className={`${arimo.variable} ${robotoMono.variable} ${styles.theme} fixed top-0 left-0 z-60 flex h-[1004px] w-[1600px] flex-col overflow-hidden`}

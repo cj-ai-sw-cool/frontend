@@ -1,7 +1,10 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import { master, queryKeys } from "@/lib/endpoints";
+import { AISLE, CORRIDOR, computeLayout, toLayoutZones } from "@/lib/zone-layout";
 import { createPackingStation } from "./packing-station";
 import { createExterior, HAZE } from "./warehouse-exterior";
 import InspectionRoom from "./inspection-room";
@@ -41,26 +44,12 @@ const INV_PEAK = {
   l: Math.max(...REAL_INV.l), xl: Math.max(...REAL_INV.xl), xxl: Math.max(...REAL_INV.xxl),
 };
 
-/* 규격 정의 — w:한 변(m), h:높이(m), 실제 슬롯 치수 그대로
-   ── 구역 색 ────────────────────────────────────────────────────────────────
-   ★ 여섯 색을 **한 계열의 밝기 계단**으로 바꿨다. 전에는 금색·주홍·파랑·보라·분홍·하늘
-     여섯이 서로 관계없는 색이었는데, A~F 는 사실 **크기 사다리**(극소→특대)다. 색이
-     "무관하다"고 말하는데 실제로는 순서가 있으니 눈이 어긋났다. 계단으로 두면 색만 보고도
-     어느 쪽이 큰 규격인지 읽힌다.
-   ★ **F 만 색을 달리한다.** 그 구역은 `cold: true` — 냉장이라 성격 자체가 다르다. 여기서
-     색이 갈리는 건 장식이 아니라 뜻이다.
-   ★ 구역은 차갑게, 강조는 따뜻하게(`#FF8A2A`). 전에는 여섯이 다 최고 채도라 재생 버튼·
-     슬라이더의 주황이 튈 자리가 없었다. 구역이 물러나야 강조가 강조로 보인다.
-   ⚠️ 이 값은 2D 지도와 3D 뷰가 **같이 쓴다**(`z.g.color`). 같은 구역이 화면마다 다른 색이면
-      오히려 헷갈리므로 한 곳에서만 정한다. */
-const GRADES = [
-  { id: "xs", invKey: "xs", code: "A", name: "극소형", w: 0.30, h: 0.20, vol: "18,000", share: "63.4%", color: 0xA8C0E4, cols: 26, levels: 11, pairs: 4 },
-  { id: "s",  invKey: "s",  code: "B", name: "소형",   w: 0.35, h: 0.30, vol: "36,750", share: "21.1%", color: 0x8FA9D2, cols: 18, levels: 8,  pairs: 3 },
-  { id: "m",  invKey: "m",  code: "C", name: "중형",   w: 0.40, h: 0.40, vol: "64,000", share: "11.6%", color: 0x7792BF, cols: 14, levels: 6,  pairs: 2 },
-  { id: "l",  invKey: "l",  code: "D", name: "대형",   w: 0.50, h: 0.40, vol: "100,000", share: "3.4%", color: 0x5F7BAB, cols: 11, levels: 5,  pairs: 2 },
-  { id: "xl", invKey: "xl", code: "E", name: "특수",   w: 0.60, h: 0.60, vol: "216,000", share: "0.4%", color: 0x4A6595, cols: 9,  levels: 4,  pairs: 0, singles: 2 },
-  { id: "cold", invKey: "xxl", code: "F", name: "특대형", w: 0.60, h: 0.60, vol: "575K~17M", share: "1.1%", color: 0x5FC2C8, cols: 9, levels: 3, pairs: 0, singles: 2, cold: true },
-];
+/* 구역(존) 정의는 더 이상 여기 없다(Stage 1, docs/tasks/2026-09-09-stage1-master-
+   handoff.md §3 S1.5). `GET /zones` 응답을 `lib/zone-layout.ts` 의 `toLayoutZones` 로
+   바꿔 쓴다 — 아래 컴포넌트의 `layoutZones` 가 예전 `GRADES` 자리다. 배치 계산(옛
+   `computeLayout`)도 같은 파일의 `computeLayout(layoutZones)` 로 옮겼다. 2D 지도
+   (`warehouse-data.js`/`warehouse-map.jsx`)와 이 파일이 이제 같은 함수를 부르므로,
+   존 규격이 바뀌면 백엔드 시드만 바뀌면 된다. */
 
 /* ── 2D 지도 글꼴 ────────────────────────────────────────────────────────────
    ★ `Gulim(굴림)` 을 쓰다가 바꿨다. 비트맵 시절 글꼴이라 요즘 화면에서 획이 뭉개지고,
@@ -72,7 +61,10 @@ const GRADES = [
       기준이고, 고해상도 화면에서는 알아서 또렷해진다. */
 const MAP_FONT = "'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif";
 
-const AISLE = 1.7, PAIR_GAP = 0.08, ZONE_GAP = 2.3, PITCH_PAD = 0.09;
+/* AISLE·PAIR_GAP·ZONE_GAP·CORRIDOR 는 `lib/zone-layout.ts` 에서 가져온다(2D 지도와
+   같은 값을 써야 배치가 어긋나지 않는다, 위 import 참고). PITCH_PAD 만 3D 전용이라
+   여기 남는다 — 랙 단(선반) 사이 간격이라 2D 지도에는 없는 개념이다. */
+const PITCH_PAD = 0.09;
 
 /* ── 출고 구역 ────────────────────────────────────────────────────────────────
    건물 **오른쪽 벽 안쪽**의 띠. 바로 바깥에 트럭 도크가 붙어 있어서, 랙에서 꺼낸 물건이
@@ -113,60 +105,11 @@ const outZone = (floorW, floorCz) => ({
   z0: floorCz - OUT_ZONE.halfLen,
   z1: floorCz + OUT_ZONE.halfLen,
 });
-const CORRIDOR = 3.2;                       // 중앙 작업 통로 폭 (m)
 const GUARD_H = 0.5;                        // 랙 끝 기둥 코너 가드 높이 (m)
 const HANG_Y = 3.4;                         // 통로 로케이션 행거 판 높이 (m)
 const HANG_TOP = 5.4;                       // 행거 줄이 매달린 천장 높이 (m)
-const ROWS = [["xs", "s", "m"], ["l", "xl", "cold"]]; // 뒷줄 / 앞줄
-
-function computeLayout() {
-  const zones = [];
-  const rowWidths = [];
-  ROWS.forEach((ids, rowIdx) => {
-    let cursor = 0;
-    const rowZones = [];
-    for (const id of ids) {
-      const g = GRADES.find((x) => x.id === id);
-      const depth = g.w, len = g.cols * g.w;
-      const rackXs = [];
-      let width = 0;
-      if (g.pairs > 0) {
-        const pairW = depth * 2 + PAIR_GAP;
-        for (let p = 0; p < g.pairs; p++) {
-          const x0 = p * (pairW + AISLE);
-          rackXs.push(x0 + depth / 2, x0 + depth + PAIR_GAP + depth / 2);
-        }
-        width = g.pairs * pairW + (g.pairs - 1) * AISLE;
-      } else {
-        for (let s = 0; s < g.singles; s++) rackXs.push(s * (depth + AISLE) + depth / 2);
-        width = g.singles * depth + (g.singles - 1) * AISLE;
-      }
-      const pad = g.cold ? 1.0 : 0;
-      rowZones.push({ g, xLocal: cursor + pad, width, len, depth, rackXs, pad, row: rowIdx });
-      cursor += width + ZONE_GAP + pad * 2;
-    }
-    const totalW = cursor - ZONE_GAP;
-    rowWidths.push(totalW);
-    const startX = -totalW / 2;
-    for (const z of rowZones) {
-      z.x0 = startX + z.xLocal;
-      z.center = z.x0 + z.width / 2;
-      z.racks = z.rackXs.map((rx) => z.x0 + rx);
-      if (rowIdx === 0) {           // 뒷줄: 랙 끝이 통로 뒤편에 정렬
-        z.zStart = -CORRIDOR / 2 - z.len;
-        z.labelZ = -CORRIDOR / 2 + 0.95;   // 구역 문자는 통로 안쪽
-      } else {                      // 앞줄: 랙 시작이 통로 앞편에 정렬
-        z.zStart = CORRIDOR / 2;
-        z.labelZ = z.zStart + z.len + 1.35; // 구역 문자는 입고장 쪽
-      }
-      zones.push(z);
-    }
-  });
-  const backLen = Math.max(...zones.filter((z) => z.row === 0).map((z) => z.len));
-  const frontLen = Math.max(...zones.filter((z) => z.row === 1).map((z) => z.len));
-  return { zones, rowWidths, backLen, frontLen };
-}
-
+/* `ROWS`·`computeLayout()` 은 `lib/zone-layout.ts` 로 옮겼다(위 import, 파일 앞머리
+   주의 참고) — 이 컴포넌트는 `computeLayout(layoutZones)` 로 부른다. */
 
 /* ── 바닥 텍스처 ──────────────────────────────────────────────────────────
    ★ 어두운 콘크리트(#23282e)에서 **밝은 회색 에폭시 타일**로 바꿨다. 검수실 바닥과 같은
@@ -781,16 +724,39 @@ function buildAGV({ tote = false } = {}) {
 
 /* ═══════════════════ 컴포넌트 ═══════════════════ */
 /**
- * @param {{ initialTab?: "map" | "3d" }} props
+ * @param {{ initialTab?: "map" | "3d", onReady?: (api: { applyDay: (day: number) => void, setHighlight: (id: string | null) => void, flyTo: (id: string) => void, resetView: () => void }) => void, initialHighlight?: string | null }} props
+ *   `initialHighlight` — 마운트하자마자 강조·포커스할 존 코드(Stage 1 S1.4c). `sel` 의
+ *     초기값으로 그대로 들어간다 — 자세한 이유는 아래 `sel` 선언부 주의 참고.
  *   `initialTab` — 어느 판으로 열 것인가. 기본은 지도.
  *   ★ 분석 화면이 이 컴포넌트를 전체 화면으로 띄울 때 곧바로 3D 로 열기 위해 받는다.
  *     열고 나서 탭을 바꾸는 방법도 있지만, 그러면 지도가 한 프레임 그려졌다 사라져 깜빡인다.
+ *   `onReady` — `apiRef` 는 이 컴포넌트 안의 ref 라 밖에서 부를 수 없었다(Stage 1,
+ *     docs/tasks/2026-09-09-stage1-master-handoff.md §3 S1.4c). 씬이 만들어져 api
+ *     (`applyDay`/`setHighlight`/`flyTo`/`resetView`) 가 준비되는 순간 부모에게 그 핸들을
+ *     넘긴다 — 분석 화면의 "마스터" 창이 로케이션 행을 클릭했을 때 이 핸들로 3D 를 움직인다.
  */
-export default function WarehouseSlot3D({ initialTab = "map" }) {
+export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHighlight = null }) {
+  /* 존 배치는 `GET /zones` 에서 온다(Stage 1, docs/tasks/2026-09-09-stage1-master-
+     handoff.md §3 S1.5) — 예전 `GRADES` 자리다. 씬을 만드는 이펙트는 이 값이 준비된
+     뒤에야 시작한다(아래 "씬 구성" 이펙트 참고). `master.zones()` 는 분석 화면의 다른
+     칸(흐름·마스터 창)과 같은 쿼리 키를 쓰므로 캐시를 나눠 쓴다 — 네트워크 요청이 하나로
+     줄어든다. */
+  const { data: zones } = useQuery({ queryKey: queryKeys.zones, queryFn: () => master.zones() });
+  const layoutZones = useMemo(() => (zones ? toLayoutZones(zones) : null), [zones]);
+
   const mountRef = useRef(null);
   const apiRef = useRef(null);
+  /* `onReady` 를 매 렌더 새 함수로 넘겨도 아래 큰 이펙트([] 의존성)를 다시 돌리지 않도록
+     ref 로 받아 둔다 — 이 파일의 `goPackingRef` 와 같은 패턴이다. */
+  const onReadyRef = useRef(onReady);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   const [day, setDay] = useState(29);
-  const [sel, setSel] = useState(null);
+  /* `initialHighlight` — 마스터 창의 로케이션 행을 눌러 이 컴포넌트를 처음 열 때, 그
+     존을 곧바로 강조·포커스한 채로 띄운다(Stage 1 S1.4c). `sel` 을 마운트 뒤에 imperative
+     하게 바꾸면 안 되는 이유는 아래 "씬 구성" 이펙트가 끝난 다음 순서대로 도는
+     `[sel]` 이펙트가 초기값(null)을 보고 `resetView()` 를 불러 덮어써 버리기 때문이다 —
+     초기 상태 자체를 이 값으로 잡아야 그 경쟁이 생기지 않는다. */
+  const [sel, setSel] = useState(initialHighlight);
   const [playing, setPlaying] = useState(false);
   const [stats, setStats] = useState(null);
   const [webglOk, setWebglOk] = useState(true);
@@ -858,14 +824,18 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
         셈이라, 같은 렌더가 두 번 돌 때(개발 모드의 이중 실행) 결과가 갈린다.
         의존성 없는 effect 에 두면 **그릴 것을 다 그린 뒤** 매번 갱신된다. */
   const router = useRouter();
-  useEffect(() => { goPackingRef.current = () => router.push("/packing-win98"); }, [router]);
+  useEffect(() => { goPackingRef.current = () => router.push("/packing"); }, [router]);
   /* 상태 함수는 리액트가 그대로 유지하므로 한 번만 걸어 두면 된다 */
   useEffect(() => { onStationFocusRef.current = setAtStation; }, []);
 
-  /* ── 씬 구성 (1회) ── */
+  /* ── 씬 구성 (1회) ──
+     ⚠️ **`layoutZones` 가 준비돼야 시작한다.** `GET /zones` 가 아직 안 왔으면 그릴 배치가
+        없다 — 로딩 중엔 아래 렌더가 mount 판 대신 "레이아웃 불러오는 중" 을 보여준다
+        (그래서 `mountRef.current` 도 그 순간엔 없다). 응답이 오면 `layoutZones` 가 바뀌어
+        이 이펙트가 다시 돈다(아래 deps 참고) — "1회" 는 존이 도착한 뒤의 1회다. */
   useEffect(() => {
     const mount = mountRef.current;
-    if (!mount) return;
+    if (!mount || !layoutZones) return;
     let renderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -965,7 +935,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       return root;
     };
 
-    const layout = computeLayout();
+    const layout = computeLayout(layoutZones);
     const zMin = -CORRIDOR / 2 - layout.backLen - 3.0;
     const zMax = CORRIDOR / 2 + layout.frontLen + 6.5;
     const floorW = Math.max(...layout.rowWidths) + 11;
@@ -1868,11 +1838,13 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
        ⚠️ 크레인이 설 통로는 **랙 두 개 사이**여야 한다. A(8랙)·B(6랙)는 index 1·2 사이가
           통로지만, E 는 랙이 둘뿐(singles: 2)이라 0·1 사이다. 아래 `iA` 계산이 그것이다 —
           여기에 1 을 박아 두면 E 에서 `racks[2]` 가 없어 좌표가 NaN 이 된다. */
+    /* `id` 는 존 코드(A~G, 옛 `GRADES` 의 xs/s/m/... 자리) — Stage 1 S1.5 로 API 존 코드를
+       그대로 쓰게 되면서 값이 바뀌었다. A=극소형, B=소형, C=중형, E=특수는 그대로다. */
     const CRANE_ZONES = [
-      { id: "xs", seed: 9001 },
-      { id: "s", seed: 9002 },
-      { id: "m", seed: 9004 },
-      { id: "xl", seed: 9003 },
+      { id: "A", seed: 9001 },
+      { id: "B", seed: 9002 },
+      { id: "C", seed: 9004 },
+      { id: "E", seed: 9003 },
     ];
     const alu = new THREE.MeshLambertMaterial({ color: 0xB8C0C8 });
     const craneDark = new THREE.MeshLambertMaterial({ color: 0x3A424C });
@@ -2298,11 +2270,14 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       const u = CURVE[d];
       const perGrade = {};
       let shownFilled = 0, shownTotal = 0;
-      for (const g of GRADES) {
+      for (const g of layoutZones) {
         const gm = gradeMeshes[g.id];
-        // 실측 규격별 재고 / 해당 규격 최대 재고 = 구역 점유율
-        const series = REAL_INV[g.invKey];
-        const occ = Math.min(0.99, Math.max(0.015, (series[d] / INV_PEAK[g.invKey]) * 0.95));
+        /* 실측 규격별 재고 / 해당 규격 최대 재고 = 구역 점유율.
+           G(냉동)처럼 `invKey` 가 없는 존은 대응하는 실측 배열이 없다 — 점유 0 으로 둔다
+           (브리프 §3 S1.5 "정적 재고 매핑 ... G는 null → 점유 0으로 렌더"). */
+        const occ = g.invKey
+          ? Math.min(0.99, Math.max(0.015, (REAL_INV[g.invKey][d] / INV_PEAK[g.invKey]) * 0.95))
+          : 0;
         const n = Math.round(occ * gm.total);
         for (let i = 0; i < gm.total; i++) {
           gm.im.setMatrixAt(i, gm.rank[i] < n ? gm.mats[i] : ZERO);
@@ -2315,7 +2290,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       setStats({ u, perGrade, shownFilled, shownTotal, inn: FLOWS.inn[d], out: FLOWS.out[d] });
     };
     const setHighlight = (id) => {
-      for (const g of GRADES) {
+      for (const g of layoutZones) {
         const gm = gradeMeshes[g.id];
         for (let i = 0; i < gm.total; i++) {
           const col = id == null ? gm.baseCols[i] : g.id === id ? gm.hiCols[i] : gm.dimCols[i];
@@ -2335,6 +2310,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     const resetView = () => { Object.assign(des, OVERVIEW); setStation(null); };
 
     apiRef.current = { applyDay, setHighlight, flyTo, resetView };
+    onReadyRef.current?.(apiRef.current);
 
     /* ── 루프 ── */
     const clock = new THREE.Clock();
@@ -2608,7 +2584,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, []);
+  }, [layoutZones]);
 
   useEffect(() => { apiRef.current?.applyDay(day); }, [day]);
   useEffect(() => {
@@ -2633,8 +2609,8 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
   /* ── 2D 실시간 탑뷰 맵 ── */
   useEffect(() => {
     const wrap = mapWrapRef.current, cvs = mapCanvasRef.current;
-    if (!wrap || !cvs) return;
-    const layout = computeLayout();
+    if (!wrap || !cvs || !layoutZones) return;
+    const layout = computeLayout(layoutZones);
     const zMin = -CORRIDOR / 2 - layout.backLen - 3.0;
     /* 지도에서만 뒤쪽(입고장)을 짧게 끊는다.
        ★ 3D 바닥은 +6.5m 까지 있지만, 그 뒤편은 파렛트 몇 장뿐이라 지도에서는 빈 회색 띠로만
@@ -2908,7 +2884,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
       ro.disconnect();
       cvs.removeEventListener("click", onClick);
     };
-  }, []);
+  }, [layoutZones]);
 
   const dateTxt = REAL_DATE_LABEL[day];
   const u = stats?.u ?? CURVE[day];
@@ -2928,6 +2904,18 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
     return <div style={{ padding: 40, fontFamily: "sans-serif", color: "#ccc", background: "#0c1117", height: "100%" }}>
       WebGL을 사용할 수 없는 환경입니다. 브라우저에서 하드웨어 가속을 켜고 다시 열어 주세요.
     </div>;
+  }
+
+  /* `GET /zones` 를 아직 못 받았으면 mount 판을 그리지 않는다(Stage 1 S1.5) — 위 두 개의
+     "씬 구성" 이펙트가 `layoutZones` 를 기다리는 것과 짝이다. 여기서 걸러야 mountRef 가
+     빈 판으로라도 붙어서 그 이펙트들이 "mount 는 있는데 배치가 없다"는 어중간한 상태로
+     한 번 돌지 않는다. */
+  if (!layoutZones) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: "#10151C", color: "#8FA3B8", fontSize: 13 }}>
+        레이아웃 불러오는 중…
+      </div>
+    );
   }
 
   return (
@@ -3001,7 +2989,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
               <div className="w98-raised ws-3dtools" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 32, display: "flex", alignItems: "center", gap: 6, padding: "0 6px", zIndex: 20 }}>
                 <button className="w98-btn" onClick={() => { setTab("map"); setSel(null); apiRef.current?.setHighlight(null); }}>◀ 지도</button>
                 <button className="w98-btn" onClick={() => { setSel(null); apiRef.current?.setHighlight(null); apiRef.current?.resetView(); }}>전체 보기</button>
-                <span style={{ fontWeight: "bold", marginLeft: 4 }}>3D VIEW — {sel ? GRADES.find((g) => g.id === sel)?.name : "전체"}</span>
+                <span style={{ fontWeight: "bold", marginLeft: 4 }}>3D VIEW — {sel ? layoutZones.find((g) => g.id === sel)?.name : "전체"}</span>
               </div>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');
@@ -3167,7 +3155,7 @@ export default function WarehouseSlot3D({ initialTab = "map" }) {
                구역을 그리고 있어서, 이걸 지우면 목록과 창고를 잇는 고리가 끊긴다.
             ⚠️ 숫자는 고정폭으로 찍는다. 자릿수마다 폭이 달라지면 여섯 줄의 오른쪽 끝이
                들쭉날쭉해 목록이 흔들려 보인다. */}
-        {GRADES.map((g) => {
+        {layoutZones.map((g) => {
           const pg = stats?.perGrade?.[g.id];
           const col = "#" + g.color.toString(16).padStart(6, "0");
           const pct = pg ? (pg.filled / pg.total) * 100 : 0;

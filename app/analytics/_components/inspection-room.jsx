@@ -1364,7 +1364,7 @@ function buildLights(scene, dispose) {
 }
 
 /* ── 모니터에 그리는 화면 ──────────────────────────────────────────────────
-   ★ 일반적인 대시보드를 그리던 것을 **우리 프론트의 `/inbound-win98` 입고 등록 화면**을
+   ★ 일반적인 대시보드를 그리던 것을 **우리 프론트의 `/inbound` 입고 등록 화면**을
      축소해 옮겨 그리는 것으로 바꿨다. 검수실 모니터에 이 시스템과 무관한 화면이 떠 있으면
      "어딘가의 장비"로 끝나지만, 우리 화면이 떠 있으면 이 방이 우리 시스템의 일부가 된다.
      화면을 클릭하면 실제 그 라우트로 넘어간다(아래 `pickTargets`).
@@ -1648,7 +1648,7 @@ export default function InspectionRoom({ onExit }) {
      바꾸는 셈이라, 같은 렌더가 두 번 돌 때(개발 모드의 이중 실행) 결과가 갈린다.
      effect 에 두면 그릴 것을 다 그린 뒤 갱신된다. */
   useEffect(() => { exitRef.current = onExit; }, [onExit]);
-  useEffect(() => { goInboundRef.current = () => router.push("/inbound-win98"); }, [router]);
+  useEffect(() => { goInboundRef.current = () => router.push("/inbound"); }, [router]);
 
   useEffect(() => {
     const el = mountRef.current;
