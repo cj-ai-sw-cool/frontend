@@ -31,9 +31,25 @@ app/
   layout.tsx        루트 레이아웃 — 네비 + TanStack Query Provider + Toaster
   providers.tsx     QueryClient 설정 (4xx 는 재시도 안 함)
   page.tsx          화면 3개 링크
-  inbound/          입고 등록   — P1
-  packing/          출고 포장   — P2
-  dashboard/        통합 대시보드 — P3
+  inbound/          입고 등록          — P1 (Windows 98 스킨)
+  packing/          출고 포장          — P2 (Windows 98 스킨)
+  analytics/        분석 대시보드      — P3, 3D·2D 창고 + 흐름·월간·재고 창(Windows 98 스킨)
+```
+
+`inbound/`·`packing/`·`analytics/` 는 **코드를 공유하지 않는다** — 화면마다 아래 하위
+디렉토리를 각자 한 벌씩 갖는다(win98 스킨 화면의 공통 규칙).
+
+```
+<route>/
+  layout.tsx        그 화면의 셸(데스크톱·창 크롬·좌측 네비)
+  page.tsx          컨테이너 — 데이터 훅과 컴포넌트를 잇고 화면 상태를 든다
+  _components/      그리기 전용 컴포넌트(win98-ui.tsx 의 공용 조각 포함). fetch 없음
+  _data/             TanStack Query 훅 — 컴포넌트에서 fetch 직접 호출 금지
+  _styles/           win98.module.css 등 화면 전용 스타일
+  _mock/             (inbound·packing) 개발용 목업 데이터
+```
+
+```
 components/
   app-nav.tsx       상단 네비게이션
   common/           화면 공용 조각
@@ -41,7 +57,9 @@ components/
 lib/
   api.ts            fetch 래퍼 — docs 02 §0 공통 에러 포맷 처리
   endpoints.ts      엔드포인트 정의 + TanStack Query 키. 02 의 번호와 1:1
-  types.ts          API 계약 타입 — 02 v0.3 기준
+  types.ts          API 계약 타입 — 02 기준
+  zone-layout.ts    3D·2D 창고 레이아웃 계산 — `GET /zones` 응답 → 배치 좌표
+                     (analytics 의 3D·2D 컴포넌트가 함께 부른다)
   nav.ts            화면 3개 정의
 ```
 

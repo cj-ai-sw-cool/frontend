@@ -197,11 +197,14 @@ function buildLamps(THREE, dispose, spots) {
 }
 
 /* ── ③ 트럭 ─────────────────────────────────────────────────────────────
-   CJ대한통운 5톤 윙바디. 실제 차량 도장을 따랐다.
+   A.LTS 5톤 윙바디.
      · 차체 전체가 파랑, 지붕만 흰색
      · 적재함 앞쪽에 사선 띠 넉 줄 (하늘 → 남색 → 빨강 → 주황) 이 오른쪽 위로 흐른다
-     · 적재함 뒤쪽에 CJ 심볼과 "대한통운"
-     · 앞쪽 위에 홈페이지·대표번호 작은 흰 글씨
+     · 적재함 뒤쪽에 A.LTS 마크(`shell.tsx` 의 `BrandMark` 와 같은 도형)와 "A.LTS"
+     · 앞쪽 위에 홈페이지·대표번호 작은 흰 글씨(허구 값, 실제 회사 정보 아님)
+
+   ⚠️ Stage 2(정본 02-data-model.md, 브리프 §3 S2.9) 에서 실제 기업명(CJ대한통운) 도장을
+      이 앱의 자체 브랜드(A.LTS)로 바꿨다 — 마크·글자·URL·전화번호 전부.
 
    ★ 세미트레일러(길이 12m)에서 **5톤 박스트럭(7.6m)** 으로 바꿨다. 국내 물류 창고
      도크에 실제로 붙는 차가 이 크기이고, 트레일러는 이 마당 규모에 견줘 너무 컸다.
@@ -213,8 +216,8 @@ function buildLamps(THREE, dispose, spots) {
    ⚠️ 재질 배열의 순서는 `[+x, -x, +y, -y, +z, -z]` 로 고정이다. 이 순서를 바꾸면 지붕
       흰색이 옆면으로 가는 식으로 어긋난다. */
 
-const CJ_BLUE = "#1668C4";
-const CJ_DEEP = "#0E2A5C";
+const ALTS_BLUE = "#1668C4";
+const ALTS_DEEP = "#0E2A5C";
 
 /** 적재함 옆면 도장.
  *  `flip` 은 **배치만** 좌우로 되짚는다(글자는 똑바로 그린다) — 아래 `X()` 주의 참고. */
@@ -226,14 +229,14 @@ function liveryTexture(THREE, flip) {
 
   /* 설계 좌표 → 캔버스 좌표.
      ⚠️ 예전에는 `c.translate(W,0); c.scale(-1,1)` 로 캔버스를 통째로 뒤집었다. 그러면
-        배치뿐 아니라 **글자까지 좌우로 반전되어**, 반대편에서 "대한통운" 이 거울글씨로
+        배치뿐 아니라 **글자까지 좌우로 반전되어**, 반대편에서 브랜드 글자가 거울글씨로
         보였다. 뒤집어야 하는 것은 배치뿐이다 — 좌표만 되짚고 글자는 정방향으로 그린다.
      ⚠️ 좌우가 뒤집히면 글자 정렬도 함께 뒤집어야 한다. 왼쪽 정렬로 x 에 찍던 글자를
         되짚은 x 에 그대로 왼쪽 정렬하면 글자 블록이 반대쪽으로 삐져나간다. */
   const X = (x) => (flip ? W - x : x);
   const AL = (a) => (flip ? (a === "left" ? "right" : "left") : a);
 
-  c.fillStyle = CJ_BLUE;
+  c.fillStyle = ALTS_BLUE;
   c.fillRect(0, 0, W, H);
 
   /* 사선 띠 — 아래에서 위로 갈수록 차 앞쪽으로 눕는다. 네 줄의 폭을 일부러 다르게
@@ -252,7 +255,7 @@ function liveryTexture(THREE, flip) {
     c.fill();
   };
   band(96, 26, "#4FC2EE");    // 하늘
-  band(128, 96, CJ_DEEP);     // 남색 (가장 넓다)
+  band(128, 96, ALTS_DEEP);     // 남색 (가장 넓다)
   band(228, 54, "#E5342C");   // 빨강
   band(286, 40, "#F5A623");   // 주황
 
@@ -264,39 +267,43 @@ function liveryTexture(THREE, flip) {
   c.fillStyle = "rgba(255,255,255,0.92)";
   c.textAlign = AL("left");
   c.font = "700 26px 'Malgun Gothic', Arial, sans-serif";
-  c.fillText("www.cjlogistics.co.kr", X(470), 74);
+  c.fillText("www.alts.co.kr", X(470), 74);
   c.font = "800 30px 'Consolas', monospace";
-  c.fillText("1588-1255", X(470), 112);
+  c.fillText("1588-7900", X(470), 112);
 
-  /* ── CJ 심볼 + 대한통운 ──
-     심볼은 꽃잎 셋(빨강·주황·파랑)이 가운데를 돈다. 화면에서 30px 남짓으로 보일
-     크기라 정밀하게 그릴 이유가 없고, 색과 배치만 맞으면 그것으로 읽힌다.
-     ⚠️ 꽃잎은 글자가 아니므로 통째로 뒤집어도 된다 — 거울에 비친 꽃도 꽃이다. */
-  const LX = 560, LY = H * 0.62, R = 62;
+  /* ── A.LTS 마크 + 글자 ──
+     `shell.tsx` 의 `BrandMark` 와 **같은 도형**(네이비 사각형 위 흰 삼각형 테두리 +
+     금색 막대)을 캔버스로 다시 그린다 — 화면 안에서 이 앱을 대표하는 마크가 하나여야
+     한다(Stage 2, 브리프 §3 S2.9, 실제 기업명 도장을 걷어낸 자리).
+     ⚠️ 좌우 대칭 도형이라 `flip` 이어도 도형 자체를 뒤집을 필요는 없다 — 자리(왼쪽/
+        오른쪽 끝)만 `X()` 로 되짚는다. 사각형처럼 두 변의 끝점을 각각 `X()` 로 구해
+        `Math.min` 으로 왼쪽 끝을 잡으면, 방향을 가정하지 않아도 항상 올바른 쪽에 선다. */
+  const LX = 560, LY = H * 0.62, S = 108;
+  const markX0 = Math.min(X(LX), X(LX + S));
+  const markY0 = LY - S / 2;
+  c.fillStyle = "#003087";
+  c.fillRect(markX0, markY0, S, S);
   c.save();
-  c.translate(X(LX), LY);
-  if (flip) c.scale(-1, 1);
-  const petal = (angle, color) => {
-    c.save();
-    c.rotate(angle);
-    c.fillStyle = color;
-    c.beginPath();
-    c.moveTo(0, 0);
-    c.quadraticCurveTo(R * 0.95, -R * 0.30, R * 0.86, -R * 0.86);
-    c.quadraticCurveTo(R * 0.30, -R * 0.95, 0, 0);
-    c.closePath();
-    c.fill();
-    c.restore();
-  };
-  petal(-Math.PI / 2, "#E5342C");
-  petal(-Math.PI / 2 + (Math.PI * 2) / 3, "#F5A623");
-  petal(-Math.PI / 2 + (Math.PI * 4) / 3, "#4FC2EE");
+  c.translate(markX0, markY0);
+  c.beginPath();
+  c.moveTo(S * 0.5, S * 0.134);
+  c.lineTo(S * 0.894, S * 0.919);
+  c.lineTo(S * 0.106, S * 0.919);
+  c.closePath();
+  c.moveTo(S * 0.5, S * 0.403);
+  c.lineTo(S * 0.734, S * 0.841);
+  c.lineTo(S * 0.266, S * 0.841);
+  c.closePath();
+  c.fillStyle = "#FFFFFF";
+  c.fill("evenodd");
+  c.fillStyle = "#FCB40D";
+  c.fillRect(S * 0.266, S * 0.684, S * 0.469, S * 0.15);
   c.restore();
 
   c.fillStyle = "#FFFFFF";
   c.font = "900 76px 'Malgun Gothic', sans-serif";
   c.textAlign = AL("left");
-  c.fillText("대한통운", X(LX + 92), LY - 4);
+  c.fillText("A.LTS", X(LX + S + 30), LY - 4);
 
   /* 아래쪽 살짝 어두운 띠 — 차체 옆면은 아래로 갈수록 그늘이 진다. 이게 없으면
      평평한 판때기로 보인다. 위아래 방향이라 좌우 뒤집기와는 무관하다 */
@@ -339,7 +346,7 @@ function rearDoorTexture(THREE, blue = false) {
     c.fillRect(0, y + 9, W, 1);
   }
   // 위쪽 띠 + 손잡이 봉 두 개
-  c.fillStyle = blue ? "#0F4E96" : CJ_BLUE;
+  c.fillStyle = blue ? "#0F4E96" : ALTS_BLUE;
   c.fillRect(0, 0, W, 34);
   c.fillStyle = blue ? "#7E9DC4" : "#8A939E";
   c.fillRect(W * 0.3, 40, 7, H - 60);
@@ -351,7 +358,7 @@ function rearDoorTexture(THREE, blue = false) {
 }
 
 /**
- * CJ대한통운 박스트럭.
+ * A.LTS 박스트럭.
  * ⚠️ **뒷문이 원점(z = 0)** 이고 차체는 +z 쪽으로 뻗는다. 도크에 붙일 때 "뒷문을 범퍼에
  *    맞춘다"가 곧 "z 를 범퍼 위치에 둔다"가 되어, 차 길이를 몰라도 세울 수 있다.
  */

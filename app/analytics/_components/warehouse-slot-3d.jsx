@@ -392,7 +392,7 @@ function makeFloorTexture(layout, floorW, floorD, floorCz) {
 /* ── 좀비화 피글린 ────────────────────────────────────────────────────────────
    창고의 작업자와 지게차 운전자를 마인크래프트 좀비화 피글린으로 바꿨다 (사용자 요청).
 
-   ★ 앞서 있던 `buildWorker`(CJ풍 근무복)와 **같은 것을 돌려준다** — `{ grp, lLeg, rLeg,
+   ★ 앞서 있던 `buildWorker`(기존 근무복)와 **같은 것을 돌려준다** — `{ grp, lLeg, rLeg,
      lArm, rArm, hasCart, hasDevice, armRest }`. 걷기·정차·스캔 동작을 굴리는 틱 코드는
      그대로 두고 겉모습만 바꾸기 위해서다. 손잡이가 같으면 갈아 끼우는 것으로 끝난다.
      ⚠️ `buildWorker` 는 지웠다. 되살리려면 git 이력에서 꺼내 이 함수 자리에 두고 아래
@@ -403,9 +403,9 @@ function makeFloorTexture(layout, floorW, floorD, floorCz) {
       가운데를 축으로 돌아 다리가 몸을 뚫는다 — 축은 어깨와 골반에 있어야 한다.
    ⚠️ 초록 썩은 자국은 살보다 **아주 조금 크게** 겹쳐 놓는다. 같은 크기면 두 면이 정확히
       겹쳐서 어느 쪽이 앞인지 매 프레임 달라지고, 그 깜빡임(z-fighting)이 눈에 띈다. */
-/* ── CJ대한통운 안전조끼 ──────────────────────────────────────────────
+/* ── A.LTS 안전조끼 ──────────────────────────────────────────────
    ★ 출고장 작업자에게 조끼를 입힌다 (사용자 요청). 실제 현장에서 작업자는 반드시 반사
-     조끼를 입고, 파란 조끼에 옆구리 빨강·노랑 띠가 CJ대한통운을 한눈에 알아보게 한다.
+     조끼를 입고, 파란 조끼에 옆구리 빨강·노랑 띠가 소속을 한눈에 알아보게 한다.
    ⚠️ 재질을 **한 번만 만들어 돌려쓴다.** 피글린마다 캔버스 세 장을 새로 구우면 작업자가
       늘어날 때마다 텍스처가 그만큼 GPU 로 올라간다. 무늬가 개체마다 다를 이유도 없다.
    ⚠️ 처음 부를 때 만든다. 모듈이 읽히는 시점에 `document` 를 만지면 서버 렌더에서 터진다.
@@ -445,19 +445,17 @@ function getVestMaterials() {
     c.fillStyle = "#123F63";
     c.fillRect(n * 0.485, 0, n * 0.03, n);               // 지퍼
     c.fillStyle = "#FFFFFF";
-    c.font = `700 ${Math.round(n * 0.12)}px 'Malgun Gothic', sans-serif`;
+    c.font = `700 ${Math.round(n * 0.1)}px 'Malgun Gothic', sans-serif`;
     c.textAlign = "center"; c.textBaseline = "middle";
-    c.fillText("CJ", n * 0.26, n * 0.22);
+    c.fillText("A.LTS", n * 0.26, n * 0.22);
   });
 
   /* 뒷면 — 이름. 등판이 제일 넓어 글씨가 들어갈 자리는 여기뿐이다 */
   const back = paint(128, (c, n) => {
     c.fillStyle = "#FFFFFF";
     c.textAlign = "center"; c.textBaseline = "middle";
-    c.font = `700 ${Math.round(n * 0.15)}px 'Malgun Gothic', sans-serif`;
-    c.fillText("CJ", n * 0.5, n * 0.36);
-    c.font = `700 ${Math.round(n * 0.11)}px 'Malgun Gothic', sans-serif`;
-    c.fillText("대한통운", n * 0.5, n * 0.54);
+    c.font = `700 ${Math.round(n * 0.17)}px 'Malgun Gothic', sans-serif`;
+    c.fillText("A.LTS", n * 0.5, n * 0.45);
   });
 
   const plain = new THREE.MeshLambertMaterial({ color: 0x1E82C8 });
@@ -984,77 +982,44 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
     addWall("back", new THREE.BoxGeometry(floorW, 5.4, 0.3), 0x1a2028, 0, 4.0, zMin);
     addWall("back", new THREE.BoxGeometry(floorW, 1.3, 0.34), 0x232b35, 0, 0.65, zMin);
 
-    /* ── 뒷벽 회사 로고 ────────────────────────────────────────────
-       ★ 글자만 쓰다가 **로고 그대로**로 바꿨다 (사용자 요청). CJ 꽃잎 마크 + CJ +
-         OLIVENETWORKS 한 벌이다. 랙 위쪽 벽이 통째로 비어 있어 이 자리가 브랜드 벽이 된다 —
-         통로에서 고개를 들면 반드시 들어오는 면이다.
-       ⚠️ 워드마크를 **검정으로 쓰면 안 된다.** 원본 로고는 검은 글자지만 이 벽이 어두워서
-          (0x1a2028) 그대로 두면 글자가 아예 안 보인다. 어두운 배경에 놓는 로고는 밝은
-          쪽으로 뒤집어 쓰는 것이 원칙이고, 실제 센터의 벽 로고도 흰색이다.
-       ⚠️ 그래도 흰색은 안 쓴다 (사용자 요청 — 진하지 않게). 벽보다 밝되 눌러 칠한 회청색이면
-          "거기 있다"까지만 읽히고 화면의 주인공 자리를 안 뺏는다.
-       ⚠️ 꽃잎 색은 살린다. 이 로고에서 알아보게 하는 것은 글자가 아니라 세 꽃잎이라,
-          여기까지 눌러 버리면 그냥 회색 글씨가 된다.
-       ⚠️ 간판이 아니라 **칠한 것**이다. 회사명은 벽 자체가 말하는 것이라 두께를 주면
+    /* ── 뒷벽 브랜드 워드마크 ────────────────────────────────────────
+       Stage 2(정본 02-data-model.md, 브리프 §3 S2.9) — 실제 기업명 로고(CJ 꽃잎 마크 +
+       워드마크)를 이 앱의 자체 브랜드 `A.LTS`(`shell.tsx` 의 `BrandMark` 와 같은 이름)
+       글자로 바꿨다. 랙 위쪽 벽이 통째로 비어 있어 이 자리가 브랜드 벽이 된다 —
+       통로에서 고개를 들면 반드시 들어오는 면이다.
+       ⚠️ 워드마크를 **흰색으로 쓰지 않는다** (사용자 결정 — 진하지 않게). 벽보다 밝되
+          눌러 칠한 회청색이면 "거기 있다"까지만 읽히고 화면의 주인공 자리를 안 뺏는다.
+       ⚠️ 간판이 아니라 **칠한 것**이다. 브랜드명은 벽 자체가 말하는 것이라 두께를 주면
           광고판이 된다 (A.LTS·신규입고는 무엇을 가리키는 표지라 판을 걸었다).
        ⚠️ `MeshBasicMaterial` — 빛이 거의 안 닿는 벽이라 램버트면 로고가 벽과 같이 묻힌다.
        ⚠️ `wallSets.back` 에 넣는다. 카메라가 벽 너머로 돌면 벽이 투명해지는데, 로고만
           남으면 허공에 떠 있게 된다. */
     {
-      /* ⚠️ 캔버스 폭을 **글자를 재서** 정한다. 1536 으로 못 박았더니 OLIVENETWORKS 가
-         오른쪽에서 잘렸다 (사용자 지적) — 글꼴이 없어 대체 글꼴로 떨어지면 폭이 또 달라지므로,
-         눈으로 맞춘 숫자는 언제든 다시 어긋난다. 재고 나서 그 폭으로 캔버스를 만든다.
+      /* ⚠️ 캔버스 폭을 **글자를 재서** 정한다. 글꼴이 없어 대체 글꼴로 떨어지면 폭이
+         달라지므로, 눈으로 맞춘 숫자는 언제든 다시 어긋난다. 재고 나서 그 폭으로 캔버스를
+         만든다.
          ⚠️ `canvas.width` 를 바꾸면 컨텍스트가 **초기화된다.** 그래서 재기용으로 한 번 쓰고,
             폭을 정한 뒤 글꼴을 다시 세워야 한다. */
       const CH = 435;
-      const F_CJ = Math.round(CH * 0.40), F_OL = Math.round(CH * 0.345);
-      const cjFont = `900 ${F_CJ}px 'Arial Black', Arial, sans-serif`;
-      const olFont = `800 ${F_OL}px 'Arial Black', Arial, sans-serif`;
+      const font = `900 ${Math.round(CH * 0.5)}px 'Arial Black', Arial, sans-serif`;
       const cv = document.createElement("canvas");
       cv.width = 64; cv.height = CH;
       let c = cv.getContext("2d");
-      c.font = cjFont;
-      const cjW = c.measureText("CJ").width;
-      c.font = olFont;
-      const olW = c.measureText("OLIVENETWORKS").width;
+      c.font = font;
+      const textW = c.measureText("A.LTS").width;
 
-      const PAD = CH * 0.07, MARK = CH * 0.52, GAP = CH * 0.10;
-      const CW = Math.ceil(PAD + cjW + GAP * 0.4 + MARK + GAP + olW + PAD);
+      const PAD = CH * 0.09;
+      const CW = Math.ceil(PAD + textW + PAD);
       cv.width = CW;
       c = cv.getContext("2d");
       c.clearRect(0, 0, CW, CH);
 
-      /** 꽃잎 하나 — 기울인 타원 */
-      const petal = (cx, cy, rx, ry, rot, fill) => {
-        c.save();
-        c.translate(cx, cy);
-        c.rotate(rot);
-        c.beginPath();
-        c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-        c.fillStyle = fill;
-        c.fill();
-        c.restore();
-      };
-
       const INK = "#C3CBD4";   // 워드마크 — 벽보다 밝되 눌러 칠한다 (위 주석)
       c.textBaseline = "middle";
       c.textAlign = "left";
-
-      // CJ
-      c.font = cjFont;
+      c.font = font;
       c.fillStyle = INK;
-      c.fillText("CJ", PAD, CH * 0.56);
-
-      // 꽃잎 셋 — 파랑(위) · 주황(오른쪽) · 빨강(아래)
-      const mx = PAD + cjW + GAP * 0.4 + MARK / 2, my = CH * 0.46, R = CH * 0.155;
-      petal(mx - R * 0.42, my - R * 0.95, R * 0.62, R * 0.92, -0.45, "#2E86D8");
-      petal(mx + R * 0.86, my - R * 0.10, R * 0.95, R * 0.66, -0.25, "#E8720E");
-      petal(mx - R * 0.10, my + R * 1.00, R * 0.62, R * 0.92, 0.30, "#DC2A4E");
-
-      // OLIVENETWORKS
-      c.font = olFont;
-      c.fillStyle = INK;
-      c.fillText("OLIVENETWORKS", PAD + cjW + GAP * 0.4 + MARK + GAP, CH * 0.56);
+      c.fillText("A.LTS", PAD, CH * 0.56);
 
       const tex = new THREE.CanvasTexture(cv);
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -1683,11 +1648,11 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
         c.font = "700 22px 'Arial', sans-serif";
         c.fillStyle = "#5B6B7E";
         c.fillText("O-NE", 262, 246);
-        // CJ대한통운 — 오른쪽 위에 작게
+        // A.LTS — 오른쪽 위에 작게 (배송 담당 브랜드)
         c.textAlign = "right";
         c.fillStyle = "#1856B4";
         c.font = "700 26px 'Malgun Gothic', sans-serif";
-        c.fillText("CJ대한통운", 480, 60);
+        c.fillText("A.LTS", 480, 60);
         c.strokeStyle = "rgba(90,70,45,0.35)";        // 봉함 테이프 자국
         c.lineWidth = 3;
         c.beginPath(); c.moveTo(0, 300); c.lineTo(512, 300); c.stroke();
@@ -1742,9 +1707,9 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
       }
     }
 
-    /* 작업자 2명 — CJ풍 근무복 (형광조끼+카트 / 회색점퍼+스캐너) */
+    /* 작업자 2명 — 기존 근무복 (형광조끼+카트 / 회색점퍼+스캐너) */
     const patrolBound = Math.min(...layout.rowWidths) / 2 + 1.2;
-    /* ★ CJ풍 근무복 작업자에서 **좀비화 피글린**으로 갈아 끼웠다 (사용자 요청).
+    /* ★ 기존 근무복 작업자에서 **좀비화 피글린**으로 갈아 끼웠다 (사용자 요청).
        `buildPiglin` 이 `buildWorker` 와 같은 손잡이를 돌려주므로, 아래 걷기·정차 상태
        기계는 한 줄도 손대지 않았다. `buildWorker` 는 지우지 않고 남겨 둔다 — 되돌리고
        싶으면 이 두 줄만 바꾸면 된다. */
