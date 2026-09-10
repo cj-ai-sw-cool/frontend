@@ -365,16 +365,24 @@ export type TxType =
   | "ADJUST"
   | "STATUS_CHANGE";
 
-/** `GET /stock/{stockId}/ledger` 행 — 그 키(로케이션·화주·상품·로트)에 걸린 원장 */
+/**
+ * `GET /stock/{stockId}/ledger` 행 — 그 키(로케이션·화주·상품·로트)에 걸린 원장.
+ *
+ * ⚠️ 라이브 검증(브리프 §3, 2026-09-10)으로 정정 — 설계 초안과 실제 응답이 둘 다 다르다:
+ *    - `id` 가 아니라 **`txId`**
+ *    - `fromLocation`/`toLocation` 은 `{code}` 객체가 아니라 **로케이션 코드 문자열**(또는 null)
+ */
 export interface StockLedgerEntry {
-  id: number;
+  txId: number;
   txType: TxType;
-  fromLocation: { code: string } | null;
-  toLocation: { code: string } | null;
+  fromLocation: string | null;
+  toLocation: string | null;
   fromStatus: StockStatus | null;
   toStatus: StockStatus | null;
   qty: number;
   reasonCode: string | null;
+  refType: string | null;
+  refId: number | null;
   createdAt: string;
 }
 

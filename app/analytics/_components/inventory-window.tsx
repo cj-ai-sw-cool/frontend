@@ -263,11 +263,11 @@ export function InventoryWindow({ onClose }: { onClose: () => void }) {
                       </tr>
                     ) : (
                       ledgerPage?.content.map((tx) => (
-                        <tr key={tx.id} className="border-t border-[color:var(--border)]">
+                        <tr key={tx.txId} className="border-t border-[color:var(--border)]">
                           <Td mono>{formatDateTime(tx.createdAt)}</Td>
                           <Td>{TX_LABEL[tx.txType] ?? tx.txType}</Td>
                           <Td mono>
-                            {tx.fromLocation?.code ?? "—"} → {tx.toLocation?.code ?? "—"}
+                            {tx.fromLocation ?? "—"} → {tx.toLocation ?? "—"}
                           </Td>
                           <Td mono>{tx.qty.toLocaleString()}</Td>
                           <Td>{tx.reasonCode ?? "—"}</Td>
