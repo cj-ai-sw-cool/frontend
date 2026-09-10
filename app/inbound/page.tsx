@@ -25,6 +25,7 @@ import {
   useConfirmMeasurement,
   useMeasure,
   useProductImages,
+  useSellers,
   useStockIn,
 } from "./_data/use-inbound";
 
@@ -82,6 +83,15 @@ export default function InboundPage() {
   const [isManualOpen, setIsManualOpen] = useState(false);
   /** 입고할 수량 — 촬영에 쓴 실물을 포함한 전체 수량이다 (D-09) */
   const [qty, setQty] = useState(1);
+  /**
+   * Stage 2 T1 — 1-5 요청에 화주·로트번호가 필수로 붙었다(정본 §2.5). 화주는 기본값이
+   * 없다(선택 필수, §2.6) — 등록 버튼은 이 값과 로트번호가 채워져야 눌린다.
+   * // Stage 2 transitional (T1): replaced in Stage 3 (ASN 검수가 대체)
+   */
+  const [sellerCode, setSellerCode] = useState("");
+  const [lotNo, setLotNo] = useState("");
+  /** 빈 문자열이면 "선택 안 함" — 서버로는 null 로 보낸다 (handleDbSubmit 참고) */
+  const [expiresOn, setExpiresOn] = useState("");
   /** 1-4 요청의 handling. 기본값은 1-3 응답의 handlingDefaults 에서 깔린다 */
   const [handling, setHandling] = useState<Handling>(EMPTY_HANDLING);
   /**
@@ -106,6 +116,7 @@ export default function InboundPage() {
   const measure = useMeasure(); // 1-3
   const confirm = useConfirmMeasurement(); // 1-4
   const stockIn = useStockIn(); // 1-5
+  const sellersQuery = useSellers(); // Stage 2 T1 — 화주 select
 
   /** 1-1 로 잡힌 상품. UNKNOWN 이면 계약대로 null 이다 */
   const product = scan.data?.product ?? null;
@@ -155,6 +166,8 @@ export default function InboundPage() {
     isConfirmed,
     manual,
     stockInResult: stockIn.data,
+    sellerCode,
+    lotNo,
   });
 
   /**
@@ -247,6 +260,9 @@ export default function InboundPage() {
           setManual(null);
           setHandling(EMPTY_HANDLING);
           setQty(1);
+          setSellerCode("");
+          setLotNo("");
+          setExpiresOn("");
         },
       });
     },
@@ -264,6 +280,9 @@ export default function InboundPage() {
     setManual(null);
     setHandling(EMPTY_HANDLING);
     setQty(1);
+    setSellerCode("");
+    setLotNo("");
+    setExpiresOn("");
     scan.reset();
     measure.reset();
     confirm.reset();
@@ -318,7 +337,13 @@ export default function InboundPage() {
 
     const runStockIn = () => {
       stockIn.mutate(
-        { productId: product.productId, qty },
+        {
+          productId: product.productId,
+          qty,
+          sellerCode: sellerCode.trim(),
+          lotNo: lotNo.trim(),
+          expiresOn: expiresOn.trim() === "" ? null : expiresOn,
+        },
         {
           onSuccess: () => {
             toast.success("입고 완료", w98Toast.success);
@@ -381,7 +406,21 @@ export default function InboundPage() {
           description: `${error.message} 수기 입력값은 그대로 남아 있습니다. 다시 DB 입력을 누르거나 촬영을 실행하세요.`,
         }),
     });
-  }, [product, plan, measurement, manual, handling, qty, stockIn, confirm, measure, clearScreen]);
+  }, [
+    product,
+    plan,
+    measurement,
+    manual,
+    handling,
+    qty,
+    sellerCode,
+    lotNo,
+    expiresOn,
+    stockIn,
+    confirm,
+    measure,
+    clearScreen,
+  ]);
 
   /* ── 표시 ──────────────────────────────────────────────── */
   return (
@@ -457,6 +496,14 @@ export default function InboundPage() {
           qty={qty}
           onQtyChange={setQty}
           qtyDisabled={product === null}
+          sellers={sellersQuery.data}
+          sellersLoading={sellersQuery.isLoading}
+          sellerCode={sellerCode}
+          onSellerCodeChange={setSellerCode}
+          lotNo={lotNo}
+          onLotNoChange={setLotNo}
+          expiresOn={expiresOn}
+          onExpiresOnChange={setExpiresOn}
           note={precautionsNote}
           active={canEditHandling}
         />
@@ -512,12 +559,17 @@ function buildSubmitPlan({
   isConfirmed,
   manual,
   stockInResult,
+  sellerCode,
+  lotNo,
 }: {
   scanResult: ScanResponse | undefined;
   measurement: MeasurementResponse | undefined;
   isConfirmed: boolean;
   manual: { dims: Dimensions; weightKg: number | null } | null;
   stockInResult: StockInResponse | undefined;
+  /** Stage 2 T1 — 둘 다 채워야 등록이 나간다(정본 §2.6, 화주 기본값 없음) */
+  sellerCode: string;
+  lotNo: string;
 }): SubmitPlan {
   /* 이미 넣었다 — 두 번 누르면 재고가 두 번 는다.
      ⚠️ 계약(§1-5)에 멱등 규정이 없어 서버가 막아 주지 않는다. 그래서 화면이 막는다.
@@ -527,6 +579,13 @@ function buildSubmitPlan({
       kind: "BLOCKED",
       hint: `입고 완료 · 현재 재고 ${stockInResult.stockQty}개 — 새 바코드를 스캔하세요`,
     };
+  }
+
+  if (scanResult?.product != null && (sellerCode.trim() === "" || lotNo.trim() === "")) {
+    /* ★ 화주·로트번호 체크를 **상품 확인 다음, 나머지 게이트보다 먼저** 둔다 (Stage 2 T1).
+       치수·게이트 상태와 무관하게 1-5 는 이 둘 없이 나갈 수 없으므로, 다른 이유로 잠긴
+       것처럼 보이지 않게 가장 먼저 이 이유부터 말한다. */
+    return { kind: "BLOCKED", hint: "화주와 로트번호를 입력하세요" };
   }
 
   if (scanResult?.product == null) {

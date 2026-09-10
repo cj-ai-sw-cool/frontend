@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FlowPanel } from "./_components/flow-panel";
+import { InventoryWindow } from "./_components/inventory-window";
 import { MasterWindow, type WarehouseApi } from "./_components/master-window";
 import { MonthlyPanel } from "./_components/monthly-panel";
 import { Btn, Panel, Sunken, w98 } from "./_components/win98-ui";
@@ -76,6 +77,9 @@ export default function AnalyticsPage() {
   /* "마스터" 창(화주·로케이션, Stage 1 S1.4c)이 떠 있는가 */
   const [showMaster, setShowMaster] = useState(false);
 
+  /* "재고" 창(현재고·원장·조정, Stage 2)이 떠 있는가 */
+  const [showInventory, setShowInventory] = useState(false);
+
   /* 마스터 창의 로케이션 행을 클릭했을 때 3D 를 처음 열면서 강조할 존.
      ⚠️ **`onReady` 뒤에 imperative 하게 부르지 않는다.** `WarehouseSlot3D` 는 마운트되면
         "씬 구성" 이펙트 다음에 `[sel]` 이펙트가 도는데, 그 이펙트가 초기값(null)을 보고
@@ -131,17 +135,18 @@ export default function AnalyticsPage() {
      ⚠️ `capture` 로 받는다. 3D 판은 자기 캔버스에 포인터 이벤트를 잡아 두는데, 키 이벤트가
         그 안에서 멈추는 경우가 있어 버블링만 기다리면 놓칠 수 있다. */
   useEffect(() => {
-    if (!full && !showMaster) return;
+    if (!full && !showMaster && !showInventory) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
         if (showMaster) setShowMaster(false);
+        else if (showInventory) setShowInventory(false);
         else setFull(false);
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [full, showMaster]);
+  }, [full, showMaster, showInventory]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -162,9 +167,14 @@ export default function AnalyticsPage() {
         <Panel
           title="실시간 창고 맵"
           right={
-            <Btn onClick={() => setShowMaster(true)} className="px-3 py-1 text-[12px]">
-              마스터
-            </Btn>
+            <div className="flex gap-1.5">
+              <Btn onClick={() => setShowInventory(true)} className="px-3 py-1 text-[12px]">
+                재고
+              </Btn>
+              <Btn onClick={() => setShowMaster(true)} className="px-3 py-1 text-[12px]">
+                마스터
+              </Btn>
+            </div>
           }
           className="min-h-0 min-w-0 flex-1"
         >
@@ -226,6 +236,11 @@ export default function AnalyticsPage() {
           z-[210] — 3D 전체 화면(z-200)보다 위다. 3D 가 닫혀 있을 때 열어도 문제없다:
           `locateZone` 이 로케이션 행 클릭에서 이 창을 닫고 3D 를 대신 연다. */}
       {showMaster && <MasterWindow onClose={() => setShowMaster(false)} onLocateZone={locateZone} />}
+
+      {/* ── 재고 창(Stage 2) ────────────────────────────────────────────
+          z-[210] — 마스터 창과 같은 층. 둘을 동시에 열 이유는 없지만(각 버튼이 서로를
+          가리지 않는다), 나란히 있어도 사고 없게 같은 z 를 준다. */}
+      {showInventory && <InventoryWindow onClose={() => setShowInventory(false)} />}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import type { Handling } from "@/lib/types";
-import { Checkbox, Etched, Field, w98 } from "./win98-ui";
+import type { Handling, Seller } from "@/lib/types";
+import { Checkbox, Etched, Field, Select, w98 } from "./win98-ui";
 
 /**
  * 취급 주의사항 + 수량 — **오른쪽 열에 붙박이로 들어가는 칸**이다 (사용자 결정).
@@ -28,6 +28,14 @@ export function PrecautionsPanel({
   qty,
   onQtyChange,
   qtyDisabled,
+  sellers,
+  sellersLoading,
+  sellerCode,
+  onSellerCodeChange,
+  lotNo,
+  onLotNoChange,
+  expiresOn,
+  onExpiresOnChange,
   note,
   active,
 }: {
@@ -37,6 +45,18 @@ export function PrecautionsPanel({
   qty: number;
   onQtyChange: (qty: number) => void;
   qtyDisabled: boolean;
+  /** `GET /sellers` 목록 — select 옵션 (Stage 2 T1) */
+  sellers: Seller[] | undefined;
+  sellersLoading: boolean;
+  /** 1-5 요청의 sellerCode — 선택 필수, 기본값 없음(정본 §2.6) */
+  sellerCode: string;
+  onSellerCodeChange: (code: string) => void;
+  /** 1-5 요청의 lotNo — 필수 */
+  lotNo: string;
+  onLotNoChange: (lotNo: string) => void;
+  /** 1-5 요청의 expiresOn — 선택. 빈 문자열이면 null 로 보낸다(page.tsx 가 변환) */
+  expiresOn: string;
+  onExpiresOnChange: (expiresOn: string) => void;
   /**
    * 지금 왜 잠겨 있는지 한 줄. 잠기지 않았으면 빈 문자열이다.
    *
@@ -97,6 +117,65 @@ export function PrecautionsPanel({
           disabled={disabled}
           neon
         />
+
+        <Etched className="my-0.5" />
+
+        {/* ── 화주 · 로트 · 유통기한 (Stage 2 T1) ──────────────────────
+            정본 §2.5 T1 — 1-5 요청에 화주·로트번호가 필수로 붙었다. 잠금 규칙은 수량과
+            같다(qtyDisabled) — 상품을 스캔하기 전에는 무엇을 입고할지 자체가 없다.
+            // Stage 2 transitional (T1): replaced in Stage 3 (ASN 검수가 대체) */}
+        <div className="flex items-center gap-2">
+          <label htmlFor="stock-in-seller" className="w-14 shrink-0 font-bold">
+            화주:
+          </label>
+          <Select
+            id="stock-in-seller"
+            value={sellerCode}
+            disabled={qtyDisabled || sellersLoading}
+            onChange={(event) => onSellerCodeChange(event.target.value)}
+            className="h-8 flex-1 text-[15px]"
+          >
+            <option value="">{sellersLoading ? "불러오는 중…" : "선택하세요"}</option>
+            {sellers?.map((seller) => (
+              <option key={seller.id} value={seller.code}>
+                {seller.code} · {seller.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="stock-in-lot" className="w-14 shrink-0 font-bold">
+            로트:
+          </label>
+          <Field
+            id="stock-in-lot"
+            type="text"
+            mono
+            value={lotNo}
+            disabled={qtyDisabled}
+            onChange={(event) => onLotNoChange(event.target.value)}
+            placeholder="L-2026-09"
+            maxLength={40}
+            className="h-8 flex-1 text-[15px]"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="stock-in-expires" className="w-14 shrink-0 font-bold">
+            유통기한:
+          </label>
+          <Field
+            id="stock-in-expires"
+            type="date"
+            mono
+            value={expiresOn}
+            disabled={qtyDisabled}
+            onChange={(event) => onExpiresOnChange(event.target.value)}
+            className="h-8 flex-1 text-[14px]"
+          />
+          <span className={`${w98.small} shrink-0 text-[color:var(--muted-foreground)]`}>선택</span>
+        </div>
 
         <Etched className="my-0.5" />
 

@@ -4,13 +4,17 @@
  */
 import { api } from "./api";
 import type {
+  AdjustInventoryRequest,
+  AdjustInventoryResponse,
   BoxOverrideResponse,
   BoxType,
   CompleteResponse,
   ConfirmRequest,
   ConfirmResponse,
   CreateSellerRequest,
+  DailyInventory,
   DashboardSummary,
+  InvariantMismatch,
   LinesResponse,
   Location,
   LocationsQuery,
@@ -22,8 +26,14 @@ import type {
   ShipmentDetail,
   ShipmentListItem,
   ShipmentStatus,
+  StockInRequest,
   StockInResponse,
+  StockItem,
+  StockLedgerEntry,
+  StockOccupancyRow,
+  StockQuery,
   Zone,
+  ZoneSummary,
 } from "./types";
 
 /* ── P1 입고 ─────────────────────────────────────────────── */
@@ -41,9 +51,12 @@ export const inbound = {
   confirm: (sessionId: number, body: ConfirmRequest) =>
     api.post<ConfirmResponse>(`/inbound/measurements/${sessionId}/confirm`, body),
 
-  /** 1-5 수량 입고 — 재고 증가의 유일한 경로 (D-09) */
-  stockIn: (productId: number, qty: number) =>
-    api.post<StockInResponse>("/inbound/stock-in", { productId, qty }),
+  /**
+   * 1-5 수량 입고 — 재고 증가의 유일한 경로 (D-09).
+   * Stage 2 T1 — 화주·로트번호 필수, 유통기한 선택 (정본 §2.5).
+   * // Stage 2 transitional (T1): replaced in Stage 3 (ASN 검수가 대체)
+   */
+  stockIn: (body: StockInRequest) => api.post<StockInResponse>("/inbound/stock-in", body),
 
   /** 1-6 제품 원본 이미지 (출고 화면에서도 재사용) */
   productImages: (productId: number) =>
@@ -127,6 +140,58 @@ function toQueryString(params?: LocationsQuery): string {
   return suffix ? `?${suffix}` : "";
 }
 
+/* ── 재고 — 로트·현재고·원장 (Stage 2) ────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §2.4, docs/tasks/
+   2026-09-10-stage2-inventory-core-handoff.md §3. */
+export const inventory = {
+  /** 현재고 표 — 화주·GTIN·로케이션·로트·상태로 필터, 페이지 */
+  stock: (params?: StockQuery) => api.get<Page<StockItem>>(`/stock${toStockQueryString(params)}`),
+
+  /** 재고 한 건의 원장 — 행 클릭 시 아래 표 */
+  stockLedger: (stockId: number, params?: { page?: number; size?: number }) =>
+    api.get<Page<StockLedgerEntry>>(`/stock/${stockId}/ledger${toPageQueryString(params)}`),
+
+  /** BIN 전체 점유 — 3D·2D 지도 인스턴스 매핑용 (3,888행) */
+  occupancy: () => api.get<StockOccupancyRow[]>("/stock/occupancy"),
+
+  /** 존별 현재고 합계 — 흐름·규격별 재고 패널 */
+  zonesSummary: () => api.get<ZoneSummary[]>("/zones/summary"),
+
+  /** 일별 입출고·현재고·점유율 — 기간 상한 92일 */
+  daily: (from: string, to: string) =>
+    api.get<DailyInventory[]>(`/inventory/daily?from=${from}&to=${to}`),
+
+  /** 불변식 검사 — 빈 배열이 정상 */
+  invariant: () => api.get<InvariantMismatch[]>("/admin/inventory/invariant"),
+
+  /** 재고 조정 — 화면 체크·ICQA 전 임시 창구 */
+  adjust: (body: AdjustInventoryRequest) =>
+    api.post<AdjustInventoryResponse>("/admin/inventory/adjust", body),
+};
+
+function toStockQueryString(params?: StockQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.seller !== undefined && params.seller !== "") qs.set("seller", params.seller);
+  if (params.gtin !== undefined && params.gtin !== "") qs.set("gtin", params.gtin);
+  if (params.location !== undefined && params.location !== "") qs.set("location", params.location);
+  if (params.lot !== undefined && params.lot !== "") qs.set("lot", params.lot);
+  if (params.status !== undefined) qs.set("status", params.status);
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.size !== undefined) qs.set("size", String(params.size));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
+function toPageQueryString(params?: { page?: number; size?: number }): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.size !== undefined) qs.set("size", String(params.size));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
 /** TanStack Query 키 — 무효화 대상을 한곳에서 관리한다 */
 export const queryKeys = {
   productImages: (id: number) => ["products", id, "images"] as const,
@@ -139,4 +204,11 @@ export const queryKeys = {
   sellers: ["sellers"] as const,
   zones: ["zones"] as const,
   locations: (params?: LocationsQuery) => ["locations", params ?? {}] as const,
+  stock: (params?: StockQuery) => ["stock", params ?? {}] as const,
+  stockLedger: (stockId: number, params?: { page?: number; size?: number }) =>
+    ["stock", stockId, "ledger", params ?? {}] as const,
+  occupancy: ["stock", "occupancy"] as const,
+  zonesSummary: ["zones", "summary"] as const,
+  dailyInventory: (from: string, to: string) => ["inventory", "daily", from, to] as const,
+  invariant: ["admin", "inventory", "invariant"] as const,
 };
