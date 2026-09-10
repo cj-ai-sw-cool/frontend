@@ -22,10 +22,9 @@
 import React, { useEffect, useMemo, useRef } from "react";
 
 import { CORRIDOR, computeLayout, toLayoutZones } from "@/lib/zone-layout";
+import { useOccupancy } from "../_data/use-inventory";
 import { useZones } from "../_data/use-master";
-/* 실측 물동량은 `warehouse-data.js` 한 곳에서 온다 — 규격별 재고 패널과 **같은 숫자**를
-   써야 해서 꺼내 놓았다. 그 파일 머리말 참고. */
-import { REAL_INV, INV_PEAK, MAP_FONT, MAP_FLOOR, DEMO_DAY } from "./warehouse-data";
+import { MAP_FONT, MAP_FLOOR } from "./warehouse-data";
 /* ── 닫힌 경로 위의 한 점 ────────────────────────────────────────────────
    `t` 는 0~1. 변의 길이에 비례해 나눠 걷는다 — 꼭짓점마다 같은 시간을 주면 짧은 변에서
    느려지고 긴 변에서 빨라져, 도는 물체의 속도가 들쭉날쭉해 보인다. */
@@ -59,10 +58,23 @@ function onLoop(pts, t) {
 export default function WarehouseMap({ onOpen3D }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
-  /* ★ 날짜를 **멈췄다** (사용자 요청 — 대시보드 칸마다 숫자가 다르다). 예전에는 여기만
-       420ms 마다 하루씩 넘어가서, 같은 화면의 박스 재고 칸(29일 고정)과 계속 어긋났다.
-       움직임은 아래 AGV·지게차·작업자가 만든다 — 그쪽이 "실시간"을 맡고, 재고 숫자는
-       시연 기준일에 붙박이로 둔다. 시연 중에 짚어 말할 숫자가 흔들리면 안 된다. */
+  /* 존별 점유율 — Stage 2. 예전에는 61일 실측 배열의 고정된 시연 기준일에서 읽었다.
+     이제 `GET /stock/occupancy`(BIN 전체, qty 포함) 를 존별로 묶어 채움/전체 비를 그때
+     그때 계산한다 — 3D(`warehouse-slot-3d.jsx`)의 `applyOccupancy` 와 같은 데이터,
+     같은 뜻이다. draw() 는 매 프레임 도는 루프라 리액트 상태 대신 ref 로 최신값을 읽는다
+     (그 파일의 `statsRef` 와 같은 패턴). */
+  const { data: occupancy } = useOccupancy();
+  const occByZone = useMemo(() => {
+    const acc = {};
+    for (const row of occupancy ?? []) {
+      const entry = (acc[row.zone] ??= { filled: 0, total: 0 });
+      entry.total += 1;
+      if (row.qty > 0) entry.filled += 1;
+    }
+    return acc;
+  }, [occupancy]);
+  const occRef = useRef(occByZone);
+  useEffect(() => { occRef.current = occByZone; }, [occByZone]);
 
   /* 배치는 `GET /zones` 에서 온다(Stage 1 S1.5). 아직 안 받았으면 캔버스를 그리지 않고
      아래에서 "레이아웃 불러오는 중" 을 보여준다. */
@@ -134,7 +146,6 @@ export default function WarehouseMap({ onOpen3D }) {
 
     const draw = () => {
       const el = (performance.now() - t0) / 1000;
-      const d = DEMO_DAY;
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const w = cvs.width / dpr, h = cvs.height / dpr;
@@ -222,11 +233,10 @@ export default function WarehouseMap({ onOpen3D }) {
       const labels = [];
       for (const z of layout.zones) {
         const col = z.g.color;
-        /* G(냉동)처럼 `invKey` 가 없는 존은 실측 재고 배열이 없다 — 점유 0 으로 둔다
-           (Stage 1 S1.5, 브리프 §3 "G는 null → 점유 0으로 렌더"). */
-        const occ = z.g.invKey
-          ? Math.min(0.99, Math.max(0.015, (REAL_INV[z.g.invKey][d] / INV_PEAK[z.g.invKey]) * 0.95))
-          : 0;
+        /* 그 존의 실제 채움/전체 — `GET /stock/occupancy` 를 존별로 묶은 값(위 occRef).
+           아직 안 왔거나 그 존에 BIN 이 없으면 0 */
+        const zOcc = occRef.current[z.g.id];
+        const occ = zOcc && zOcc.total > 0 ? zOcc.filled / zOcc.total : 0;
         const rx = X(z.x0 - 0.35), ry = Y(z.zStart - ZONE_PAD);
         const rw = (z.width + 0.7) * scale, rh = (z.len + ZONE_PAD * 2) * scale;
 
