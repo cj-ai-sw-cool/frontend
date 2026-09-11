@@ -7,20 +7,24 @@
  * "3D 전체 ▶"와 같은 방식으로 **전체 화면 오버레이**로 연다 — 스테이지 전체(1600×1004)를
  * 덮고 ESC 나 닫기 버튼으로 되돌아간다.
  *
- * 탭 둘: 화주 / 로케이션. 로케이션 탭의 행을 클릭하면 이 창을 닫고 3D 전체 화면으로
- * 넘어가면서 그 존으로 카메라를 옮기고 강조한다 — "3D 전체 ▶" 버튼과 같은 전환이라
- * 화면 위에 화면을 겹치지 않는다.
+ * 탭 셋: 화주 / 로케이션 / 가용재고. 로케이션 탭의 행을 클릭하면 이 창을 닫고 3D 전체
+ * 화면으로 넘어가면서 그 존으로 카메라를 옮기고 강조한다 — "3D 전체 ▶" 버튼과 같은
+ * 전환이라 화면 위에 화면을 겹치지 않는다.
  *
  * ⚠️ **존·랙 단위 강조까지만 한다.** 3D 쪽 `flyTo`/`setHighlight` 가 지금 받는 값은
  *    구역 하나(zone/grade id)뿐이고 랙 번호는 받지 않는다 — 랙을 더 좁혀 보여주는 카메라
  *    프레이밍은 이 스테이지 범위 밖이다(칸 단위 강조는 Stage 2 점유 연동 때 같이).
  *    자세한 내용은 인수인계 보고 "결정 필요" 절 참고.
+ *
+ * "가용재고" 탭은 Stage 5(정본 §5.7·§5.8, 브리프 §3 S5.4)에서 추가했다 — 자기 상태·데이터
+ * 훅을 통째로 든 독립 컴포넌트(`atp-tab.tsx`)라 여기서는 탭 전환만 담당한다.
  */
 
 import { useMemo, useState, type ReactNode } from "react";
 import { ApiError } from "@/lib/api";
 import type { Zone } from "@/lib/types";
 import { useCreateSeller, useLocations, useSellers, useZones } from "../_data/use-master";
+import { AtpTab } from "./atp-tab";
 import { Btn, Etched, Field, Sunken, w98 } from "./win98-ui";
 
 /** `warehouse-slot-3d.jsx` 가 `onReady` 로 넘기는 api 핸들. 이 파일은 모양만 안다 */
@@ -30,7 +34,7 @@ export interface WarehouseApi {
   resetView: () => void;
 }
 
-const TABS = ["화주", "로케이션"] as const;
+const TABS = ["화주", "로케이션", "가용재고"] as const;
 type Tab = (typeof TABS)[number];
 
 const TEMP_ZONE_LABEL: Record<string, string> = {
@@ -77,7 +81,13 @@ export function MasterWindow({
         </div>
 
         <div className="min-h-0 flex-1 p-2">
-          {tab === "화주" ? <SellerTab /> : <LocationTab onLocateZone={onLocateZone} />}
+          {tab === "화주" ? (
+            <SellerTab />
+          ) : tab === "로케이션" ? (
+            <LocationTab onLocateZone={onLocateZone} />
+          ) : (
+            <AtpTab />
+          )}
         </div>
       </div>
     </div>
@@ -357,10 +367,12 @@ function LocationTab({ onLocateZone }: { onLocateZone: (zoneCode: string) => voi
   );
 }
 
-function Th({ children }: { children: ReactNode }) {
+/* Th/Td 는 아래 ATP 탭(`atp-tab.tsx`, Stage 5)도 그대로 재사용한다 — 표 셀 모양이 탭마다
+ * 갈리면 같은 창 안에서 표가 서로 달라 보인다. */
+export function Th({ children }: { children: ReactNode }) {
   return <th className={`${w98.titleText} border-b border-[color:var(--border)] p-2`}>{children}</th>;
 }
 
-function Td({ children, mono = false }: { children: ReactNode; mono?: boolean }) {
+export function Td({ children, mono = false }: { children: ReactNode; mono?: boolean }) {
   return <td className={`p-2 ${mono ? w98.mono : ""}`}>{children}</td>;
 }
