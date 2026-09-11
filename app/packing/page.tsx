@@ -14,6 +14,7 @@ import { ProductImagePanel } from "./_components/product-image-panel";
 import { ShipmentItemsPanel } from "./_components/shipment-items-panel";
 import { ToteScanPanel } from "./_components/tote-scan-panel";
 import { WaveCreateDialog } from "./_components/wave-create-dialog";
+import { WavesTab } from "./_components/waves-tab";
 import { useLines } from "./_data/use-lines";
 import { useLineShipments } from "./_data/use-line-shipments";
 import {
@@ -59,10 +60,10 @@ import { useCreateWave } from "./_data/use-waves";
  *   `barcode`/`shipmentId` 등)가 탭을 오가도 사라지지 않아야 한다(입고 화면 주석과 같은 이유).
  */
 export default function PackingV2Page() {
-  /** 포장 / 주문 두 탭. "주문" 탭은 자기 상태·데이터 훅을 통째로 들고 있다(`orders-tab.tsx`
-   * 머리말 참고) — 여기서는 지금 켜진 탭만 기억한다. ("웨이브" 탭은 Stage 6 다음 커밋에서
-   * 추가한다 — 지금 커밋은 "주문 투입" 버튼·대화 상자만.) */
-  const [activeTab, setActiveTab] = useState<"packing" | "orders">("packing");
+  /** 포장 / 주문 / 웨이브 세 탭 (Stage 6, 정본 §6.7). "주문"·"웨이브" 탭은 각자 자기
+   * 상태·데이터 훅을 통째로 들고 있다(`orders-tab.tsx`/`waves-tab.tsx` 머리말 참고) —
+   * 여기서는 지금 켜진 탭만 기억한다. */
+  const [activeTab, setActiveTab] = useState<"packing" | "orders" | "waves">("packing");
   /** "주문 투입" 대화 상자 — 탭과 무관하게 항상 누를 수 있어 탭 바 옆에 둔다(정본 §6.7,
    * 브리프 §3 S6.5 "포장 화면 '주문 투입' 버튼"). */
   const [isWaveDialogOpen, setIsWaveDialogOpen] = useState(false);
@@ -265,9 +266,10 @@ export default function PackingV2Page() {
   /* ── 표시 ──────────────────────────────────────────────── */
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1">
-      {/* ── 탭 — 포장 / 주문 (Stage 5) ────────────────────────
+      {/* ── 탭 — 포장 / 주문 / 웨이브 (Stage 5·6) ────────────────
           ⚠️ 높이 h-5(20px) — 입고 화면의 검수/진열 탭 바와 같은 값. 위 docstring "세로 예산"
-             참고. 아래 gap-1 도 그 계산에 들어간다. */}
+             참고. 아래 gap-1 도 그 계산에 들어간다. 탭이 셋으로 늘어도 가로 폭만 늘 뿐
+             세로 예산은 그대로다. */}
       <div className="flex shrink-0 items-center justify-between gap-1">
         <div className="flex gap-1">
           <Btn
@@ -284,6 +286,13 @@ export default function PackingV2Page() {
           >
             주문
           </Btn>
+          <Btn
+            pressed={activeTab === "waves"}
+            onClick={() => setActiveTab("waves")}
+            className="h-5 px-3 text-[13px] font-bold"
+          >
+            웨이브
+          </Btn>
         </div>
 
         {/* "주문 투입" — 탭과 무관한 전역 액션이라 탭 바 오른쪽에 고정한다(정본 §6.7) */}
@@ -296,6 +305,7 @@ export default function PackingV2Page() {
       </div>
 
       {activeTab === "orders" ? <OrdersTab /> : null}
+      {activeTab === "waves" ? <WavesTab /> : null}
 
       {/* 포장 탭 — 기존 화면. 언마운트하지 않고 숨기기만 한다: 토트 스캔 중간 상태가 탭을
           오가도 사라지지 않아야, 실수로 주문 탭을 눌렀다가 돌아와도 하던 작업이 남는다. */}

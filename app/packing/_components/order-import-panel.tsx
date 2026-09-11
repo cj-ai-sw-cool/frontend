@@ -196,8 +196,7 @@ function ImportResultView({ result }: { result: OrdersImportResponse }) {
   return (
     <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto p-1.5`}>
       <p className={`${w98.small} mb-1`}>
-        접수 <b className="text-[color:var(--status-success)]">{result.orders}</b>건 · 배송단위{" "}
-        <b>{result.shipments}</b>건
+        접수 <b className="text-[color:var(--status-success)]">{result.orders}</b>건
         {result.rejected.length > 0 ? (
           <>
             {" "}
