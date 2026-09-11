@@ -87,4 +87,12 @@ export const api = {
       method: "PUT",
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
+
+  /** 부분 갱신 — Stage 5 `PATCH /sellers/{code}` 가 처음 쓴다 */
+  patch: <T>(path: string, body?: unknown, init?: RequestInit) =>
+    request<T>(path, {
+      ...init,
+      method: "PATCH",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
 };

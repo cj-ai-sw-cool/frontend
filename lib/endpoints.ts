@@ -11,6 +11,7 @@ import type {
   AsnDetail,
   AsnListItem,
   AsnQuery,
+  AtpRow,
   BoxOverrideResponse,
   BoxType,
   CompleteReceiptResponse,
@@ -28,6 +29,12 @@ import type {
   LocationCapacityQuery,
   LocationsQuery,
   MeasurementResponse,
+  OrderCancelResponse,
+  OrderDetail,
+  OrderListItem,
+  OrdersImportRequest,
+  OrdersImportResponse,
+  OrdersQuery,
   Page,
   PendingReceiptItem,
   ProductImagesResponse,
@@ -47,6 +54,7 @@ import type {
   StockLedgerEntry,
   StockOccupancyRow,
   StockQuery,
+  UpdateSellerRequest,
   Zone,
   ZoneSummary,
 } from "./types";
@@ -241,6 +249,45 @@ export const putaway = {
     ),
 };
 
+/* ── 주문·soft 할당 (Stage 5) ────────────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §5.7, docs/tasks/
+   2026-09-11-stage5-orders-allocation-handoff.md §3 S5.4. */
+export const orders = {
+  /** 주문 목록 — 화주·상태 필터, 페이지 */
+  list: (params?: OrdersQuery) => api.get<Page<OrderListItem>>(`/orders${toOrdersQueryString(params)}`),
+
+  /** 주문 상세 — 품목·할당(stage/status/수량)·배송단위 */
+  get: (id: number) => api.get<OrderDetail>(`/orders/${id}`),
+
+  /** 취소 — `RECEIVED`·`ALLOCATED` 에서만. 그 밖은 409 `INVALID_STATE`(정본 §5.5) */
+  cancel: (id: number) => api.post<OrderCancelResponse>(`/orders/${id}/cancel`),
+
+  /** 접수 — 기존 `POST /admin/orders/import` 유지 + 주문별 `cutoffAt?`(정본 §5.7) */
+  import: (body: OrdersImportRequest) => api.post<OrdersImportResponse>("/admin/orders/import", body),
+};
+
+/** 화주 가용재고·금지선 — `master.sellers()`(목록·등록)와는 다른 API 라 별도 묶음으로 둔다 */
+export const sellers = {
+  /** 화주 전 SKU 가용재고 표 — 가용재고 탭(정본 §5.7 `GET .../atp?page`) */
+  atp: (code: string, params?: { page?: number; size?: number }) =>
+    api.get<Page<AtpRow>>(`/sellers/${encodeURIComponent(code)}/atp${toPageQueryString(params)}`),
+
+  /** 금지선 일수 변경 — `PATCH /sellers/{code}`(정본 §5.1) */
+  update: (code: string, body: UpdateSellerRequest) =>
+    api.patch<Seller>(`/sellers/${encodeURIComponent(code)}`, body),
+};
+
+function toOrdersQueryString(params?: OrdersQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.seller !== undefined && params.seller !== "") qs.set("seller", params.seller);
+  if (params.status !== undefined) qs.set("status", params.status);
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.size !== undefined) qs.set("size", String(params.size));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
 function toLocationCapacityQueryString(params?: LocationCapacityQuery): string {
   if (!params) return "";
   const qs = new URLSearchParams();
@@ -318,4 +365,8 @@ export const queryKeys = {
   pendingItems: (receiptId: number) => ["receipts", receiptId, "pending-items"] as const,
   putawayPending: (params?: PutawayPendingQuery) => ["putaway", "pending", params ?? {}] as const,
   locationCapacity: (code: string) => ["locations", code, "capacity"] as const,
+  orders: (params?: OrdersQuery) => ["orders", params ?? {}] as const,
+  order: (id: number) => ["orders", id] as const,
+  sellerAtp: (code: string, params?: { page?: number; size?: number }) =>
+    ["sellers", code, "atp", params ?? {}] as const,
 };
