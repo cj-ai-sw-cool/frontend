@@ -48,9 +48,9 @@ export function PrecautionsPanel({
   const toggle = (key: keyof Handling) => () => onChange({ ...value, [key]: !value[key] });
 
   return (
-    <div className={`${w98.raised} shrink-0 bg-[color:var(--surface)] p-2`}>
+    <div className={`${w98.raised} shrink-0 bg-[color:var(--surface)] p-0.5`}>
       <div
-        className={`${w98.titleText} flex h-6 items-center px-1.5 text-[14px] font-bold tracking-[0.02em] select-none ${
+        className={`${w98.titleText} flex h-5 items-center px-1.5 text-[13px] font-bold tracking-[0.02em] select-none ${
           active
             ? "bg-[color:var(--status-error)] text-white"
             : "bg-[color:var(--surface)] text-[color:var(--foreground)]"
@@ -60,14 +60,16 @@ export function PrecautionsPanel({
       </div>
 
       {/* 제목 아래 음각선 — 이 화면의 다른 패널(Panel)과 같은 구조다 */}
-      <Etched className="mt-1 mb-1.5" />
+      <Etched className="mt-0 mb-0.5" />
 
       {/* ⚠️ 잠긴 이유를 **화면에 글로 띄우지는 않는다** (사용자 결정 — 설명 상자가 자리를
              차지해서 답답했다). 대신 `title` 로 남긴다: 왜 안 눌리는지 궁금하면 마우스를
              올려 보면 나오고, 평소에는 아무것도 방해하지 않는다.
-             ⚠️ 잠금 자체는 계약이 정한 것이다 — 취급속성은 1-4 가 나가는 경로에서만 저장된다. */}
+             ⚠️ 잠금 자체는 계약이 정한 것이다 — 취급속성은 1-4 가 나가는 경로에서만 저장된다.
+             ⚠️ 줄 간격을 gap-2 → gap-1 로 줄였다 (우측 열 잘림 수정, Stage 3) — 체크박스
+                자체 크기는 그대로다, 줄 사이 여백만 줄었다. */}
       <div
-        className="flex flex-col gap-2 px-1 pb-0.5 text-[15px]"
+        className="flex flex-col gap-1 px-1 text-[15px]"
         title={note === "" ? undefined : note}
       >
         {/* 1-4 요청의 handling. 기본값은 1-3 응답의 handlingDefaults 에서 깔린다 (§1-3).

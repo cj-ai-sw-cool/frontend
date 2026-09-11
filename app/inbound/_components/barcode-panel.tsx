@@ -60,13 +60,15 @@ export function BarcodePanel({
           disabled={isBusy}
           aria-label="제품 바코드"
           aria-invalid={error ? true : undefined}
-          className="h-10 min-w-0 flex-1 text-[22px] tabular-nums tracking-wide"
+          className="h-9 min-w-0 flex-1 text-[22px] tabular-nums tracking-wide"
         />
       </form>
 
       {/* 조회한 값의 EAN-13 그래픽. 조회 중·실패면 같은 자리를 문구가 쓴다 —
-          높이가 고정이라 어떤 상태에서도 아래 패널이 흔들리지 않는다. */}
-      <Sunken className="mt-1 flex h-10 items-center px-1">
+          높이가 고정이라 어떤 상태에서도 아래 패널이 흔들리지 않는다.
+          ⚠️ h-10 → h-9 (우측 열 잘림 수정, Stage 3) — SVG 는 `preserveAspectRatio="none"`
+             로 부모 높이에 맞춰 늘어나므로 4px 줄여도 막대는 그대로 읽힌다. */}
+      <Sunken className="mt-0.5 flex h-8 items-center px-1">
         {error ? (
           <p
             role="alert"

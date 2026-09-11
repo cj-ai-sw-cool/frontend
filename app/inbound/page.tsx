@@ -539,7 +539,10 @@ export default function InboundPage() {
       </div>
 
       {/* ── 우측 380px: 목업 right sidebar + 신규 두 칸 ──────── */}
-      <div className="flex w-[380px] shrink-0 flex-col gap-2">
+      {/* ⚠️ 칸 사이 여백을 gap-2 → gap-1.5 로 줄였다 (우측 열 잘림 수정, Stage 3) — 패널이
+          여섯 개로 늘어난 뒤 고정 높이 예산이 빠듯해져, "상품 정보" 칸이 항상 전부 보이게
+          하려면 칸마다 조금씩 자리를 돌려줘야 했다. */}
+      <div className="flex w-[380px] shrink-0 flex-col gap-1">
         {/* 1-1 진입점. 못 찾은 바코드도 200 + UNKNOWN 이라 에러 자리는 평소 비어 있다 */}
         <BarcodePanel
           value={barcode}

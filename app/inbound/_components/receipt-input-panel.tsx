@@ -12,6 +12,14 @@ import { Etched, Field, w98 } from "./win98-ui";
  *
  * ⚠️ 값은 여기서 들고 있지 않다. page.tsx 의 상태이고 이 칸은 그리기만 한다
  *    (precautions-panel.tsx 와 같은 규약).
+ *
+ * ★ **수령·파손을 한 줄로 합치고 여백을 줄였다** (우측 열 잘림 수정, Stage 3).
+ *   Stage 3 가 우측 열에 "미검수 품목" · "검수 입력" 두 칸을 새로 얹으면서 고정 높이
+ *   예산을 넘겼고, 그 여파로 아래 "상품 정보" 칸이 세로로 눌려 품목명 한 줄만 남고
+ *   잘렸다(사용자 보고). "상품 정보"는 항상 전부 보여야 하는 칸이라 그쪽 크기는 지키고,
+ *   대신 이 칸의 줄 수와 줄 간격을 줄여 자리를 돌려준다.
+ *   ⚠️ 필드 자체(높이 24px)는 여전히 손으로 누를 수 있는 크기다 — 줄인 건 라벨 폭과
+ *      줄 사이 여백이지, 탭 영역이 아니다.
  */
 export function ReceiptInputPanel({
   pendingItem,
@@ -41,19 +49,16 @@ export function ReceiptInputPanel({
   note: string;
 }) {
   return (
-    <div className={`${w98.raised} shrink-0 bg-[color:var(--surface)] p-2`}>
+    <div className={`${w98.raised} shrink-0 bg-[color:var(--surface)] p-1`}>
       <div
-        className={`${w98.titleText} flex h-6 items-center px-1.5 text-[14px] font-bold tracking-[0.02em] select-none`}
+        className={`${w98.titleText} flex h-5 items-center px-1.5 text-[13px] font-bold tracking-[0.02em] select-none`}
       >
         검수 입력
       </div>
 
-      <Etched className="mt-1 mb-1.5" />
+      <Etched className="mt-0.5 mb-1" />
 
-      <div
-        className="flex flex-col gap-2 px-1 pb-0.5 text-[15px]"
-        title={note === "" ? undefined : note}
-      >
+      <div className="flex flex-col gap-1 px-1 text-[13px]" title={note === "" ? undefined : note}>
         <div className="flex items-center justify-between">
           <span className="font-bold">예정 수량</span>
           <span className={`${w98.mono} tabular-nums`}>
@@ -61,11 +66,10 @@ export function ReceiptInputPanel({
           </span>
         </div>
 
-        <Etched className="my-0.5" />
-
-        <div className="flex items-center gap-2">
-          <label htmlFor="receipt-received-qty" className="w-16 shrink-0 font-bold">
-            수령:
+        {/* 수령·파손을 한 줄에 나란히 둔다 — 예전엔 두 줄이었다 */}
+        <div className="flex items-center gap-1.5">
+          <label htmlFor="receipt-received-qty" className="w-9 shrink-0 font-bold">
+            수령
           </label>
           <Field
             id="receipt-received-qty"
@@ -79,13 +83,10 @@ export function ReceiptInputPanel({
               if (!Number.isFinite(parsed) || parsed < 0) return;
               onReceivedQtyChange(parsed);
             }}
-            className="h-8 w-24 text-right text-[18px] tabular-nums"
+            className="h-6 w-14 text-right text-[13px] tabular-nums"
           />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label htmlFor="receipt-damaged-qty" className="w-16 shrink-0 font-bold">
-            파손:
+          <label htmlFor="receipt-damaged-qty" className="ml-1 w-9 shrink-0 font-bold">
+            파손
           </label>
           <Field
             id="receipt-damaged-qty"
@@ -99,15 +100,13 @@ export function ReceiptInputPanel({
               if (!Number.isFinite(parsed) || parsed < 0) return;
               onDamagedQtyChange(parsed);
             }}
-            className="h-8 w-24 text-right text-[18px] tabular-nums"
+            className="h-6 w-14 text-right text-[13px] tabular-nums"
           />
         </div>
 
-        <Etched className="my-0.5" />
-
-        <div className="flex items-center gap-2">
-          <label htmlFor="receipt-lot" className="w-16 shrink-0 font-bold">
-            로트:
+        <div className="flex items-center gap-1.5">
+          <label htmlFor="receipt-lot" className="w-9 shrink-0 font-bold">
+            로트
           </label>
           <Field
             id="receipt-lot"
@@ -118,13 +117,13 @@ export function ReceiptInputPanel({
             onChange={(event) => onLotNoChange(event.target.value)}
             placeholder="L-2026-09"
             maxLength={40}
-            className="h-8 flex-1 text-[15px]"
+            className="h-6 flex-1 text-[13px]"
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <label htmlFor="receipt-expires" className="w-16 shrink-0 font-bold">
-            유통기한:
+        <div className="flex items-center gap-1.5">
+          <label htmlFor="receipt-expires" className="w-9 shrink-0 font-bold">
+            유통기한
           </label>
           <Field
             id="receipt-expires"
@@ -133,7 +132,7 @@ export function ReceiptInputPanel({
             value={expiresOn}
             disabled={disabled}
             onChange={(event) => onExpiresOnChange(event.target.value)}
-            className="h-8 flex-1 text-[14px]"
+            className="h-6 flex-1 text-[12px]"
           />
         </div>
       </div>
