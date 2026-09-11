@@ -156,7 +156,7 @@ export function AtpTab() {
               atpPage?.content.map((row) => (
                 <tr key={row.gtin} className="border-t border-[color:var(--border)]">
                   <Td mono>{row.gtin}</Td>
-                  <Td>{row.productName}</Td>
+                  <Td>{row.name}</Td>
                   <Td mono>{row.onHand.toLocaleString()}</Td>
                   <Td mono>{row.allocated.toLocaleString()}</Td>
                   <Td mono>{row.blockedByShelfLife.toLocaleString()}</Td>

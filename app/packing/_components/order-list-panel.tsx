@@ -111,13 +111,13 @@ export function OrderListPanel({
         ) : (
           <ul>
             {items.map((item) => (
-              <li key={item.id}>
+              <li key={item.orderId}>
                 <button
                   type="button"
-                  onClick={() => onSelect(item.id)}
-                  aria-current={selectedId === item.id ? "true" : undefined}
+                  onClick={() => onSelect(item.orderId)}
+                  aria-current={selectedId === item.orderId ? "true" : undefined}
                   className={`flex w-full flex-col gap-0.5 border-b border-[color:var(--surface-dim)] px-2 py-1.5 text-left ${
-                    selectedId === item.id ? "bg-[color:var(--surface-variant)]" : ""
+                    selectedId === item.orderId ? "bg-[color:var(--surface-variant)]" : ""
                   }`}
                 >
                   <span className="flex items-center justify-between gap-2">
@@ -127,7 +127,7 @@ export function OrderListPanel({
                     </span>
                   </span>
                   <span className={`${w98.small} truncate text-[color:var(--muted-foreground)]`}>
-                    {item.seller.code} · {item.regionCode} · {item.orderedAt.slice(0, 16).replace("T", " ")}
+                    {item.sellerCode} · {item.regionCode} · {item.orderedAt.slice(0, 16).replace("T", " ")}
                   </span>
                 </button>
               </li>

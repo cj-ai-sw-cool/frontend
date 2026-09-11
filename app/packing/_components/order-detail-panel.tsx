@@ -17,10 +17,13 @@ const ALLOC_STATUS_LABEL: Record<AllocationStatus, string> = {
  *
  * 할당은 품목 한 줄에 여러 개 붙을 수 있다(취소했다 다시 접수하면 CANCELLED 행이 남는다,
  * 정본 §5.2 유니크 인덱스가 "active soft 하나"만 보장한다) — 그래서 품목 아래 할당을
- * 중첩 목록으로 그린다.
+ * 중첩 목록으로 그린다. ⚠️ 서버 응답은 `allocations` 를 품목과 **나란한 최상위 배열**로
+ * 준다(2026-09-11 라이브 검증, `lib/types.ts` 의 `OrderAllocation` 주석 참고) — 여기서
+ * `orderItemId` 로 묶어서 그린다.
  *
  * 배송단위는 T6(정본 §5.6, Stage 5 한정) — hard 할당 이전이라 접수 시점에 이미 만들어져
- * 있다. Stage 6 에서 이 자리가 hard 할당 뒤로 옮겨간다.
+ * 있다. Stage 6 에서 이 자리가 hard 할당 뒤로 옮겨간다. 토트는 `toteCode` 문자열로 온다
+ * (라이브 검증 — 계약 초안의 `tote: {toteId, barcode}` 중첩이 아니다).
  */
 export function OrderDetailPanel({
   order,
@@ -110,28 +113,33 @@ export function OrderDetailPanel({
                 </tr>
               </thead>
               <tbody>
-                {order.items.map((item) => (
-                  <tr key={item.id} className="border-t border-[color:var(--border)] align-top">
-                    <td className="p-1.5">{item.name}</td>
-                    <td className={`${w98.mono} p-1.5`}>{item.gtin}</td>
-                    <td className={`${w98.mono} p-1.5 text-right`}>{item.qty}</td>
-                    <td className="p-1.5">
-                      {item.allocations.length === 0 ? (
-                        <span className="text-[color:var(--muted-foreground)]">없음</span>
-                      ) : (
-                        <ul className="flex flex-col gap-0.5">
-                          {item.allocations.map((alloc) => (
-                            <li key={alloc.id} className={w98.mono}>
-                              {STAGE_LABEL[alloc.stage]} · {ALLOC_STATUS_LABEL[alloc.status]} ·{" "}
-                              {alloc.qty}
-                              {alloc.locationCode !== null ? ` · ${alloc.locationCode}` : ""}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {order.items.map((item) => {
+                  const allocations = order.allocations.filter(
+                    (alloc) => alloc.orderItemId === item.orderItemId,
+                  );
+                  return (
+                    <tr key={item.orderItemId} className="border-t border-[color:var(--border)] align-top">
+                      <td className="p-1.5">{item.name}</td>
+                      <td className={`${w98.mono} p-1.5`}>{item.gtin}</td>
+                      <td className={`${w98.mono} p-1.5 text-right`}>{item.qty}</td>
+                      <td className="p-1.5">
+                        {allocations.length === 0 ? (
+                          <span className="text-[color:var(--muted-foreground)]">없음</span>
+                        ) : (
+                          <ul className="flex flex-col gap-0.5">
+                            {allocations.map((alloc) => (
+                              <li key={alloc.allocationId} className={w98.mono}>
+                                {STAGE_LABEL[alloc.stage]} · {ALLOC_STATUS_LABEL[alloc.status]} ·{" "}
+                                {alloc.qty}
+                                {alloc.locationCode != null ? ` · ${alloc.locationCode}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </Sunken>
@@ -157,7 +165,7 @@ export function OrderDetailPanel({
                     <tr key={shipment.shipmentId} className="border-t border-[color:var(--border)]">
                       <td className={`${w98.mono} p-1.5`}>#{shipment.seqNo}</td>
                       <td className="p-1.5">{shipment.status}</td>
-                      <td className={`${w98.mono} p-1.5`}>{shipment.tote?.barcode ?? "미배정"}</td>
+                      <td className={`${w98.mono} p-1.5`}>{shipment.toteCode ?? "미배정"}</td>
                     </tr>
                   ))
                 )}

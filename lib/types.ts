@@ -773,48 +773,84 @@ export const CANCELLABLE_ORDER_STATUSES: readonly OrderStatus[] = ["RECEIVED", "
 export type AllocationStage = "SOFT" | "HARD";
 export type AllocationStatus = "ACTIVE" | "CONSUMED" | "CANCELLED";
 
-/** 주문 품목 한 줄의 할당 — 정본 §5.2. `lotNo`/`locationCode` 는 HARD 에서만 채워진다(Stage 6) */
+/**
+ * 주문 품목 한 줄의 할당 — 정본 §5.2. `lotNo`/`locationCode` 는 HARD 에서만 채워진다(Stage 6).
+ * `allocationId`/`orderItemId` — 2026-09-11 라이브 검증으로 정정. 계약 초안에는 품목 아래
+ * 중첩으로 적었지만, 실제로는 `OrderDetail.allocations` 가 **품목과 나란한 최상위 배열**이고
+ * `orderItemId` 로 그 품목을 가리킨다 — 화면(`order-detail-panel.tsx`)이 이 값으로 묶는다.
+ * SOFT 단계에서는 `lotNo`/`locationCode` 가 응답에 아예 없다(`null` 이 아니라 필드 자체가
+ * 빠진다) — 그래서 옵셔널로 둔다.
+ */
 export interface OrderAllocation {
-  id: number;
+  allocationId: number;
+  orderItemId: number;
+  productId: number;
+  gtin: string;
+  qty: number;
   stage: AllocationStage;
   status: AllocationStatus;
-  qty: number;
-  lotNo: string | null;
-  locationCode: string | null;
+  lotNo?: string | null;
+  locationCode?: string | null;
 }
 
+/** `orderItemId` — 2026-09-11 라이브 검증으로 정정(계약 초안의 `id` 대신) */
 export interface OrderDetailItem {
-  id: number;
+  orderItemId: number;
   productId: number;
   gtin: string;
   name: string;
   qty: number;
-  allocations: OrderAllocation[];
 }
 
-/** 주문에 딸린 배송단위 요약 — T6(정본 §5.6), Stage 6에서 hard 할당 뒤로 옮겨진다 */
+/**
+ * 주문에 딸린 배송단위 요약 — T6(정본 §5.6), Stage 6에서 hard 할당 뒤로 옮겨진다.
+ * `lineId`/`toteCode`/`items` — 2026-09-11 라이브 검증으로 정정. 계약 초안의
+ * `tote: {toteId, barcode}` 중첩 대신 **토트 바코드를 문자열로 바로** 준다(아직 안
+ * 배정됐으면 `null` 로 추정 — 라이브에서는 항상 배정된 경우만 확인됐다).
+ */
 export interface OrderShipmentSummary {
   shipmentId: number;
   seqNo: number;
   status: ShipmentStatus;
-  tote: { toteId: number; barcode: string } | null;
+  lineId: number;
+  toteCode: string | null;
+  items: { productId: number; gtin: string; name: string; qty: number }[];
 }
 
-/** `GET /orders` 목록 항목 */
+/**
+ * `GET /orders` 목록 항목. `orderId`/`sellerCode`/`sellerName` — 2026-09-11 라이브 검증으로
+ * 정정(계약 초안의 `id`·중첩 `seller` 대신). ⚠️ **목록과 상세가 화주를 다르게 표현한다** —
+ * 목록은 이 평평한 두 필드, 상세(`OrderDetail`)는 중첩 `seller` 객체다. 화면이 각자 맞춰
+ * 읽는다(같은 모양으로 통일해 달라고 정리하지 않는다 — 지금은 실제 응답을 그대로 따른다).
+ */
 export interface OrderListItem {
-  id: number;
+  orderId: number;
+  receiptNo: string;
+  sellerCode: string;
+  sellerName: string;
+  regionCode: string;
+  status: OrderStatus;
+  orderedAt: string;
+  cutoffAt: string | null;
+  cancelledAt: string | null;
+}
+
+/**
+ * `GET /orders/{id}` — 품목·할당·배송단위(정본 §5.7). `orderId` — 라이브 검증으로 정정.
+ * `allocations` 는 품목과 나란한 최상위 배열이다(위 `OrderAllocation` 주석 참고) — 화면이
+ * `orderItemId` 로 묶어서 보여준다.
+ */
+export interface OrderDetail {
+  orderId: number;
   receiptNo: string;
   seller: { code: string; name: string };
   regionCode: string;
   status: OrderStatus;
   orderedAt: string;
   cutoffAt: string | null;
-}
-
-/** `GET /orders/{id}` — 품목·할당·배송단위(정본 §5.7) */
-export interface OrderDetail extends OrderListItem {
   cancelledAt: string | null;
   items: OrderDetailItem[];
+  allocations: OrderAllocation[];
   shipments: OrderShipmentSummary[];
 }
 
@@ -826,9 +862,9 @@ export interface OrdersQuery {
   size?: number;
 }
 
-/** `POST /orders/{id}/cancel` 응답 */
+/** `POST /orders/{id}/cancel` 응답 — `orderId` 는 2026-09-11 라이브 검증으로 정정 */
 export interface OrderCancelResponse {
-  id: number;
+  orderId: number;
   status: "CANCELLED";
   cancelledAt: string;
 }
@@ -867,11 +903,13 @@ export interface OrdersImportResponse {
 /**
  * `GET /sellers/{code}/atp` 행 — 화주 가용재고 표(분석 화면 마스터 창).
  * `onHand` 는 BIN·AVAILABLE 만, `blockedByShelfLife` 는 금지선에 걸려 ATP 에서 빠진 수량
- * (정본 §5.3). `productName` 은 표시용으로 백엔드가 함께 준다.
+ * (정본 §5.3). `productId`/`name` — 2026-09-11 라이브 검증으로 정정(초안에는
+ * `productName` 으로 적었으나 실제 필드는 `name` 이고 `productId` 가 함께 온다).
  */
 export interface AtpRow {
+  productId: number;
   gtin: string;
-  productName: string;
+  name: string;
   onHand: number;
   allocated: number;
   blockedByShelfLife: number;
