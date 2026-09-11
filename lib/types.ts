@@ -29,7 +29,11 @@ export type ApiErrorCode =
   /** 진열 확정(Stage 4) — 잠금 아래 재검증 실패. `detail` 이 `PutawayRejectedDetail` 모양(정본 §4.5) */
   | "PUTAWAY_REJECTED"
   /** 진열(Stage 4) — stockId 가 없거나 이미 다 옮겨진 재고(2026-09-11 백엔드 라이브 보고) */
-  | "STOCK_NOT_FOUND";
+  | "STOCK_NOT_FOUND"
+  /** 웨이브(Stage 6) — `GET /waves/{id}`·`.../tasks` 에서 id 가 없을 때(2026-09-11 백엔드 보고) */
+  | "WAVE_NOT_FOUND"
+  /** 피킹 배치(Stage 6) — `GET /pick-batches/{id}` 에서 id 가 없을 때(2026-09-11 백엔드 보고) */
+  | "PICK_BATCH_NOT_FOUND";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -774,12 +778,14 @@ export type AllocationStage = "SOFT" | "HARD";
 export type AllocationStatus = "ACTIVE" | "CONSUMED" | "CANCELLED";
 
 /**
- * 주문 품목 한 줄의 할당 — 정본 §5.2. `lotNo`/`locationCode` 는 HARD 에서만 채워진다(Stage 6).
- * `allocationId`/`orderItemId` — 2026-09-11 라이브 검증으로 정정. 계약 초안에는 품목 아래
- * 중첩으로 적었지만, 실제로는 `OrderDetail.allocations` 가 **품목과 나란한 최상위 배열**이고
- * `orderItemId` 로 그 품목을 가리킨다 — 화면(`order-detail-panel.tsx`)이 이 값으로 묶는다.
- * SOFT 단계에서는 `lotNo`/`locationCode` 가 응답에 아예 없다(`null` 이 아니라 필드 자체가
- * 빠진다) — 그래서 옵셔널로 둔다.
+ * 주문 품목 한 줄의 할당 — 정본 §5.2. `lotNo`/`locationCode`/`expiresOn` 은 HARD 에서만
+ * 채워진다(Stage 6, 정본 §6.7 "HARD 할당(칸·로트·유통기한)"). `allocationId`/`orderItemId`
+ * — 2026-09-11 라이브 검증으로 정정. 계약 초안에는 품목 아래 중첩으로 적었지만, 실제로는
+ * `OrderDetail.allocations` 가 **품목과 나란한 최상위 배열**이고 `orderItemId` 로 그 품목을
+ * 가리킨다 — 화면(`order-detail-panel.tsx`)이 이 값으로 묶는다.
+ * ⚠️ `lotNo`/`locationCode`/`expiresOn` — Stage 6 백엔드 2026-09-11 보고로 정정. 필드
+ * 자체는 항상 온다(SOFT 단계에서는 **셋 다 `null`**, 필드가 빠지는 게 아니다) — 그래서
+ * 옵셔널이 아니라 nullable 로 둔다.
  */
 export interface OrderAllocation {
   allocationId: number;
@@ -789,8 +795,9 @@ export interface OrderAllocation {
   qty: number;
   stage: AllocationStage;
   status: AllocationStatus;
-  lotNo?: string | null;
-  locationCode?: string | null;
+  lotNo: string | null;
+  locationCode: string | null;
+  expiresOn: string | null;
 }
 
 /** `orderItemId` — 2026-09-11 라이브 검증으로 정정(계약 초안의 `id` 대신) */
@@ -833,6 +840,8 @@ export interface OrderListItem {
   orderedAt: string;
   cutoffAt: string | null;
   cancelledAt: string | null;
+  /** 2026-09-12 라이브 검증으로 추가 — 계약 초안엔 없었지만 실제 응답에 항상 온다 */
+  createdAt: string;
 }
 
 /**
@@ -849,6 +858,8 @@ export interface OrderDetail {
   orderedAt: string;
   cutoffAt: string | null;
   cancelledAt: string | null;
+  /** 2026-09-12 라이브 검증으로 추가 — 계약 초안엔 없었지만 실제 응답에 항상 온다 */
+  createdAt: string;
   items: OrderDetailItem[];
   allocations: OrderAllocation[];
   shipments: OrderShipmentSummary[];
@@ -891,11 +902,14 @@ export interface OrdersImportRejected {
   detail?: Record<string, unknown>;
 }
 
-/** `POST /admin/orders/import` 응답 — 기존 형식 유지(정본 §5.7) */
+/**
+ * `POST /admin/orders/import` 응답. `shipments` 는 Stage 6 에서 완전히 사라졌다(T6 종료,
+ * 백엔드 2026-09-11 보고로 필드 삭제 확정 — 0 이 아니라 없다). 화면(`order-import-panel.tsx`)
+ * 은 이 필드를 표시하지 않는다.
+ */
 export interface OrdersImportResponse {
   batchId: string;
   orders: number;
-  shipments: number;
   splitOrders: number;
   rejected: OrdersImportRejected[];
 }
@@ -919,5 +933,178 @@ export interface AtpRow {
 /** `PATCH /sellers/{code}` 요청 — 금지선 일수만 바꾼다(정본 §5.1) */
 export interface UpdateSellerRequest {
   minShelfLifeDays: number;
+}
+
+/* ── 6. 웨이브·hard 할당·피킹 배치 (Stage 6) ─────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §6.3·§6.5, docs/tasks/
+   2026-09-11-stage6-wave-hard-handoff.md §3. 필드명은 백엔드(stage6-backend)가 2026-09-11
+   에 WaveApiIT 로 jsonPath 검증까지 걸어 직접 보고한 응답 그대로다(엔드포인트가 아직 push
+   전이라 curl 라이브 대조는 못 했지만, 응답 모양은 이미 고정됐다고 보고 받았다). */
+
+/** 웨이브 상태 — 정본 §6.6. RELEASED(생성) 만 Stage 6 범위, PICKING·DONE 은 Stage 7 전이 */
+export type WaveStatus = "RELEASED" | "PICKING" | "DONE";
+
+/** 피킹 배치 상태 — 정본 §6.3. OPEN 만 Stage 6 범위, 나머지는 Stage 7 claim 이후 */
+export type PickBatchStatus = "OPEN" | "CLAIMED" | "PICKING" | "DONE";
+
+/** 피킹 태스크 상태 — 정본 §6.3. 배치 생성 직후는 전부 PENDING(Stage 7 전) */
+export type PickTaskStatus = "PENDING" | "PICKED" | "SHORT";
+
+/** 웨이브 생성 때 hard 할당이 안 되어 빠진 주문의 사유 — 백엔드 2026-09-11 보고.
+ * `HARD_SHORT` 만 재고 부족(정상 경로), 나머지 셋은 예외 경로 */
+export type WaveSkippedReason = "HARD_SHORT" | "ALREADY_WAVED" | "INVALID_STATE" | "INTERNAL_ERROR";
+
+/**
+ * 웨이브 생성 때 hard 할당이 안 되어 빠진 주문 — 정본 §6.4, 백엔드 2026-09-11 보고로 확정.
+ * `receiptNo` 는 초안에 없었다(화면에 사유를 사람이 읽는 자리 — `wave-create-dialog.tsx`
+ * 참고). `detail` 은 사유마다 키가 다르다 — `HARD_SHORT` 는 `{productId, requested,
+ * available}`. 그 주문은 ALLOCATED 로 남고 다음 웨이브 후보가 된다.
+ */
+export interface WaveSkipped {
+  orderId: number;
+  receiptNo: string;
+  reason: WaveSkippedReason | string;
+  detail?: Record<string, unknown>;
+}
+
+/** `GET /waves` 목록 항목 — 백엔드 2026-09-11 보고. `batchCount` 는 초안에 없었다 */
+export interface WaveListItem {
+  waveId: number;
+  waveNo: string;
+  cutoffAt: string;
+  status: WaveStatus;
+  orderCount: number;
+  batchCount: number;
+  createdAt: string;
+}
+
+/**
+ * 웨이브 상세의 주문 한 줄 — 정본 §6.5 "주문 목록", 백엔드 2026-09-11 보고로 필드를
+ * 대폭 늘렸다(초안에는 `orderId`/`receiptNo`/`sellerCode`/`status` 만 있었다).
+ * `pickBatchId` 는 배치 편성이 안 된 주문(슬롯 부족으로 다음 배치로 밀린 주문, 정본
+ * §6.2a)이면 null.
+ */
+export interface WaveOrderSummary {
+  orderId: number;
+  receiptNo: string;
+  sellerCode: string;
+  sellerName: string;
+  regionCode: string;
+  status: OrderStatus;
+  orderedAt: string;
+  cutoffAt: string | null;
+  pickBatchId: number | null;
+}
+
+/** 웨이브 상세의 배치 한 줄 — 클릭하면 `pickBatches.get` 으로 태스크 표를 연다.
+ * `taskCount`/`claimedBy`/`claimedAt` 은 백엔드 2026-09-11 보고로 추가(초안에는 없었다) —
+ * claimedBy·claimedAt 은 Stage 7 전까지 항상 null. */
+export interface WaveBatchSummary {
+  pickBatchId: number;
+  seqNo: number;
+  status: PickBatchStatus;
+  orderCount: number;
+  taskCount: number;
+  claimedBy: string | null;
+  claimedAt: string | null;
+}
+
+/**
+ * `GET /waves/{id}` — 주문 목록·배치 목록·skipped(정본 §6.5). ⚠️ `skipped` 는 항상 빈
+ * 배열이다(백엔드 2026-09-11 보고) — §6.3 스키마에 skipped 저장 표가 없어서(빠진 주문은
+ * wave_id 가 비어 웨이브와 연결이 안 된다), 값은 웨이브 **생성 응답**(`WaveCreateResponse`)
+ * 에만 찬다. 화면에서 skipped 를 보여줘야 하면 그 생성 결과를 계속 쥐고 있어야 한다 —
+ * `wave-create-dialog.tsx` 가 그 결과를 대화 상자 안에서 보여주는 이유이자, GET 상세
+ * (`wave-detail-panel.tsx`)의 skipped 절이 사실상 항상 비어 있는 이유. 사용자 보고에
+ * 결정 사항으로 올린다(정본과 실제 스키마가 어긋나는 지점이라 프론트가 단독으로 해소할
+ * 수 없다).
+ */
+export interface WaveDetail {
+  waveId: number;
+  waveNo: string;
+  cutoffAt: string;
+  status: WaveStatus;
+  orderCount: number;
+  createdAt: string;
+  orders: WaveOrderSummary[];
+  batches: WaveBatchSummary[];
+  skipped: WaveSkipped[];
+}
+
+/**
+ * 피킹 지시 한 줄 — 정본 §6.5 "순서·칸·상품·로트·유통기한·수량", 백엔드 2026-09-11 보고로
+ * 필드를 정정했다. ⚠️ `productId` 가 아니라 `sellerCode`/`gtin`/`productName` 이 온다(초안은
+ * `productId`/`gtin`/`name` 으로 적었다 — 실제 응답과 다르다). `expiresOn` 은 로트 조인으로
+ * 들어간다(LocalDate, 유통기한 없는 로트면 null) — `seqNo` 순서가 로케이션 코드 순이라
+ * FEFO 가 이 순서 그대로 보인다(화면 체크 3번, 브리프 §4).
+ */
+export interface PickTask {
+  pickTaskId: number;
+  seqNo: number;
+  locationCode: string;
+  sellerCode: string;
+  gtin: string;
+  productName: string;
+  lotNo: string;
+  expiresOn: string | null;
+  qty: number;
+  pickedQty: number;
+  status: PickTaskStatus;
+}
+
+/** `GET /pick-batches/{id}` — 배치 상세(Stage 7 claim 의 기초, 정본 §6.5). `orders` 는
+ * 백엔드 2026-09-11 보고로 정정(초안의 `orderCount` 숫자가 아니라 `WaveOrderSummary[]` 배열) */
+export interface PickBatchDetail {
+  pickBatchId: number;
+  waveId: number;
+  waveNo: string;
+  seqNo: number;
+  status: PickBatchStatus;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  orders: WaveOrderSummary[];
+  tasks: PickTask[];
+}
+
+/** `GET /waves/{id}/tasks` 의 배치 한 묶음 — 배치별 피킹 지시(정본 §6.5) */
+export interface WaveTaskBatch {
+  pickBatchId: number;
+  seqNo: number;
+  status: PickBatchStatus;
+  orderCount: number;
+  tasks: PickTask[];
+}
+
+/** `GET /waves/{id}/tasks` 응답 — 백엔드 2026-09-11 보고로 모양이 바뀌었다(초안은 평평한
+ * 배열을 가정했으나 실제로는 배치별로 묶여 온다). 배치 클릭 흐름은 `pickBatches.get` 을
+ * 쓰므로(배치 상세가 더 직접적인 대응) 이 화면은 아직 호출하지 않는다 — 계약에 있는 API 라
+ * 타입·래퍼만 둔다(outbound.load 와 같은 관례) */
+export interface WaveTasksResponse {
+  waveId: number;
+  waveNo: string;
+  batches: WaveTaskBatch[];
+}
+
+/** `POST /waves` 요청 — 정본 §6.4. 마감시각 기본값은 화면이 계산한다(정본 §6.2, 브리프 §3) */
+export interface WaveCreateRequest {
+  cutoffAt: string;
+}
+
+/** `POST /waves` 응답 — 정본 §6.4 "주문 수·배치 수·태스크 수·skipped". 이 응답의 `skipped`
+ * 만 항상 찬다(`WaveDetail.skipped` 주석 참고) */
+export interface WaveCreateResponse {
+  waveId: number;
+  waveNo: string;
+  orderCount: number;
+  batchCount: number;
+  taskCount: number;
+  skipped: WaveSkipped[];
+}
+
+/** `GET /waves` 쿼리 */
+export interface WavesQuery {
+  status?: WaveStatus;
+  page?: number;
+  size?: number;
 }
 

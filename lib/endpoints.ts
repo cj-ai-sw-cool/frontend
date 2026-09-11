@@ -37,6 +37,7 @@ import type {
   OrdersQuery,
   Page,
   PendingReceiptItem,
+  PickBatchDetail,
   ProductImagesResponse,
   PutawayConfirmRequest,
   PutawayConfirmResponse,
@@ -55,6 +56,12 @@ import type {
   StockOccupancyRow,
   StockQuery,
   UpdateSellerRequest,
+  WaveCreateRequest,
+  WaveCreateResponse,
+  WaveDetail,
+  WaveListItem,
+  WaveTasksResponse,
+  WavesQuery,
   Zone,
   ZoneSummary,
 } from "./types";
@@ -266,6 +273,40 @@ export const orders = {
   import: (body: OrdersImportRequest) => api.post<OrdersImportResponse>("/admin/orders/import", body),
 };
 
+/* ── 웨이브·hard 할당·피킹 배치 (Stage 6) ───────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §6.5, docs/tasks/
+   2026-09-11-stage6-wave-hard-handoff.md §3. 백엔드가 이 화면과 동시에 만들어지는 중이라 —
+   계약대로 먼저 붙이고 라이브 검증은 완료 보고에서 남긴다. */
+export const waves = {
+  /** 웨이브 생성 — ALLOCATED 주문을 마감시각으로 묶어 hard 할당·배치 편성까지 한 번에(정본 §6.4) */
+  create: (body: WaveCreateRequest) => api.post<WaveCreateResponse>("/waves", body),
+
+  /** 웨이브 목록 — 상태·페이지 */
+  list: (params?: WavesQuery) => api.get<Page<WaveListItem>>(`/waves${toWavesQueryString(params)}`),
+
+  /** 웨이브 상세 — 주문 목록·배치 목록·skipped */
+  get: (id: number) => api.get<WaveDetail>(`/waves/${id}`),
+
+  /** 배치별 피킹 지시 전체 — 계약에는 있으나 이 화면은 배치 클릭마다 `pickBatches.get` 을
+   * 쓴다(더 직접적인 대응이라, outbound.load 와 같은 관례로 래퍼만 둔다) */
+  tasks: (id: number) => api.get<WaveTasksResponse>(`/waves/${id}/tasks`),
+};
+
+export const pickBatches = {
+  /** 배치 상세 — 순서·칸·상품·로트·유통기한·수량 태스크 표(정본 §6.5, Stage 7 claim 의 기초) */
+  get: (id: number) => api.get<PickBatchDetail>(`/pick-batches/${id}`),
+};
+
+function toWavesQueryString(params?: WavesQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.status !== undefined) qs.set("status", params.status);
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.size !== undefined) qs.set("size", String(params.size));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
 /** 화주 가용재고·금지선 — `master.sellers()`(목록·등록)와는 다른 API 라 별도 묶음으로 둔다 */
 export const sellers = {
   /** 화주 전 SKU 가용재고 표 — 가용재고 탭(정본 §5.7 `GET .../atp?page`) */
@@ -369,4 +410,7 @@ export const queryKeys = {
   order: (id: number) => ["orders", id] as const,
   sellerAtp: (code: string, params?: { page?: number; size?: number }) =>
     ["sellers", code, "atp", params ?? {}] as const,
+  waves: (params?: WavesQuery) => ["waves", params ?? {}] as const,
+  wave: (id: number) => ["waves", id] as const,
+  pickBatch: (id: number) => ["pick-batches", id] as const,
 };

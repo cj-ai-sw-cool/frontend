@@ -132,6 +132,8 @@ export function OrderDetailPanel({
                                 {STAGE_LABEL[alloc.stage]} · {ALLOC_STATUS_LABEL[alloc.status]} ·{" "}
                                 {alloc.qty}
                                 {alloc.locationCode != null ? ` · ${alloc.locationCode}` : ""}
+                                {alloc.lotNo != null ? ` · ${alloc.lotNo}` : ""}
+                                {alloc.expiresOn != null ? ` · ~${alloc.expiresOn}` : ""}
                               </li>
                             ))}
                           </ul>
