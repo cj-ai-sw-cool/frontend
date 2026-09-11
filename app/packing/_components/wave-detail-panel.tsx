@@ -104,13 +104,15 @@ export function WaveDetailPanel({
                 <tr>
                   <th className="p-1.5">#</th>
                   <th className="p-1.5">상태</th>
+                  <th className="p-1.5">담당</th>
+                  <th className="p-1.5 text-right">진행</th>
                   <th className="p-1.5 text-right">주문 수</th>
                 </tr>
               </thead>
               <tbody>
                 {wave.batches.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="p-1.5 text-[color:var(--muted-foreground)]">
+                    <td colSpan={5} className="p-1.5 text-[color:var(--muted-foreground)]">
                       배치가 없습니다.
                     </td>
                   </tr>
@@ -128,6 +130,12 @@ export function WaveDetailPanel({
                     >
                       <td className={`${w98.mono} p-1.5`}>#{batch.seqNo}</td>
                       <td className="p-1.5">{PICK_BATCH_STATUS_LABEL[batch.status]}</td>
+                      <td className={`${w98.mono} p-1.5`}>{batch.claimedBy ?? "—"}</td>
+                      {/* pickedTaskCount 는 옵셔널이다(lib/types.ts WaveBatchSummary 주석) —
+                          안 오면 taskCount 만 보여주고 진행 분자는 "—"로 남긴다 */}
+                      <td className={`${w98.mono} p-1.5 text-right`}>
+                        {batch.pickedTaskCount ?? "—"}/{batch.taskCount}
+                      </td>
                       <td className={`${w98.mono} p-1.5 text-right`}>{batch.orderCount}</td>
                     </tr>
                   ))
