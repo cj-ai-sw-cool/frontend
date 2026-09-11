@@ -38,10 +38,9 @@ export function PutawayLocationPanel({
   unplacedQty: number;
   onGoTo3D: (locationCode: string) => void;
 }) {
-  const isDimUnconfirmed = selectedItem !== null && selectedItem.dimStatus !== "CONFIRMED";
+  const isDimUnconfirmed = selectedItem !== null && !selectedItem.dimConfirmed;
   const canRecommend = selectedItem !== null && !isDimUnconfirmed && qty > 0 && !isRecommending;
   const primary = moves[0] ?? null;
-  const address = primary !== null ? parseLocationCode(primary.locationCode) : null;
 
   return (
     <Panel title="진열 위치" className="min-h-0 min-w-0 flex-1" bodyClassName="min-h-0 gap-2">
@@ -93,20 +92,21 @@ export function PutawayLocationPanel({
           </div>
 
           <Sunken className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-3">
-            {primary === null || address === null ? (
+            {primary === null ? (
               <p className={`${w98.small} text-[color:var(--muted-foreground)]`}>
                 추천을 누르면 이 칸에 위치가 표시됩니다.
               </p>
             ) : (
               <>
-                {/* ── 주소판 — 존 글자를 크게, 랙·단·열은 숫자 칩으로 ── */}
+                {/* ── 주소판 — 존 글자를 크게, 랙·단·열은 숫자 칩으로. 백엔드가 이미 분해해서
+                    준다(2026-09-11 라이브 보고) — 프론트에서 코드 문자열을 다시 쪼개지 않는다. */}
                 <div className={`${w98.mono} text-[64px] leading-none font-bold text-[color:var(--primary)]`}>
-                  {address.zone}
+                  {primary.zoneCode}
                 </div>
                 <div className="flex gap-2">
-                  <AddressChip label="랙" value={address.rack} />
-                  <AddressChip label="단" value={address.level} />
-                  <AddressChip label="열" value={address.col} />
+                  <AddressChip label="랙" value={String(primary.rackNo)} />
+                  <AddressChip label="단" value={String(primary.levelNo)} />
+                  <AddressChip label="열" value={String(primary.colNo)} />
                 </div>
                 <div className={`${w98.mono} text-[15px] font-bold`}>{primary.locationCode}</div>
                 <div className={`${w98.small} text-[color:var(--muted-foreground)]`}>
@@ -143,17 +143,4 @@ function AddressChip({ label, value }: { label: string; value: string }) {
       <span className={`${w98.mono} text-[22px] leading-none font-bold tabular-nums`}>{value}</span>
     </div>
   );
-}
-
-/**
- * 로케이션 코드 `{존}-{랙:2}-{단:2}-{열:2}` 분해(정본 §1.1, 예 "A-03-02-14").
- * BIN 이 아닌 코드(RCV-01 등)가 들어오면 랙·단·열이 없다 — 하이픈 뒤가 짧아 `parts[1..3]`
- * 이 비므로 그 경우 `null` 을 돌려 "주소판"을 렌더하지 않는다. 추천 결과는 항상 BIN 이라
- * (§4.3 "location.type = BIN") 실전에서는 걸릴 일이 없지만, 방어적으로 둔다.
- */
-function parseLocationCode(code: string): { zone: string; rack: string; level: string; col: string } | null {
-  const parts = code.split("-");
-  if (parts.length !== 4) return null;
-  const [zone, rack, level, col] = parts;
-  return { zone, rack, level, col };
 }

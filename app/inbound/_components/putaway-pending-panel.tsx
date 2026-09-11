@@ -66,7 +66,7 @@ export function PutawayPendingPanel({
         ) : (
           <ul>
             {items.map((item) => {
-              const isDimUnconfirmed = item.dimStatus !== "CONFIRMED";
+              const isDimUnconfirmed = !item.dimConfirmed;
               return (
                 <li key={item.stockId}>
                   <button

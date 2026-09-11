@@ -25,6 +25,7 @@ import type {
   LinesResponse,
   Location,
   LocationCapacity,
+  LocationCapacityQuery,
   LocationsQuery,
   MeasurementResponse,
   Page,
@@ -228,10 +229,26 @@ export const putaway = {
   confirm: (body: PutawayConfirmRequest) =>
     api.post<PutawayConfirmResponse>("/putaway/confirm", body),
 
-  /** 칸 하나의 부피·적재율·현재 항목 — "다른 칸" 입력의 확인용 */
-  capacity: (locationCode: string) =>
-    api.get<LocationCapacity>(`/locations/${encodeURIComponent(locationCode)}/capacity`),
+  /**
+   * 칸 하나의 부피·적재율·현재 항목 — "다른 칸" 입력의 확인용.
+   * `stockId`/`qty` 를 같이 주면 응답에 `acceptable`/`rejectReason`/`maxQty` 가 함께 온다
+   * (2026-09-11 백엔드 라이브 보고 — 정본 §4.5 에 없던 추가. 화면이 혼적·온도·규격 규칙을
+   * 직접 베끼지 않고 서버 판정을 그대로 보여줄 수 있다).
+   */
+  capacity: (locationCode: string, params?: LocationCapacityQuery) =>
+    api.get<LocationCapacity>(
+      `/locations/${encodeURIComponent(locationCode)}/capacity${toLocationCapacityQueryString(params)}`,
+    ),
 };
+
+function toLocationCapacityQueryString(params?: LocationCapacityQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.stockId !== undefined) qs.set("stockId", String(params.stockId));
+  if (params.qty !== undefined) qs.set("qty", String(params.qty));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
 
 function toPutawayPendingQueryString(params?: PutawayPendingQuery): string {
   if (!params) return "";

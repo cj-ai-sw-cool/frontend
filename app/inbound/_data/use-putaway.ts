@@ -60,9 +60,14 @@ export function usePutawayConfirm() {
  * "다른 칸" 확인 — 코드를 입력하고 확인을 누를 때 한 번 부른다. 온디맨드 조회라 `useMeasure`
  * 와 같은 이유로 mutation 으로 둔다(입력마다 자동 조회하지 않는다 — 오타 중간값으로 404를
  * 반복해서 부르지 않으려면 명시적 트리거가 낫다).
+ *
+ * `stockId`/`qty` 를 함께 보낸다 — 백엔드가 그 조합으로 `acceptable`/`rejectReason`/`maxQty`
+ * 를 계산해 준다(2026-09-11 라이브 보고, `lib/endpoints.ts` 의 `putaway.capacity` 참고).
+ * 화면이 혼적·온도·규격 규칙을 다시 베끼지 않는다.
  */
 export function useLocationCapacityCheck() {
   return useMutation({
-    mutationFn: (locationCode: string) => putaway.capacity(locationCode.trim().toUpperCase()),
+    mutationFn: ({ locationCode, stockId, qty }: { locationCode: string; stockId: number; qty: number }) =>
+      putaway.capacity(locationCode.trim().toUpperCase(), { stockId, qty }),
   });
 }

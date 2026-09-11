@@ -1,6 +1,6 @@
 "use client";
 
-import type { LocationCapacity, PutawayMove, PutawayPendingItem, PutawayRejectedDetail } from "@/lib/types";
+import type { LocationCapacity, PutawayMove, PutawayRejectedDetail } from "@/lib/types";
 import { Btn, Etched, Field, Panel, Sunken, TrayBox, w98 } from "./win98-ui";
 import { PUTAWAY_TIER_LABEL } from "./putaway-tier";
 
@@ -17,7 +17,6 @@ export function PutawayRecommendPanel({
   isCheckingOther,
   otherCapacity,
   otherCapacityError,
-  selectedItem,
   onReplaceWithOther,
   rejectedDetail,
   onRetryRecommend,
@@ -33,7 +32,6 @@ export function PutawayRecommendPanel({
   isCheckingOther: boolean;
   otherCapacity: LocationCapacity | undefined;
   otherCapacityError: string | null;
-  selectedItem: PutawayPendingItem | null;
   onReplaceWithOther: () => void;
   rejectedDetail: PutawayRejectedDetail | null;
   onRetryRecommend: () => void;
@@ -41,10 +39,6 @@ export function PutawayRecommendPanel({
   isConfirming: boolean;
   canConfirm: boolean;
 }) {
-  const compat = otherCapacity !== undefined && selectedItem !== null
-    ? checkMixingCompatibility(selectedItem, otherCapacity)
-    : null;
-
   return (
     <div className="flex w-[380px] shrink-0 flex-col gap-1.5">
       <Panel title="이동 목록" className="min-h-0 flex-1" bodyClassName="min-h-0 gap-1.5">
@@ -109,7 +103,7 @@ export function PutawayRecommendPanel({
           <p className={`${w98.small} px-1 pt-1 font-bold text-[color:var(--status-error)]`}>
             {otherCapacityError}
           </p>
-        ) : otherCapacity !== undefined && compat !== null ? (
+        ) : otherCapacity !== undefined ? (
           <div className="px-1 pt-1">
             <p className={`${w98.small}`}>
               적재율 {otherCapacity.loadLevelPct}%
@@ -118,22 +112,26 @@ export function PutawayRecommendPanel({
                 ? " · 빈 칸"
                 : ` · 재고 ${otherCapacity.items.length}종`}
             </p>
-            {compat.compatible ? (
+            {/* acceptable/rejectReason/maxQty 는 stockId+qty 를 같이 보냈을 때만 온다
+                (putaway-tab.tsx 의 handleCheckOther) — 서버가 혼적·온도·규격·부피를 전부
+                따져 판정한다, 화면은 그 결과를 보여줄 뿐이다(정본 §4.1). */}
+            {otherCapacity.acceptable === true ? (
               <>
                 <p className={`${w98.small} font-bold text-[color:var(--primary)]`}>
                   수용 가능 — 이 칸으로 바꿀 수 있습니다
+                  {otherCapacity.maxQty !== null ? ` (최대 ${otherCapacity.maxQty}개)` : ""}
                 </p>
                 <Btn onClick={onReplaceWithOther} className="mt-1 h-6 px-2 text-[12px] font-bold">
                   이 칸으로 교체
                 </Btn>
               </>
-            ) : (
+            ) : otherCapacity.acceptable === false ? (
               <p className={`${w98.small} font-bold text-[color:var(--status-error)]`}>
-                수용 불가 — {compat.reason}
+                수용 불가 — {otherCapacity.rejectReason ?? "확정할 수 없는 칸입니다"}
               </p>
-            )}
+            ) : null}
             <p className={`${w98.small} mt-1 text-[color:var(--muted-foreground)]`}>
-              온도·규격·부피는 확정 시 서버가 다시 검증합니다.
+              최종 확인은 확정 시 서버가 잠금 아래 다시 검증합니다.
             </p>
           </div>
         ) : null}
@@ -160,32 +158,4 @@ export function PutawayRecommendPanel({
       </Btn>
     </div>
   );
-}
-
-/**
- * 다른 칸 입력의 프론트 사전 판정 — 혼적 규칙(정본 §4.3)의 화주·로트만 본다. 최종 검증은
- * 확정 시점에 잠금 아래 서버가 다시 한다(정본 §4.1 "규칙 검증은 확정 시점에 잠금 아래
- * 다시 한다") — 이 판정은 입력 즉시 화면에 보여 주는 안내일 뿐, 확정을 막는 유일한
- * 관문이 아니다. 온도·규격·부피·무게는 이 응답(`LocationCapacity`)만으로 판정할 수 없어
- * (상품 치수·온도가 이 타입에 없다) 여기서 다루지 않는다.
- */
-function checkMixingCompatibility(
-  item: PutawayPendingItem,
-  capacity: LocationCapacity,
-): { compatible: boolean; reason: string | null } {
-  if (capacity.items.length === 0) return { compatible: true, reason: null };
-
-  const otherSeller = capacity.items.find((row) => row.seller.code !== item.seller.code);
-  if (otherSeller !== undefined) {
-    return { compatible: false, reason: `다른 화주(${otherSeller.seller.code}) 재고가 있는 칸입니다` };
-  }
-
-  const otherLot = capacity.items.find(
-    (row) => row.product.gtin === item.product.gtin && row.lot.lotNo !== item.lot.lotNo,
-  );
-  if (otherLot !== undefined) {
-    return { compatible: false, reason: `같은 상품, 다른 로트(${otherLot.lot.lotNo})가 있는 칸입니다` };
-  }
-
-  return { compatible: true, reason: null };
 }

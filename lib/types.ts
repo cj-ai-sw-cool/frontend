@@ -27,7 +27,9 @@ export type ApiErrorCode =
   /** 검수 입력(Stage 3) — 스캔한 GTIN이 선택한 ASN의 품목에 없을 때 409(정본 §3.5) */
   | "ASN_ITEM_NOT_FOUND"
   /** 진열 확정(Stage 4) — 잠금 아래 재검증 실패. `detail` 이 `PutawayRejectedDetail` 모양(정본 §4.5) */
-  | "PUTAWAY_REJECTED";
+  | "PUTAWAY_REJECTED"
+  /** 진열(Stage 4) — stockId 가 없거나 이미 다 옮겨진 재고(2026-09-11 백엔드 라이브 보고) */
+  | "STOCK_NOT_FOUND";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -630,23 +632,25 @@ export interface CompleteReceiptResponse {
 
 /* ── 7. 진열 — directed putaway (Stage 4) ──────────────────────────────────
    정본: backend/docs/02-system/02-data-model.md §4.5(API)·§4.6(프론트 계약), docs/tasks/
-   2026-09-11-stage4-putaway-handoff.md §3. 백엔드가 동시에 만드는 중이라 필드는 계약
-   문서 그대로 옮겼다 — 다른 Stage 응답과 같은 관례(seller/product/lot 중첩 객체, StockItem
-   §5 참고)를 따랐다. 라이브 검증에서 실제 응답과 다르면 이 절을 정정한다. */
+   2026-09-11-stage4-putaway-handoff.md §3. 백엔드(stage4-backend)가 2026-09-11 라이브로
+   전한 실제 응답에 맞췄다 — 정본과 다른 점은 전부 **추가**이고 삭제·변경은 없다(백엔드
+   보고 그대로). */
 
 export type PutawayTier = "SAME_LOT" | "SAME_SELLER" | "EMPTY";
 
 /**
  * `GET /putaway/pending` 행 — 입고장(RCV-01)의 AVAILABLE 재고. `StockItem`(§5)과 같은
  * 모양이지만 이 화면 전용으로 별도 타입을 둔다 — 로케이션이 항상 RCV-01 이라 그 필드가 없다.
+ * `dimConfirmed` — 계약 초안의 `dimStatus: DimStatus` 대신 백엔드가 boolean 으로 준다.
+ * `product.tempZone` — 정본 §4.2, 온도 필터 설명용(예: 냉장품은 F존만 추천).
  */
 export interface PutawayPendingItem {
   stockId: number;
   seller: { code: string; name: string };
-  product: { id: number; gtin: string; name: string };
+  product: { id: number; gtin: string; name: string; tempZone: TempZone };
   lot: { lotNo: string; expiresOn: string | null };
   qty: number;
-  dimStatus: DimStatus;
+  dimConfirmed: boolean;
 }
 
 /** `GET /putaway/pending` 쿼리 */
@@ -656,9 +660,17 @@ export interface PutawayPendingQuery {
   size?: number;
 }
 
-/** `POST /putaway/recommend` 이동 후보 한 칸 */
+/**
+ * `POST /putaway/recommend` 이동 후보 한 칸.
+ * `zoneCode`/`rackNo`/`levelNo`/`colNo` — 백엔드가 `locationCode` 와 함께 분해된 값도 준다
+ * (2026-09-11 라이브 보고). 프론트에서 문자열을 다시 쪼갤 필요가 없다.
+ */
 export interface PutawayMove {
   locationCode: string;
+  zoneCode: string;
+  rackNo: number;
+  levelNo: number;
+  colNo: number;
   qty: number;
   tier: PutawayTier;
   /** 이 이동을 반영한 뒤의 적재율(%) — `BinCapacity.loadLevel` */
@@ -683,9 +695,14 @@ export interface PutawayConfirmRequest {
   moves: { locationCode: string; qty: number }[];
 }
 
-/** `POST /putaway/confirm` 응답 — 확정된 이동. 실패는 전체 롤백 + 409 `PUTAWAY_REJECTED` */
+/**
+ * `POST /putaway/confirm` 응답 — 확정된 이동. 실패는 전체 롤백 + 409 `PUTAWAY_REJECTED`.
+ * `movedQty`/`remainingQty` — 백엔드 라이브 보고(2026-09-11)로 정정. 계약 초안에는 없었다.
+ */
 export interface PutawayConfirmResponse {
   stockId: number;
+  movedQty: number;
+  remainingQty: number;
   moves: { locationCode: string; qty: number }[];
 }
 
@@ -704,8 +721,20 @@ export interface LocationCapacityItem {
 }
 
 /**
+ * `GET /locations/{code}/capacity` 쿼리 — `stockId`/`qty` 는 선택. 둘 다 주면 응답에
+ * `acceptable`/`rejectReason`/`maxQty` 가 함께 온다(그 재고 기준 수용 판정, 2026-09-11
+ * 백엔드 라이브 보고 — 정본 §4.5 에 없던 추가 기능). "다른 칸" 입력이 이 조합을 쓴다.
+ */
+export interface LocationCapacityQuery {
+  stockId?: number;
+  qty?: number;
+}
+
+/**
  * `GET /locations/{code}/capacity` 응답 — "다른 칸" 입력의 확인 결과.
  * `zoneCode`/`tempZone`/`gradeCapCm` 은 온도·규격 필터를 화면에서 설명하는 데 쓴다(§4.3).
+ * `acceptable`/`rejectReason`/`maxQty` 는 `stockId` 쿼리를 줬을 때만 채워진다 — 안 주면
+ * 셋 다 `null`(백엔드가 그렇게 명시했다).
  */
 export interface LocationCapacity {
   locationCode: string;
@@ -715,5 +744,8 @@ export interface LocationCapacity {
   volumeCm3: number | null;
   loadLevelPct: number;
   items: LocationCapacityItem[];
+  acceptable: boolean | null;
+  rejectReason: string | null;
+  maxQty: number | null;
 }
 

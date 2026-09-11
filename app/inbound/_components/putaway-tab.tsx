@@ -14,6 +14,7 @@ import {
 } from "../_data/use-putaway";
 import { PutawayLocationPanel } from "./putaway-location-panel";
 import { PutawayPendingPanel } from "./putaway-pending-panel";
+import { parsePutawayLocationCode } from "./putaway-tier";
 import { PutawayRecommendPanel } from "./putaway-recommend-panel";
 import { w98Toast } from "./win98-ui";
 
@@ -85,26 +86,43 @@ export function PutawayTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- capacityCheck 는 reset 만 쓴다
   }, [selectedItem, qty, recommend]);
 
+  /** `stockId`+`qty` 를 같이 보낸다 — 백엔드가 `acceptable`/`rejectReason`/`maxQty` 를 그
+   * 조합으로 계산해 준다(2026-09-11 라이브 보고). 혼적·온도·규격 규칙을 화면이 다시 베끼지
+   * 않는다(정본 §4.1 "규칙 검증은 확정 시점에 잠금 아래 다시 한다" 의 정신과도 맞다 —
+   * 여기 표시도 서버 판정을 그대로 보여줄 뿐, 화면이 판정하지 않는다). */
   const handleCheckOther = useCallback(() => {
-    if (otherCode.trim() === "") return;
-    capacityCheck.mutate(otherCode);
-  }, [otherCode, capacityCheck]);
+    if (otherCode.trim() === "" || selectedItem === null || qty <= 0) return;
+    capacityCheck.mutate({ locationCode: otherCode, stockId: selectedItem.stockId, qty });
+  }, [otherCode, selectedItem, qty, capacityCheck]);
 
-  /** "이 칸으로 교체" — 추천 목록을 이 칸 하나로 바꾼다. tier 는 지금 그 칸에 든 재고로
-   * 로컬 판정한다(서버 추천이 아니라 사용자가 직접 고른 칸이라 서버가 tier 를 안 준다) */
+  /** "이 칸으로 교체" — 추천 목록을 이 칸 하나로 바꾼다. `acceptable=false` 면 버튼 자체가
+   * 안 뜬다(recommend-panel.tsx). tier 는 서버가 안 줘서(추천이 아니라 사용자가 직접 고른
+   * 칸) 지금 그 칸에 든 재고로 로컬 판정한다 — 화면 표기용일 뿐 확정 요청에는 안 실린다.
+   * `maxQty` 가 요청 수량보다 작으면 그만큼만 옮긴다(나머지는 대기 목록에 남는다). */
   const handleReplaceWithOther = useCallback(() => {
     const capacity = capacityCheck.data;
-    if (capacity === undefined || selectedItem === null || qty <= 0) return;
+    if (capacity === undefined || capacity.acceptable !== true || selectedItem === null || qty <= 0) return;
 
+    const placeQty = capacity.maxQty !== null ? Math.min(qty, capacity.maxQty) : qty;
     const hasSameLot = capacity.items.some(
       (row) => row.product.gtin === selectedItem.product.gtin && row.lot.lotNo === selectedItem.lot.lotNo,
     );
     const tier: PutawayTier = capacity.items.length === 0 ? "EMPTY" : hasSameLot ? "SAME_LOT" : "SAME_SELLER";
+    const address = parsePutawayLocationCode(capacity.locationCode);
 
     setMoves([
-      { locationCode: capacity.locationCode, qty, tier, loadLevelAfterPct: capacity.loadLevelPct },
+      {
+        locationCode: capacity.locationCode,
+        zoneCode: address?.zoneCode ?? capacity.zoneCode ?? "",
+        rackNo: address?.rackNo ?? 0,
+        levelNo: address?.levelNo ?? 0,
+        colNo: address?.colNo ?? 0,
+        qty: placeQty,
+        tier,
+        loadLevelAfterPct: capacity.loadLevelPct,
+      },
     ]);
-    setUnplacedQty(0);
+    setUnplacedQty(Math.max(0, qty - placeQty));
     setRejectedDetail(null);
   }, [capacityCheck.data, selectedItem, qty]);
 
@@ -181,7 +199,6 @@ export function PutawayTab() {
         isCheckingOther={capacityCheck.isPending}
         otherCapacity={capacityCheck.data}
         otherCapacityError={capacityCheck.error?.message ?? null}
-        selectedItem={selectedItem}
         onReplaceWithOther={handleReplaceWithOther}
         rejectedDetail={rejectedDetail}
         onRetryRecommend={handleRecommend}
