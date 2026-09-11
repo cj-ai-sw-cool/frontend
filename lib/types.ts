@@ -856,6 +856,8 @@ export interface OrderDetail {
   orderedAt: string;
   cutoffAt: string | null;
   cancelledAt: string | null;
+  /** 2026-09-12 라이브 검증으로 추가 — 계약 초안엔 없었지만 실제 응답에 항상 온다 */
+  createdAt: string;
   items: OrderDetailItem[];
   allocations: OrderAllocation[];
   shipments: OrderShipmentSummary[];
