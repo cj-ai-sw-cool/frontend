@@ -23,9 +23,13 @@ export function useSellerAtp(code: string | null, params?: { page?: number; size
 }
 
 /**
- * 금지선 일수 변경 — 성공하면 그 화주의 가용재고 표를 다시 읽는다(정본 §5.3, 금지선이
- * 바뀌면 ATP·금지선 제외 수량이 즉시 달라진다). 화주 목록(코드/이름/상태 탭)에는
- * `minShelfLifeDays` 를 안 보여주므로 그쪽은 무효화하지 않는다.
+ * 금지선 일수 변경 — 성공하면 `["sellers"]` 프리픽스 전체를 무효화한다(가용재고 표 +
+ * 화주 목록 둘 다). ⚠️ 화주 목록(`queryKeys.sellers`, `use-master.ts`)도 반드시 같이
+ * 무효화해야 한다 — 이 탭이 그 목록을 `useSellers()` 로 읽어 `selectedSeller.
+ * minShelfLifeDays` 를 저장 버튼의 "바뀐 값인가" 판정에 쓰는데(`atp-tab.tsx`), 목록이
+ * 안 갱신되면 그 판정 기준이 낡은 값에 묶여 **한 번 저장한 뒤 원래 값으로 되돌리는
+ * 저장이 막힌다**(버튼이 "안 바뀜"으로 오판해 disabled 로 남는다) — 실제로 화면 체크
+ * 5번(400 → 7 복귀)에서 이 증상으로 걸렸다.
  */
 export function useUpdateSeller() {
   const queryClient = useQueryClient();
@@ -33,8 +37,8 @@ export function useUpdateSeller() {
   return useMutation({
     mutationFn: ({ code, body }: { code: string; body: UpdateSellerRequest }) =>
       sellers.update(code, body),
-    onSuccess: (_data, { code }) => {
-      void queryClient.invalidateQueries({ queryKey: ["sellers", code, "atp"] });
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sellers"] });
     },
   });
 }
