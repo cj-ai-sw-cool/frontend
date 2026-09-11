@@ -38,8 +38,9 @@
    ⚠️ 그래도 창틀(`Panel`)은 98 그대로다. 창 안쪽만 담백한 것이지, 창까지 달라지면 이 칸만
       다른 프로그램에서 떠 온 것처럼 보인다.
 
-   ★ 숫자는 지도·재고 패널과 **같은 날(day)의 같은 배열**에서 온다. 한 화면에서 세 칸이
-     서로 다른 날을 말하면 대시보드가 아니라 오답 세 개다.
+   ★ Stage 2 — 정적 61일 배열을 걷어냈다(브리프 §3 S2.8). 숫자는
+     `GET /inventory/daily` 의 오늘 행 + `GET /zones/summary` 에서 온다. 오늘 원장이 없으면
+     0으로 보인다 — 지어낸 값으로 채우지 않는다.
    ⚠️ **라인 A·B·C 의 분배는 실측이 아니다.** 백엔드에 라인별 집계가 아직 없어서, 그날의
       출고 합계를 정해진 비율로 나눈 값이다. 합계만은 반드시 실제 출고 수와 같게 맞춘다 —
       나눈 값이 총계와 어긋나면 바로 위 칸과 대조했을 때 티가 난다. 라인별 데이터가 생기면
@@ -47,13 +48,11 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
-import { toLayoutZones } from "@/lib/zone-layout";
-import { useZones } from "../_data/use-master";
+import { useRecentDailyInventory, useZonesSummary } from "../_data/use-inventory";
 import { FAINT, FILL, INK, MUTED, TRACK } from "./clean-ui";
 import { w98 } from "./win98-ui";
-import { REAL_IN, REAL_OUT, REAL_STOCK, gradeStats, DEMO_DAY } from "./warehouse-data";
 
 /** 라인별 분배 비율 — 실측이 아니다 (위 주의 참고). 합은 1 */
 const LINE_SHARE = [0.4, 0.34, 0.26];
@@ -160,20 +159,24 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export function FlowPanel({ day = DEMO_DAY }: { day?: number }) {
-  const inn = REAL_IN[day] ?? 0;
-  const out = REAL_OUT[day] ?? 0;
-  const stock = REAL_STOCK[day] ?? 0;
+/**
+ * Stage 2 — `GET /inventory/daily?from=오늘−30&to=오늘` 의 마지막 행(오늘)과
+ * `GET /zones/summary` 로 그린다(브리프 §3 S2.8). 정적 61일 배열은 삭제했다.
+ * 응답이 비어 있으면(그날 원장이 없으면) 0으로 둔다.
+ */
+export function FlowPanel() {
+  const { data: daily } = useRecentDailyInventory();
+  const today = daily && daily.length > 0 ? daily[daily.length - 1] : undefined;
+  const inn = today?.receivedQty ?? 0;
+  const out = today?.shippedQty ?? 0;
+  const stock = today?.onHandQty ?? 0;
   const delta = inn - out;
 
-  /* 슬롯 점유율은 이제 `GET /zones` 응답으로 계산한다(Stage 1 S1.5) — 로딩 중이거나
-     아직 안 받았으면 0%로 둔다. 존 목록은 몇 안 되는 작은 응답이라 깜빡임이 눈에 띄지
-     않는다(마스터 창·지도·3D 가 같은 쿼리 키를 공유해 캐시도 같이 쓴다). */
-  const { data: zones } = useZones();
-  const layoutZones = useMemo(() => (zones ? toLayoutZones(zones) : null), [zones]);
-  const stats = layoutZones ? gradeStats(day, layoutZones) : [];
-  const filled = stats.reduce((s, g) => s + g.filled, 0);
-  const total = stats.reduce((s, g) => s + g.total, 0);
+  /* 슬롯 점유율 — 존별 합계(`GET /zones/summary`)를 전체로 묶는다. 로딩 중이거나 아직
+     안 받았으면 0%로 둔다. */
+  const { data: zonesSummary } = useZonesSummary();
+  const total = zonesSummary?.reduce((sum, z) => sum + z.binCount, 0) ?? 0;
+  const filled = zonesSummary?.reduce((sum, z) => sum + z.occupiedBins, 0) ?? 0;
   const occ = total > 0 ? filled / total : 0;
 
   /* ⚠️ 마지막 라인은 **빼서** 구한다. 셋 다 반올림하면 합이 출고 수와 한두 건 어긋나는데,

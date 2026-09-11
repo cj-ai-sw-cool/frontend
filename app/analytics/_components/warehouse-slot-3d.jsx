@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-import { master, queryKeys } from "@/lib/endpoints";
+import { inventory, master, queryKeys } from "@/lib/endpoints";
 import { AISLE, CORRIDOR, computeLayout, toLayoutZones } from "@/lib/zone-layout";
 import { createPackingStation } from "./packing-station";
 import { createExterior, HAZE } from "./warehouse-exterior";
@@ -11,10 +11,15 @@ import InspectionRoom from "./inspection-room";
 
 /* ─────────────────────────────────────────────────────────────
    시나리오 3 — 슬롯 창고 3D 대시보드 (2열 배치 + 중앙 작업 통로)
-   실측 근거: 총용량 866.9㎥ · 사용률 21.7~68% (8/1~9/30, 61일)
    슬롯: 극소 30×30×20 / 소 35×35×30 / 중 40×40×40
          대 50×50×40 / 특수 60×60×60  (세 변 합 = 등급 상한)
-   ───────────────────────────────────────────────────────────── */
+
+   ★ 정적 물동량(실측 61일)을 걷어냈다 (Stage 2, docs/tasks/2026-09-10-stage2-inventory-
+     core-handoff.md §3 S2.6·S2.8). `applyDay(day)` 가 하던 일 — 존별 점유 인스턴스를
+     정하는 것 — 을 이제 `applyOccupancy(rows)` 가 한다. 입력이 61일 배열의 인덱스에서
+     `GET /stock/occupancy` 응답(`{code, zone, rack, level, col, qty, sellerCode}`)으로
+     바뀌었을 뿐, 인스턴스 배열을 켜고 끄는 자리는 그대로다.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const mulberry32 = (a) => () => {
   a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -23,26 +28,8 @@ const mulberry32 = (a) => () => {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 
-/* ── 실측 물동량 데이터 (AI-Hub 29_물류공간 예측 · 2024-08-01 ~ 10-31, 영업일 61일) ── */
-const REAL_DATES = ["2024-08-01", "2024-08-02", "2024-08-05", "2024-08-06", "2024-08-07", "2024-08-08", "2024-08-09", "2024-08-12", "2024-08-13", "2024-08-14", "2024-08-16", "2024-08-19", "2024-08-20", "2024-08-21", "2024-08-22", "2024-08-23", "2024-08-26", "2024-08-27", "2024-08-28", "2024-08-29", "2024-08-30", "2024-09-02", "2024-09-03", "2024-09-04", "2024-09-05", "2024-09-06", "2024-09-08", "2024-09-09", "2024-09-10", "2024-09-11", "2024-09-12", "2024-09-13", "2024-09-19", "2024-09-20", "2024-09-23", "2024-09-24", "2024-09-25", "2024-09-26", "2024-09-27", "2024-09-30", "2024-10-02", "2024-10-03", "2024-10-04", "2024-10-07", "2024-10-08", "2024-10-10", "2024-10-11", "2024-10-14", "2024-10-15", "2024-10-16", "2024-10-17", "2024-10-18", "2024-10-21", "2024-10-22", "2024-10-23", "2024-10-24", "2024-10-25", "2024-10-28", "2024-10-29", "2024-10-30", "2024-10-31"];
-const REAL_USAGE = [21.67,29.46,29.92,37.49,40.77,39.88,45.2,55.44,54.51,53.25,50.33,42.12,61.7,54.76,54.99,60.25,64.8,65.29,62.33,63.02,64.53,65.08,63.18,60.63,58.44,64.01,64.0,63.46,66.42,67.98,64.64,65.55,61.21,61.6,55.37,59.82,59.61,60.9,66.4,67.16,62.82,62.82,63.96,62.63,63.62,65.08,66.73,65.3,64.2,62.56,61.7,64.01,57.57,56.17,55.87,55.59,56.78,56.91,55.72,54.66,53.94];
-const REAL_IN = [640,1740,1000,2280,940,136,1624,2760,252,0,125,0,4940,0,780,1652,2300,460,0,780,960,2124,0,360,548,1996,0,1064,1840,1020,0,330,1860,1740,0,2020,860,680,1856,1026,0,0,658,480,368,810,928,660,472,54,74,1368,654,341,428,468,924,690,324,112,160];
-const REAL_OUT = [827,385,815,770,406,329,517,905,495,266,810,1593,996,1521,715,791,1326,421,533,622,721,2281,431,860,928,784,1,1450,1067,749,708,179,2795,1609,1246,1019,1009,438,545,1153,881,1,485,655,249,466,601,904,689,340,267,567,1855,620,394,452,550,717,622,369,275];
-const REAL_STOCK = [4813,6168,6353,7863,8397,8204,9311,11166,10923,10657,9972,8379,12323,10802,10867,11728,12702,12741,12208,12366,12605,12448,12017,11517,11137,12349,12348,11962,12735,13006,12298,12449,11514,11645,10399,11400,11251,11493,12804,12677,11796,11795,11968,11793,11912,12256,12583,12339,12122,11836,11643,12444,11243,10964,10998,11014,11388,11361,11063,10806,10691];
-const REAL_INV = {xs:[2515,3177,3404,4037,4251,4143,4651,5502,5356,5203,4756,3895,6017,4996,5027,5297,5836,5836,5537,5699,5776,5723,5485,5193,4963,5637,5637,5448,5727,5692,5293,5348,4718,4716,4015,4893,4725,4916,5945,6105,5621,5620,5602,5462,5508,5731,5931,5873,5693,5563,5446,5972,5276,5034,5136,5229,5424,5488,5247,5087,5032],s:[1284,1658,1586,2129,2296,2251,2633,3150,3093,3032,2894,2496,3479,3295,3335,3801,4051,4033,3912,3912,4012,3862,3755,3635,3560,3864,3864,3738,3938,4163,3988,4051,3935,4061,3773,3759,3822,3816,3873,3641,3421,3421,3575,3597,3622,3690,3727,3605,3658,3560,3521,3673,3388,3411,3359,3303,3402,3321,3295,3236,3196],m:[789,972,1019,1268,1351,1327,1451,1792,1766,1739,1680,1515,2101,1927,1919,1945,2106,2141,2090,2072,2099,2103,2047,1992,1934,2042,2041,1927,2175,2242,2174,2184,2089,2098,1977,1994,1971,1995,2095,1944,1855,1855,1878,1843,1852,1890,1963,1938,1893,1867,1846,1944,1812,1785,1785,1763,1852,1824,1825,1805,1806],l:[165,283,288,369,412,406,466,594,584,568,536,415,643,552,552,638,673,689,642,659,673,710,693,659,630,683,683,724,711,719,677,690,629,620,545,640,636,660,735,814,763,763,770,740,765,777,802,786,769,746,733,726,630,606,596,596,591,611,594,579,567],xxl:[43,58,44,57,73,68,101,116,108,100,93,46,67,21,21,32,14,26,15,12,20,17,6,9,26,77,77,77,133,141,119,126,96,101,60,92,69,76,117,124,98,98,99,107,121,121,120,103,80,75,69,99,109,104,98,102,104,103,92,85,80],xl:[17,20,12,3,14,9,9,12,16,15,13,12,16,11,13,15,22,16,12,12,25,33,31,29,24,46,46,48,51,49,47,50,47,49,29,22,28,30,39,49,38,38,44,44,44,46,39,33,28,24,27,29,27,23,23,20,14,13,9,13,9]};
-const CURVE = REAL_USAGE;
-const REAL_DATE_LABEL = REAL_DATES.map((s) => {
-  const [, mo, dd] = s.split("-");
-  return `${+mo}월 ${+dd}일`;
-});
+/** 점유율 경고선(%) — 실측과 무관한 UI 임계값이다. 계속 쓴다 */
 const THRESHOLD = 65;
-const TOTAL_CAP = 866.86;                    // 사용률·보관공간에서 역산한 실제 총용량
-const FLOWS = { inn: REAL_IN, out: REAL_OUT };
-/* 규격별 실측 재고 최대치 = 해당 구역의 슬롯 정원 기준 */
-const INV_PEAK = {
-  xs: Math.max(...REAL_INV.xs), s: Math.max(...REAL_INV.s), m: Math.max(...REAL_INV.m),
-  l: Math.max(...REAL_INV.l), xl: Math.max(...REAL_INV.xl), xxl: Math.max(...REAL_INV.xxl),
-};
 
 /* 구역(존) 정의는 더 이상 여기 없다(Stage 1, docs/tasks/2026-09-09-stage1-master-
    handoff.md §3 S1.5). `GET /zones` 응답을 `lib/zone-layout.ts` 의 `toLayoutZones` 로
@@ -405,7 +392,7 @@ function makeFloorTexture(layout, floorW, floorD, floorCz) {
 /* ── 좀비화 피글린 ────────────────────────────────────────────────────────────
    창고의 작업자와 지게차 운전자를 마인크래프트 좀비화 피글린으로 바꿨다 (사용자 요청).
 
-   ★ 앞서 있던 `buildWorker`(CJ풍 근무복)와 **같은 것을 돌려준다** — `{ grp, lLeg, rLeg,
+   ★ 앞서 있던 `buildWorker`(기존 근무복)와 **같은 것을 돌려준다** — `{ grp, lLeg, rLeg,
      lArm, rArm, hasCart, hasDevice, armRest }`. 걷기·정차·스캔 동작을 굴리는 틱 코드는
      그대로 두고 겉모습만 바꾸기 위해서다. 손잡이가 같으면 갈아 끼우는 것으로 끝난다.
      ⚠️ `buildWorker` 는 지웠다. 되살리려면 git 이력에서 꺼내 이 함수 자리에 두고 아래
@@ -416,9 +403,9 @@ function makeFloorTexture(layout, floorW, floorD, floorCz) {
       가운데를 축으로 돌아 다리가 몸을 뚫는다 — 축은 어깨와 골반에 있어야 한다.
    ⚠️ 초록 썩은 자국은 살보다 **아주 조금 크게** 겹쳐 놓는다. 같은 크기면 두 면이 정확히
       겹쳐서 어느 쪽이 앞인지 매 프레임 달라지고, 그 깜빡임(z-fighting)이 눈에 띈다. */
-/* ── CJ대한통운 안전조끼 ──────────────────────────────────────────────
+/* ── A.LTS 안전조끼 ──────────────────────────────────────────────
    ★ 출고장 작업자에게 조끼를 입힌다 (사용자 요청). 실제 현장에서 작업자는 반드시 반사
-     조끼를 입고, 파란 조끼에 옆구리 빨강·노랑 띠가 CJ대한통운을 한눈에 알아보게 한다.
+     조끼를 입고, 파란 조끼에 옆구리 빨강·노랑 띠가 소속을 한눈에 알아보게 한다.
    ⚠️ 재질을 **한 번만 만들어 돌려쓴다.** 피글린마다 캔버스 세 장을 새로 구우면 작업자가
       늘어날 때마다 텍스처가 그만큼 GPU 로 올라간다. 무늬가 개체마다 다를 이유도 없다.
    ⚠️ 처음 부를 때 만든다. 모듈이 읽히는 시점에 `document` 를 만지면 서버 렌더에서 터진다.
@@ -458,19 +445,17 @@ function getVestMaterials() {
     c.fillStyle = "#123F63";
     c.fillRect(n * 0.485, 0, n * 0.03, n);               // 지퍼
     c.fillStyle = "#FFFFFF";
-    c.font = `700 ${Math.round(n * 0.12)}px 'Malgun Gothic', sans-serif`;
+    c.font = `700 ${Math.round(n * 0.1)}px 'Malgun Gothic', sans-serif`;
     c.textAlign = "center"; c.textBaseline = "middle";
-    c.fillText("CJ", n * 0.26, n * 0.22);
+    c.fillText("A.LTS", n * 0.26, n * 0.22);
   });
 
   /* 뒷면 — 이름. 등판이 제일 넓어 글씨가 들어갈 자리는 여기뿐이다 */
   const back = paint(128, (c, n) => {
     c.fillStyle = "#FFFFFF";
     c.textAlign = "center"; c.textBaseline = "middle";
-    c.font = `700 ${Math.round(n * 0.15)}px 'Malgun Gothic', sans-serif`;
-    c.fillText("CJ", n * 0.5, n * 0.36);
-    c.font = `700 ${Math.round(n * 0.11)}px 'Malgun Gothic', sans-serif`;
-    c.fillText("대한통운", n * 0.5, n * 0.54);
+    c.font = `700 ${Math.round(n * 0.17)}px 'Malgun Gothic', sans-serif`;
+    c.fillText("A.LTS", n * 0.5, n * 0.45);
   });
 
   const plain = new THREE.MeshLambertMaterial({ color: 0x1E82C8 });
@@ -724,7 +709,7 @@ function buildAGV({ tote = false } = {}) {
 
 /* ═══════════════════ 컴포넌트 ═══════════════════ */
 /**
- * @param {{ initialTab?: "map" | "3d", onReady?: (api: { applyDay: (day: number) => void, setHighlight: (id: string | null) => void, flyTo: (id: string) => void, resetView: () => void }) => void, initialHighlight?: string | null }} props
+ * @param {{ initialTab?: "map" | "3d", onReady?: (api: { applyOccupancy: (rows: Array<{code: string, zone: string, rack: number, level: number, col: number, qty: number, sellerCode: string | null}>) => void, setHighlight: (id: string | null) => void, flyTo: (id: string) => void, resetView: () => void }) => void, initialHighlight?: string | null }} props
  *   `initialHighlight` — 마운트하자마자 강조·포커스할 존 코드(Stage 1 S1.4c). `sel` 의
  *     초기값으로 그대로 들어간다 — 자세한 이유는 아래 `sel` 선언부 주의 참고.
  *   `initialTab` — 어느 판으로 열 것인가. 기본은 지도.
@@ -744,28 +729,33 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
   const { data: zones } = useQuery({ queryKey: queryKeys.zones, queryFn: () => master.zones() });
   const layoutZones = useMemo(() => (zones ? toLayoutZones(zones) : null), [zones]);
 
+  /* BIN 전체 점유(Stage 2, 정본 §2.4) — 30초 폴링(브리프 §3 S2.6). 재고 창에서 조정에
+     성공하면 `useAdjustInventory` 가 이 쿼리 키(`["stock", ...]` 접두)를 무효화해 즉시
+     다시 받아온다 — 다음 폴링을 기다리지 않는다. */
+  const { data: occupancy } = useQuery({
+    queryKey: queryKeys.occupancy,
+    queryFn: () => inventory.occupancy(),
+    refetchInterval: 30_000,
+  });
+
   const mountRef = useRef(null);
   const apiRef = useRef(null);
   /* `onReady` 를 매 렌더 새 함수로 넘겨도 아래 큰 이펙트([] 의존성)를 다시 돌리지 않도록
      ref 로 받아 둔다 — 이 파일의 `goPackingRef` 와 같은 패턴이다. */
   const onReadyRef = useRef(onReady);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
-  const [day, setDay] = useState(29);
   /* `initialHighlight` — 마스터 창의 로케이션 행을 눌러 이 컴포넌트를 처음 열 때, 그
      존을 곧바로 강조·포커스한 채로 띄운다(Stage 1 S1.4c). `sel` 을 마운트 뒤에 imperative
      하게 바꾸면 안 되는 이유는 아래 "씬 구성" 이펙트가 끝난 다음 순서대로 도는
      `[sel]` 이펙트가 초기값(null)을 보고 `resetView()` 를 불러 덮어써 버리기 때문이다 —
      초기 상태 자체를 이 값으로 잡아야 그 경쟁이 생기지 않는다. */
   const [sel, setSel] = useState(initialHighlight);
-  const [playing, setPlaying] = useState(false);
   const [stats, setStats] = useState(null);
   const [webglOk, setWebglOk] = useState(true);
   /* 'map' | '3d'. 기본은 지도 — `initialTab` 으로 3D 를 곧바로 열 수도 있다(위 doc 참고) */
   const [tab, setTab] = useState(initialTab);
   /* 하단 타임라인이 펼쳐져 있는가. 기본은 접힘 - 이 화면의 주인공은 3D 창고인데
      폭 640px 짜리 패널이 늘 아래를 가리고 있었다 */
-  const [timelineOpen, setTimelineOpen] = useState(false);
-
   /* 포탈 - 툴팁과 검수실 표시. 툴팁 자리는 커서를 따라간다 */
   const [portalTip, setPortalTip] = useState(null); // { x, y } | null
   /* 검수실에 들어와 있는가.
@@ -992,77 +982,44 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
     addWall("back", new THREE.BoxGeometry(floorW, 5.4, 0.3), 0x1a2028, 0, 4.0, zMin);
     addWall("back", new THREE.BoxGeometry(floorW, 1.3, 0.34), 0x232b35, 0, 0.65, zMin);
 
-    /* ── 뒷벽 회사 로고 ────────────────────────────────────────────
-       ★ 글자만 쓰다가 **로고 그대로**로 바꿨다 (사용자 요청). CJ 꽃잎 마크 + CJ +
-         OLIVENETWORKS 한 벌이다. 랙 위쪽 벽이 통째로 비어 있어 이 자리가 브랜드 벽이 된다 —
-         통로에서 고개를 들면 반드시 들어오는 면이다.
-       ⚠️ 워드마크를 **검정으로 쓰면 안 된다.** 원본 로고는 검은 글자지만 이 벽이 어두워서
-          (0x1a2028) 그대로 두면 글자가 아예 안 보인다. 어두운 배경에 놓는 로고는 밝은
-          쪽으로 뒤집어 쓰는 것이 원칙이고, 실제 센터의 벽 로고도 흰색이다.
-       ⚠️ 그래도 흰색은 안 쓴다 (사용자 요청 — 진하지 않게). 벽보다 밝되 눌러 칠한 회청색이면
-          "거기 있다"까지만 읽히고 화면의 주인공 자리를 안 뺏는다.
-       ⚠️ 꽃잎 색은 살린다. 이 로고에서 알아보게 하는 것은 글자가 아니라 세 꽃잎이라,
-          여기까지 눌러 버리면 그냥 회색 글씨가 된다.
-       ⚠️ 간판이 아니라 **칠한 것**이다. 회사명은 벽 자체가 말하는 것이라 두께를 주면
+    /* ── 뒷벽 브랜드 워드마크 ────────────────────────────────────────
+       Stage 2(정본 02-data-model.md, 브리프 §3 S2.9) — 실제 기업명 로고(CJ 꽃잎 마크 +
+       워드마크)를 이 앱의 자체 브랜드 `A.LTS`(`shell.tsx` 의 `BrandMark` 와 같은 이름)
+       글자로 바꿨다. 랙 위쪽 벽이 통째로 비어 있어 이 자리가 브랜드 벽이 된다 —
+       통로에서 고개를 들면 반드시 들어오는 면이다.
+       ⚠️ 워드마크를 **흰색으로 쓰지 않는다** (사용자 결정 — 진하지 않게). 벽보다 밝되
+          눌러 칠한 회청색이면 "거기 있다"까지만 읽히고 화면의 주인공 자리를 안 뺏는다.
+       ⚠️ 간판이 아니라 **칠한 것**이다. 브랜드명은 벽 자체가 말하는 것이라 두께를 주면
           광고판이 된다 (A.LTS·신규입고는 무엇을 가리키는 표지라 판을 걸었다).
        ⚠️ `MeshBasicMaterial` — 빛이 거의 안 닿는 벽이라 램버트면 로고가 벽과 같이 묻힌다.
        ⚠️ `wallSets.back` 에 넣는다. 카메라가 벽 너머로 돌면 벽이 투명해지는데, 로고만
           남으면 허공에 떠 있게 된다. */
     {
-      /* ⚠️ 캔버스 폭을 **글자를 재서** 정한다. 1536 으로 못 박았더니 OLIVENETWORKS 가
-         오른쪽에서 잘렸다 (사용자 지적) — 글꼴이 없어 대체 글꼴로 떨어지면 폭이 또 달라지므로,
-         눈으로 맞춘 숫자는 언제든 다시 어긋난다. 재고 나서 그 폭으로 캔버스를 만든다.
+      /* ⚠️ 캔버스 폭을 **글자를 재서** 정한다. 글꼴이 없어 대체 글꼴로 떨어지면 폭이
+         달라지므로, 눈으로 맞춘 숫자는 언제든 다시 어긋난다. 재고 나서 그 폭으로 캔버스를
+         만든다.
          ⚠️ `canvas.width` 를 바꾸면 컨텍스트가 **초기화된다.** 그래서 재기용으로 한 번 쓰고,
             폭을 정한 뒤 글꼴을 다시 세워야 한다. */
       const CH = 435;
-      const F_CJ = Math.round(CH * 0.40), F_OL = Math.round(CH * 0.345);
-      const cjFont = `900 ${F_CJ}px 'Arial Black', Arial, sans-serif`;
-      const olFont = `800 ${F_OL}px 'Arial Black', Arial, sans-serif`;
+      const font = `900 ${Math.round(CH * 0.5)}px 'Arial Black', Arial, sans-serif`;
       const cv = document.createElement("canvas");
       cv.width = 64; cv.height = CH;
       let c = cv.getContext("2d");
-      c.font = cjFont;
-      const cjW = c.measureText("CJ").width;
-      c.font = olFont;
-      const olW = c.measureText("OLIVENETWORKS").width;
+      c.font = font;
+      const textW = c.measureText("A.LTS").width;
 
-      const PAD = CH * 0.07, MARK = CH * 0.52, GAP = CH * 0.10;
-      const CW = Math.ceil(PAD + cjW + GAP * 0.4 + MARK + GAP + olW + PAD);
+      const PAD = CH * 0.09;
+      const CW = Math.ceil(PAD + textW + PAD);
       cv.width = CW;
       c = cv.getContext("2d");
       c.clearRect(0, 0, CW, CH);
 
-      /** 꽃잎 하나 — 기울인 타원 */
-      const petal = (cx, cy, rx, ry, rot, fill) => {
-        c.save();
-        c.translate(cx, cy);
-        c.rotate(rot);
-        c.beginPath();
-        c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-        c.fillStyle = fill;
-        c.fill();
-        c.restore();
-      };
-
       const INK = "#C3CBD4";   // 워드마크 — 벽보다 밝되 눌러 칠한다 (위 주석)
       c.textBaseline = "middle";
       c.textAlign = "left";
-
-      // CJ
-      c.font = cjFont;
+      c.font = font;
       c.fillStyle = INK;
-      c.fillText("CJ", PAD, CH * 0.56);
-
-      // 꽃잎 셋 — 파랑(위) · 주황(오른쪽) · 빨강(아래)
-      const mx = PAD + cjW + GAP * 0.4 + MARK / 2, my = CH * 0.46, R = CH * 0.155;
-      petal(mx - R * 0.42, my - R * 0.95, R * 0.62, R * 0.92, -0.45, "#2E86D8");
-      petal(mx + R * 0.86, my - R * 0.10, R * 0.95, R * 0.66, -0.25, "#E8720E");
-      petal(mx - R * 0.10, my + R * 1.00, R * 0.62, R * 0.92, 0.30, "#DC2A4E");
-
-      // OLIVENETWORKS
-      c.font = olFont;
-      c.fillStyle = INK;
-      c.fillText("OLIVENETWORKS", PAD + cjW + GAP * 0.4 + MARK + GAP, CH * 0.56);
+      c.fillText("A.LTS", PAD, CH * 0.56);
 
       const tex = new THREE.CanvasTexture(cv);
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -1691,11 +1648,11 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
         c.font = "700 22px 'Arial', sans-serif";
         c.fillStyle = "#5B6B7E";
         c.fillText("O-NE", 262, 246);
-        // CJ대한통운 — 오른쪽 위에 작게
+        // A.LTS — 오른쪽 위에 작게 (배송 담당 브랜드)
         c.textAlign = "right";
         c.fillStyle = "#1856B4";
         c.font = "700 26px 'Malgun Gothic', sans-serif";
-        c.fillText("CJ대한통운", 480, 60);
+        c.fillText("A.LTS", 480, 60);
         c.strokeStyle = "rgba(90,70,45,0.35)";        // 봉함 테이프 자국
         c.lineWidth = 3;
         c.beginPath(); c.moveTo(0, 300); c.lineTo(512, 300); c.stroke();
@@ -1750,9 +1707,9 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
       }
     }
 
-    /* 작업자 2명 — CJ풍 근무복 (형광조끼+카트 / 회색점퍼+스캐너) */
+    /* 작업자 2명 — 기존 근무복 (형광조끼+카트 / 회색점퍼+스캐너) */
     const patrolBound = Math.min(...layout.rowWidths) / 2 + 1.2;
-    /* ★ CJ풍 근무복 작업자에서 **좀비화 피글린**으로 갈아 끼웠다 (사용자 요청).
+    /* ★ 기존 근무복 작업자에서 **좀비화 피글린**으로 갈아 끼웠다 (사용자 요청).
        `buildPiglin` 이 `buildWorker` 와 같은 손잡이를 돌려주므로, 아래 걷기·정차 상태
        기계는 한 줄도 손대지 않았다. `buildWorker` 는 지우지 않고 남겨 둔다 — 되돌리고
        싶으면 이 두 줄만 바꾸면 된다. */
@@ -1987,13 +1944,12 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
          아무것도 없던 자리에서 상자가 생겨난다 */
       const pickSlot = () => {
         const gm = gradeMeshes[id];
-        const nFilled = curCounts[id] ?? 0;
         for (let t = 0; t < 40; t++) {
           const rackIdx = rng() < 0.5 ? iA : iB;
           const k = Math.floor(rng() * g.levels);
           const j = 1 + Math.floor(rng() * (g.cols - 2));
           const i = rackIdx * per + k * g.cols + j;
-          if (gm.rank[i] < nFilled) {
+          if (gm.filled?.[i]) {
             return { i, z: zone.zStart + (j + 0.5) * g.w, y: k * pitch + 0.04, dir: rackIdx === iA ? -1 : 1 };
           }
         }
@@ -2266,28 +2222,49 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
     window.addEventListener("contextmenu", onWindowContextMenu);
 
     /* ── API ── */
-    const applyDay = (d) => {
-      const u = CURVE[d];
+    /**
+     * BIN 전체 점유(`GET /stock/occupancy`) → 존별 인스턴스 배열을 켜고 끈다(Stage 2).
+     *
+     * 이전 `applyDay(day)` 는 61일 배열의 `day` 인덱스로 "몇 개가 찼는가"만 정하고,
+     * **어느 인스턴스**를 채운 것으로 볼지는 `rank`(고정 셔플)로 임의로 골랐다 — 실측
+     * 배열이 로케이션 단위가 아니었기 때문이다. 이제 응답이 실제 (zone, rack, level, col)
+     * 좌표를 주므로, 그 좌표를 인스턴스 인덱스로 직접 환산해 **그 칸만** 켠다.
+     *
+     * 인스턴스 인덱스 공식(칸 생성 루프, 위 "박스" 절과 같은 순서):
+     *   `i = (rack-1) * (levels*cols) + (level-1) * cols + (col-1)`
+     * `rack`/`level`/`col` 은 데이터 모델(§1.2)처럼 1부터 — `z.racks[rackIdx]` 가
+     * `rack_no = rackIdx+1` 과 대응하는 것은 `lib/zone-layout.ts` `computeLayout` 이
+     * 랙 좌표를 그 순서로 쌓기 때문이다(랙 쌍은 2p-1·2p, 단독은 1..singles).
+     */
+    const applyOccupancy = (rows) => {
+      const byZone = {};
+      for (const row of rows ?? []) {
+        (byZone[row.zone] ??= []).push(row);
+      }
       const perGrade = {};
       let shownFilled = 0, shownTotal = 0;
       for (const g of layoutZones) {
         const gm = gradeMeshes[g.id];
-        /* 실측 규격별 재고 / 해당 규격 최대 재고 = 구역 점유율.
-           G(냉동)처럼 `invKey` 가 없는 존은 대응하는 실측 배열이 없다 — 점유 0 으로 둔다
-           (브리프 §3 S1.5 "정적 재고 매핑 ... G는 null → 점유 0으로 렌더"). */
-        const occ = g.invKey
-          ? Math.min(0.99, Math.max(0.015, (REAL_INV[g.invKey][d] / INV_PEAK[g.invKey]) * 0.95))
-          : 0;
-        const n = Math.round(occ * gm.total);
+        const per = g.levels * g.cols;
+        const filled = new Uint8Array(gm.total);
+        for (const row of byZone[g.id] ?? []) {
+          if (!row.qty) continue;
+          const idx = (row.rack - 1) * per + (row.level - 1) * g.cols + (row.col - 1);
+          if (idx >= 0 && idx < gm.total) filled[idx] = 1;
+        }
+        gm.filled = filled;
+        let n = 0;
         for (let i = 0; i < gm.total; i++) {
-          gm.im.setMatrixAt(i, gm.rank[i] < n ? gm.mats[i] : ZERO);
+          const isFilled = filled[i] === 1;
+          gm.im.setMatrixAt(i, isFilled ? gm.mats[i] : ZERO);
+          if (isFilled) n += 1;
         }
         gm.im.instanceMatrix.needsUpdate = true;
         perGrade[g.id] = { filled: n, total: gm.total };
         curCounts[g.id] = n;
         shownFilled += n; shownTotal += gm.total;
       }
-      setStats({ u, perGrade, shownFilled, shownTotal, inn: FLOWS.inn[d], out: FLOWS.out[d] });
+      setStats({ perGrade, shownFilled, shownTotal });
     };
     const setHighlight = (id) => {
       for (const g of layoutZones) {
@@ -2309,7 +2286,7 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
     };
     const resetView = () => { Object.assign(des, OVERVIEW); setStation(null); };
 
-    apiRef.current = { applyDay, setHighlight, flyTo, resetView };
+    apiRef.current = { applyOccupancy, setHighlight, flyTo, resetView };
     onReadyRef.current?.(apiRef.current);
 
     /* ── 루프 ── */
@@ -2553,7 +2530,7 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
       if (mount.clientWidth > 4) renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     };
-    applyDay(29);
+    applyOccupancy(occupancy ?? []);
     applyCam();
     tick();
 
@@ -2584,24 +2561,23 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
+    /* ⚠️ `occupancy` 를 일부러 의존성에서 뺀다. 씬을 통째로 다시 짓는(수천 개 인스턴스
+       재생성) 무거운 이펙트라 `[layoutZones]` 로만 돌아야 한다 — occupancy 가 새로 오면
+       아래 `useEffect(() => apiRef.current?.applyOccupancy(occupancy), [occupancy])` 가
+       인스턴스만 다시 켠다. 여기서 쓰는 값은 **첫 페인트용 초깃값**일 뿐이다. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutZones]);
 
-  useEffect(() => { apiRef.current?.applyDay(day); }, [day]);
+  /* 점유가 새로 오면(첫 로딩·30초 폴링·조정 후 무효화) 인스턴스를 다시 켠다 —
+     예전 `useEffect(() => apiRef.current?.applyDay(day), [day])` 자리다. */
+  useEffect(() => {
+    if (occupancy) apiRef.current?.applyOccupancy(occupancy);
+  }, [occupancy]);
   useEffect(() => {
     apiRef.current?.setHighlight(sel);
     if (sel) apiRef.current?.flyTo(sel);
     else apiRef.current?.resetView();
   }, [sel]);
-  useEffect(() => {
-    if (!playing) return;
-    const iv = setInterval(() => {
-      setDay((d) => {
-        if (d >= 60) { setPlaying(false); return d; }
-        return d + 1;
-      });
-    }, 240);
-    return () => clearInterval(iv);
-  }, [playing]);
 
   useEffect(() => { statsRef.current = stats; }, [stats]);
 
@@ -2886,17 +2862,15 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
     };
   }, [layoutZones]);
 
-  const dateTxt = REAL_DATE_LABEL[day];
-  const u = stats?.u ?? CURVE[day];
-  const usedVol = ((u / 100) * TOTAL_CAP).toFixed(1);
+  /* 점유율 — 실측 61일 배열 대신 `GET /stock/occupancy` 에서 계산한 실제 채움/전체다 */
+  const u = stats && stats.shownTotal > 0 ? (stats.shownFilled / stats.shownTotal) * 100 : 0;
   const over = u >= THRESHOLD;
-
-  /* 스파크라인 */
-  const chartW = 560, chartH = 74;
-  const cx = (d) => 6 + (d / 60) * (chartW - 12);
-  const cy = (v) => chartH - 8 - ((v - 15) / (72 - 15)) * (chartH - 16);
-  const path = CURVE.map((v, d) => `${d === 0 ? "M" : "L"}${cx(d).toFixed(1)},${cy(v).toFixed(1)}`).join(" ");
-  const area = path + ` L${cx(60)},${chartH} L${cx(0)},${chartH} Z`;
+  const hotZoneCount = layoutZones
+    ? layoutZones.filter((g) => {
+        const pg = stats?.perGrade?.[g.id];
+        return pg !== undefined && pg.total > 0 && pg.filled / pg.total >= 0.9;
+      }).length
+    : 0;
 
   const toggleSel = useCallback((id) => setSel((s) => (s === id ? null : id)), []);
 
@@ -2954,7 +2928,8 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
             3D 뷰
           </Button>
           <span style={{ fontSize: 11, color: "#404040", marginLeft: 2 }}>
-            슬롯 창고 — 실측 물동량 61일 (2024-08-01 ~ 10-31)
+            {/* Stage 2 — 실측 61일 대신 GET /stock/occupancy 로 계산한 실제 칸·점유 */}
+            슬롯 창고 — 칸 {stats ? stats.shownTotal.toLocaleString() : "—"}개 · 점유 {stats ? stats.shownFilled.toLocaleString() : "—"}개
           </span>
         </div>
         <div style={{ flex: 1, display: "flex", minHeight: 0, padding: 3, gap: 3 }}>
@@ -2963,20 +2938,15 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
             {/* ── MAP PANE (2D 실시간 탑뷰) ── */}
             <div style={{ display: tab === "map" ? "flex" : "none", flexDirection: "column", position: "absolute", inset: 0 }}>
               <div className="w98-raised" style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px", margin: 2, flexShrink: 0 }}>
-                <button className="w98-btn" onClick={() => { if (day >= 60) setDay(0); setPlaying((p) => !p); }}>{playing ? "II 정지" : "► 재생"}</button>
-                <span style={{ whiteSpace: "nowrap" }}>{dateTxt} (D+{day})</span>
-                <input type="range" min="0" max="60" value={day} aria-label="날짜"
-                  onChange={(e) => { setPlaying(false); setDay(+e.target.value); }} style={{ flex: 1, minWidth: 60 }} />
-                <span className="w98-cell w98-sunken" style={{ color: over ? "#A00000" : "#000080", fontWeight: "bold" }}>사용률 {u.toFixed(1)}%</span>
-                <button className="w98-btn" onClick={() => { setSel(null); apiRef.current?.setHighlight(null); apiRef.current?.resetView(); setTab("3d"); }}>3D 전체 ▶</button>
+                <span className="w98-cell w98-sunken" style={{ color: over ? "#A00000" : "#000080", fontWeight: "bold" }}>점유율 {u.toFixed(1)}%</span>
+                <button className="w98-btn" style={{ marginLeft: "auto" }} onClick={() => { setSel(null); apiRef.current?.setHighlight(null); apiRef.current?.resetView(); setTab("3d"); }}>3D 전체 ▶</button>
               </div>
               <div ref={mapWrapRef} style={{ flex: 1, margin: "0 2px", position: "relative", overflow: "hidden", background: "#10151C", border: "2px solid", borderColor: "#404040 #FFF #FFF #404040" }}>
                 <canvas ref={mapCanvasRef} style={{ position: "absolute", inset: 0 }} />
               </div>
               <div style={{ display: "flex", gap: 2, margin: 2, flexShrink: 0 }}>
-                <span className="w98-cell w98-sunken">슬롯 {stats ? stats.shownTotal.toLocaleString() : "4,004"}</span>
-                <span className="w98-cell w98-sunken">▲ 입고 {stats?.inn?.toLocaleString() ?? "—"} · ▼ 출고 {stats?.out?.toLocaleString() ?? "—"}</span>
-                <span className="w98-cell w98-sunken">총용량 866.9㎥</span>
+                <span className="w98-cell w98-sunken">칸 {stats ? stats.shownTotal.toLocaleString() : "—"}개</span>
+                <span className="w98-cell w98-sunken">점유 {stats ? stats.shownFilled.toLocaleString() : "—"}개</span>
                 <span className="w98-cell w98-sunken" style={{ flex: 1, textAlign: "right" }}>구역 클릭 → 해당 구역 3D 진입 · 빈 곳 클릭 → 3D 전체</span>
               </div>
             </div>
@@ -3094,12 +3064,11 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
         <div className="ws-eyebrow">SLOT WAREHOUSE · SCENARIO 3</div>
         <div className="ws-h" style={{ marginTop: 5 }}>창고 슬롯 대시보드</div>
 
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: 12 }}>
+        {/* Stage 2 — 61일 배열의 그날 대신, GET /stock/occupancy 로 계산한 지금 이 순간의
+            점유율이다. 날짜 자리가 사라져 큰 숫자만 남는다. */}
+        <div style={{ marginTop: 12 }}>
           <div style={{ fontSize: 34, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", lineHeight: 0.95, color: over ? "#FF7E7E" : "#FFC978" }}>
             {u.toFixed(1)}<span style={{ fontSize: 15, marginLeft: 1 }}>%</span>
-          </div>
-          <div style={{ textAlign: "right", fontSize: 10.5, fontWeight: 700, color: "#9DB0C4", lineHeight: 1.5 }}>
-            {dateTxt}<br />D+{day}
           </div>
         </div>
 
@@ -3108,22 +3077,22 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
           <div style={{ position: "absolute", left: `${THRESHOLD}%`, top: -1, bottom: -1, width: 2, background: "#FF6B6BAA" }} />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 10, fontWeight: 700, color: "#9DB0C4", fontFamily: "'JetBrains Mono',monospace" }}>
-          <span>{usedVol} / 866.9 ㎥</span>
+          <span>{stats ? `${stats.shownFilled.toLocaleString()} / ${stats.shownTotal.toLocaleString()} 칸` : "—"}</span>
           <span>임계 {THRESHOLD}%</span>
         </div>
 
         <div className="ws-rule" />
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-          <div className="ws-stat"><span>입고</span><b>{stats?.inn?.toLocaleString() ?? "—"}</b></div>
-          <div className="ws-stat"><span>출고</span><b>{stats?.out?.toLocaleString() ?? "—"}</b></div>
-          <div className="ws-stat"><span>재고</span><b>{REAL_STOCK[day].toLocaleString()}</b></div>
-          <div className="ws-stat"><span>표시 슬롯</span><b>{stats ? stats.shownTotal.toLocaleString() : "4,004"}</b></div>
+          <div className="ws-stat"><span>채움 칸</span><b>{stats ? stats.shownFilled.toLocaleString() : "—"}</b></div>
+          <div className="ws-stat"><span>전체 칸</span><b>{stats ? stats.shownTotal.toLocaleString() : "—"}</b></div>
+          <div className="ws-stat"><span>구역 수</span><b>{layoutZones.length}</b></div>
+          <div className="ws-stat"><span>임계초과 구역</span><b>{hotZoneCount}</b></div>
         </div>
 
         {over && (
           <div style={{ marginTop: 9, padding: "7px 10px", borderRadius: 2, background: "rgba(255,90,90,.16)", border: "1px solid rgba(255,107,107,.5)", fontSize: 11.5, color: "#FFC2C2", fontWeight: 700 }}>
-            임계치 {THRESHOLD}% 초과 · 보관공간 부족 예상
+            임계치 {THRESHOLD}% 초과 — 재고 조정이 필요할 수 있습니다
           </div>
         )}
       </div>
@@ -3195,69 +3164,12 @@ export default function WarehouseSlot3D({ initialTab = "map", onReady, initialHi
         })}
       </div>
 
-      {/* ── 하단: 61일 타임라인 ──
-          ★ 늘 펼쳐 두던 것을 **접었다.** 이 화면의 주인공은 3D 창고인데, 폭 640px 짜리
-            패널이 아래를 늘 가리고 있었다. 타임라인은 "지금 며칠인가"를 바꿀 때만 필요하고,
-            그 값은 접힌 버튼에도 적혀 있으므로 평소에는 버튼 하나면 충분하다.
-          ⚠️ 접혔을 때도 재생 버튼은 남긴다. 자동 재생은 자주 쓰는 기능이라, 그것까지
-             펼쳐야 닿게 하면 접은 이득이 사라진다. */}
-      {!timelineOpen ? (
-        <div className="ws-bottombar" style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 6, fontFamily: "'Noto Sans KR', sans-serif" }}>
-          <button className="ws-pill" onClick={() => setTimelineOpen(true)}>
-            <span style={{ color: "#7E90A5" }}>물동량 타임라인</span>
-            <span style={{ fontFamily: "'JetBrains Mono',monospace", color: over ? "#FF8A8A" : "#FFC978" }}>
-              D+{day} · {u.toFixed(1)}%
-            </span>
-            <span style={{ color: "#5F7186", fontSize: 10 }}>▲</span>
-          </button>
-          <button
-            className="ws-pill"
-            style={{ padding: "8px 12px" }}
-            aria-label={playing ? "정지" : "재생"}
-            onClick={() => { if (day >= 60) setDay(0); setPlaying((p) => !p); }}
-          >
-            {playing ? "⏸" : "▶"}
-          </button>
-        </div>
-      ) : (
-        <div className="ws-panel ws-timeline" style={{ position: "absolute", bottom: 14, fontFamily: "'Noto Sans KR', sans-serif", left: "50%", transform: "translateX(-50%)", width: "min(640px, 94vw)", padding: "11px 15px 15px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 7 }}>
-            <div style={{ minWidth: 0 }}>
-              <div className="ws-eyebrow">THROUGHPUT · 61 DAYS</div>
-              <div style={{ fontSize: 10.5, color: "#5F7186", marginTop: 3 }}>
-                2024-08-01 – 10-31 (영업일 61일) · 실측 사용률
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: over ? "#FF8A8A" : "#FFC978" }}>
-                D+{day} · {u.toFixed(1)}%
-              </span>
-              <button className="ws-btn" onClick={() => { if (day >= 60) setDay(0); setPlaying((p) => !p); }}>
-                {playing ? "⏸ 정지" : "▶ 재생"}
-              </button>
-              <button className="ws-x" aria-label="타임라인 접기" onClick={() => setTimelineOpen(false)}>▼</button>
-            </div>
-          </div>
-          <div style={{ position: "relative" }}>
-            <svg viewBox={`0 0 ${chartW} ${chartH}`} style={{ width: "100%", height: 74, display: "block" }} aria-hidden="true">
-              <defs>
-                <linearGradient id="wsArea" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#FF8A2A" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#FF8A2A" stopOpacity="0.02" />
-                </linearGradient>
-              </defs>
-              <line x1="6" x2={chartW - 6} y1={cy(THRESHOLD)} y2={cy(THRESHOLD)} stroke="#FF5D5D" strokeWidth="1" strokeDasharray="5 4" opacity="0.7" />
-              <text x={chartW - 8} y={cy(THRESHOLD) - 4} fill="#FF7B7B" fontSize="9" textAnchor="end" fontFamily="JetBrains Mono">임계 65%</text>
-              <path d={area} fill="url(#wsArea)" />
-              <path d={path} fill="none" stroke="#FFB569" strokeWidth="2" strokeLinejoin="round" />
-              <line x1={cx(day)} x2={cx(day)} y1="4" y2={chartH} stroke="#fff" strokeWidth="1" opacity="0.35" />
-              <circle cx={cx(day)} cy={cy(CURVE[day])} r="4.5" fill="#FF8A2A" stroke="#0c1117" strokeWidth="2" />
-            </svg>
-            <input className="ws-range" type="range" min="0" max="60" step="1" value={day}
-              aria-label="날짜 선택" onChange={(e) => { setPlaying(false); setDay(+e.target.value); }} />
-          </div>
-        </div>
-      )}
+      {/* ── 하단 타임라인 (제거, Stage 2) ──────────────────────────────
+         이전에는 61일 실측 배열의 `day` 를 밀고 당기는 슬라이더·재생 버튼·물동량
+         그래프가 이 자리에 있었다(브리프 §3 S2.6 "날짜 슬라이더·재생 버튼·
+         날짜 라벨 배열 제거"). 지금 창고가 보여주는 것은 GET /stock/occupancy 의
+         **현재 시점 점유**뿐이라 되감을 날짜가 없다 — 그 값은 위 좌측 패널(ws-left)의
+         큰 숫자가 이미 말한다. */}
 
       {/* ── 입고 적재 진행 줄 ──
           ⚠️ 화면 **아래 가운데**에 둔다. 로봇이 어디에 있든 눈이 한 번은 지나는 자리이고,

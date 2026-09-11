@@ -1,6 +1,6 @@
 "use client";
 
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 import styles from "../_styles/win98.module.css";
 
 /**
@@ -124,6 +124,23 @@ export function Field({
       {...props}
       className={`${styles.input} ${styles.sunken} ${mono ? styles.mono : ""} ${className}`}
     />
+  );
+}
+
+/** 선택란 — `Field` 와 같은 파인 테두리를 쓴다(재고 창의 화주·상태 select, Stage 2) */
+export function Select({
+  className = "",
+  mono = false,
+  children,
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement> & { mono?: boolean; children: ReactNode }) {
+  return (
+    <select
+      {...props}
+      className={`${styles.input} ${styles.sunken} ${mono ? styles.mono : ""} ${className}`}
+    >
+      {children}
+    </select>
   );
 }
 

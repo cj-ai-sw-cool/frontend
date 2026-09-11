@@ -20,7 +20,10 @@ export type ApiErrorCode =
   | "VALIDATION_ERROR"
   /** 마스터 데이터 유일성 위반(Stage 1) — 예: 화주 코드 중복 */
   | "CONFLICT"
-  | "LOCATION_NOT_FOUND";
+  | "LOCATION_NOT_FOUND"
+  /** 혼적 규칙 위반(Stage 2) — 정본 §2.3. BIN 로케이션에 다른 화주, 또는 같은 상품에
+   * 다른 로트를 놓으려 할 때 409 */
+  | "MIXING_VIOLATION";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -114,7 +117,21 @@ export interface ConfirmResponse {
   dimMethod: "INFERRED" | "MANUAL";
 }
 
-/** 1-5 `POST /inbound/stock-in` — 재고 증가의 유일한 경로 (D-09) */
+/**
+ * 1-5 `POST /inbound/stock-in` — 재고 증가의 유일한 경로 (D-09).
+ *
+ * Stage 2 전환기 규칙 T1(정본 02-data-model.md §2.5) — 화주·로트번호가 필수로 추가됐다.
+ * 로트가 없으면 서버가 새로 만든다. 유통기한은 선택이다.
+ * // Stage 2 transitional (T1): replaced in Stage 3 (ASN 검수가 대체)
+ */
+export interface StockInRequest {
+  productId: number;
+  qty: number;
+  sellerCode: string;
+  lotNo: string;
+  expiresOn?: string | null;
+}
+
 export interface StockInResponse {
   productId: number;
   stockQty: number;
@@ -307,6 +324,123 @@ export interface LocationsQuery {
   type?: LocationType;
   page?: number;
   size?: number;
+}
+
+/* ── 5. 재고 — 로트·현재고·원장 (Stage 2) ─────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §2.4·§2.6, docs/tasks/
+   2026-09-10-stage2-inventory-core-handoff.md §3. 필드는 백엔드 응답 DTO
+   (StockController/ZoneController/InventoryReportController/InventoryAdminController,
+   backend/src/main/java/com/awesome/backend/inventory/) 를 그대로 옮겼다. */
+
+export type StockStatus = "AVAILABLE" | "HOLD" | "DAMAGED";
+
+/** `GET /stock` 행 — `qty > 0` 만 온다 */
+export interface StockItem {
+  stockId: number;
+  location: { code: string; type: LocationType; zone: string | null };
+  seller: { code: string; name: string };
+  product: { id: number; gtin: string; name: string };
+  lot: { lotNo: string; expiresOn: string | null };
+  status: StockStatus;
+  qty: number;
+}
+
+/** `GET /stock` 쿼리 — 전부 선택 */
+export interface StockQuery {
+  seller?: string;
+  gtin?: string;
+  location?: string;
+  lot?: string;
+  status?: StockStatus;
+  page?: number;
+  size?: number;
+}
+
+export type TxType =
+  | "RECEIVE"
+  | "PUTAWAY"
+  | "PICK"
+  | "REBIN"
+  | "SHIP"
+  | "ADJUST"
+  | "STATUS_CHANGE";
+
+/**
+ * `GET /stock/{stockId}/ledger` 행 — 그 키(로케이션·화주·상품·로트)에 걸린 원장.
+ *
+ * ⚠️ 라이브 검증(브리프 §3, 2026-09-10)으로 정정 — 설계 초안과 실제 응답이 둘 다 다르다:
+ *    - `id` 가 아니라 **`txId`**
+ *    - `fromLocation`/`toLocation` 은 `{code}` 객체가 아니라 **로케이션 코드 문자열**(또는 null)
+ */
+export interface StockLedgerEntry {
+  txId: number;
+  txType: TxType;
+  fromLocation: string | null;
+  toLocation: string | null;
+  fromStatus: StockStatus | null;
+  toStatus: StockStatus | null;
+  qty: number;
+  reasonCode: string | null;
+  refType: string | null;
+  refId: number | null;
+  createdAt: string;
+}
+
+/** `GET /stock/occupancy` 행 — BIN 전체(3,888행). 3D·2D 지도가 인스턴스 매핑에 쓴다 */
+export interface StockOccupancyRow {
+  code: string;
+  zone: string;
+  rack: number;
+  level: number;
+  col: number;
+  qty: number;
+  sellerCode: string | null;
+}
+
+/** `GET /zones/summary` 행 */
+export interface ZoneSummary {
+  code: string;
+  binCount: number;
+  occupiedBins: number;
+  qty: number;
+}
+
+/** `GET /inventory/daily` 행 */
+export interface DailyInventory {
+  date: string;
+  receivedQty: number;
+  shippedQty: number;
+  onHandQty: number;
+  utilizationPct: number;
+  /** S2.7 근사치 표시 — 일별 점유 스냅샷이 아니라 현재 시점 값(Stage 11에서 물질화) */
+  utilizationIsCurrent?: boolean;
+}
+
+/** `GET /admin/inventory/invariant` 행 — 빈 배열이 정상 */
+export interface InvariantMismatch {
+  location: { code: string };
+  seller: { code: string };
+  product: { id: number; gtin: string };
+  lot: { lotNo: string };
+  status: StockStatus;
+  stockQty: number;
+  txQty: number;
+}
+
+/** `POST /admin/inventory/adjust` 요청 — 화면 체크·ICQA 전 임시 창구 */
+export interface AdjustInventoryRequest {
+  locationCode: string;
+  sellerCode: string;
+  gtin: string;
+  lotNo: string;
+  status: StockStatus;
+  delta: number;
+  reason: string;
+}
+
+export interface AdjustInventoryResponse {
+  stockId: number;
+  qty: number;
 }
 
 /**

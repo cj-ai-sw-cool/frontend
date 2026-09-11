@@ -17,18 +17,15 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { inbound, queryKeys } from "@/lib/endpoints";
-import type { ConfirmRequest } from "@/lib/types";
+import { inbound, master, queryKeys } from "@/lib/endpoints";
+import type { ConfirmRequest, StockInRequest } from "@/lib/types";
 
 export interface ConfirmVariables {
   sessionId: number;
   body: ConfirmRequest;
 }
 
-export interface StockInVariables {
-  productId: number;
-  qty: number;
-}
+export type StockInVariables = StockInRequest;
 
 /**
  * 1-1 바코드 스캔 — 입고 화면 진입점. 3분기 판정을 그대로 돌려준다.
@@ -85,16 +82,31 @@ export function useConfirmMeasurement() {
 /**
  * 1-5 수량 입고 — 촬영분 포함 전체 수량. 재고 증가의 **유일한** 경로다 (D-09).
  * 1-4 확정은 재고를 건드리지 않으므로, 촬영에 쓴 실물 1개도 여기 수량에 포함해 한 번에 넣는다.
+ *
+ * Stage 2 T1 — 화주·로트번호가 필수로 추가됐다(정본 §2.5). 로트가 없으면 서버가 만든다.
+ * // Stage 2 transitional (T1): replaced in Stage 3 (ASN 검수가 대체)
  */
 export function useStockIn() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ productId, qty }: StockInVariables) => inbound.stockIn(productId, qty),
+    mutationFn: (body: StockInVariables) => inbound.stockIn(body),
     onSuccess: () => {
       // 대시보드의 입고 집계가 바뀐다
       void queryClient.invalidateQueries({ queryKey: queryKeys.dashboardSummary });
     },
+  });
+}
+
+/**
+ * 화주 목록 — 수량 패널의 화주 select (Stage 2 T1).
+ * `master.sellers()` 는 분석 화면과 같은 엔드포인트·쿼리 키를 쓴다 — 화주 목록은 화면마다
+ * 다시 정의할 계약이 아니다.
+ */
+export function useSellers() {
+  return useQuery({
+    queryKey: queryKeys.sellers,
+    queryFn: () => master.sellers(),
   });
 }
 

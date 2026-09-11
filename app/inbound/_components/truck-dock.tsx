@@ -1,7 +1,7 @@
 "use client";
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   바탕화면 장식 — CJ대한통운 트럭에서 내린 택배기사가 상자를 들고 서 있다.
+   바탕화면 장식 — A.LTS 트럭에서 내린 택배기사가 상자를 들고 서 있다.
    순수 시각 장식이다. 클릭 동작·소리·다른 화면으로의 이동은 없다.
 
    ★ 3D 를 쓰지 않고 픽셀 그림으로 그린다. 98 스킨의 나머지와 결이 맞는다.
@@ -13,13 +13,13 @@ const U = 6;
 const W = 78 * U;
 const H = 54 * U;
 
-/* CJ 색 — 로고에서 뽑은 값 (`shell.tsx` 의 BrandMark 와 같다) */
-const CJ_BLUE = "#003087";
-const CJ_MID = "#0A3F9E";
-const CJ_DARK = "#00205C";
+/* A.LTS 색 — 로고에서 뽑은 값 (`shell.tsx` 의 BrandMark 와 같다) */
+const ALTS_BLUE = "#003087";
+const ALTS_MID = "#0A3F9E";
+const ALTS_DARK = "#00205C";
 
 /* 마인크래프트 좀비 — 받은 이미지에서 **픽셀을 세어 뽑은 색**이다.
-   ⚠️ 셔츠(#00AFAD)는 거의 안 보인다 — 위에 CJ 안전조끼를 입히기 때문이다. 목덜미와
+   ⚠️ 셔츠(#00AFAD)는 거의 안 보인다 — 위에 A.LTS 안전조끼를 입히기 때문이다. 목덜미와
       허리춤에만 조금 남겨 두어야 조끼를 걸친 것으로 보인다. */
 const SKIN = "#4A7434";        // 살 — 이끼 낀 초록
 const SKIN_MID = "#3F652C";    // 그늘
@@ -77,23 +77,23 @@ export function TruckDock() {
 
         {/* 적재함 — 위는 밝고 아래로 갈수록 어둡게 */}
         <P x={10} y={13} w={32} h={2} fill="#EEF2F7" />
-        <P x={10} y={15} w={32} h={9} fill={CJ_MID} />
-        <P x={10} y={24} w={32} h={11} fill={CJ_BLUE} />
-        <P x={10} y={35} w={32} h={2} fill={CJ_DARK} />
+        <P x={10} y={15} w={32} h={9} fill={ALTS_MID} />
+        <P x={10} y={24} w={32} h={11} fill={ALTS_BLUE} />
+        <P x={10} y={35} w={32} h={2} fill={ALTS_DARK} />
         {/* 옆면 흰 띠 + 로고 */}
         <P x={12} y={19} w={28} h={8} fill="#FFFFFF" />
         <P x={12} y={27} w={28} h={1} fill="#D6DCE4" />
         <text
-          x={13.4 * U}
+          x={16.5 * U}
           y={25.2 * U}
-          fill={CJ_BLUE}
+          fill={ALTS_BLUE}
           style={{ font: `700 ${4.2 * U}px 'Malgun Gothic', sans-serif`, letterSpacing: "0.02em" }}
         >
-          CJ대한통운
+          A.LTS
         </text>
         {/* 판을 이어 붙인 자국 */}
         {[18, 26, 34].map((x) => (
-          <P key={x} x={x} y={28} w={1} h={7} fill={CJ_DARK} opacity={0.45} />
+          <P key={x} x={x} y={28} w={1} h={7} fill={ALTS_DARK} opacity={0.45} />
         ))}
 
         {/* 바퀴 — 타이어 + 휠 */}
@@ -103,13 +103,13 @@ export function TruckDock() {
         <P x={35} y={37} w={2} h={2} fill="#6E757D" />
 
         {/* 뒷문 — 한 짝이 바깥으로 열려 있다 */}
-        <P x={42} y={13} w={2} h={24} fill={CJ_DARK} />
-        <P x={44} y={12} w={2} h={26} fill={CJ_MID} />
+        <P x={42} y={13} w={2} h={24} fill={ALTS_DARK} />
+        <P x={44} y={12} w={2} h={26} fill={ALTS_MID} />
         <P x={44} y={12} w={2} h={1} fill="#7FA6DA" />
         {/* 열린 문 안쪽 어둠 */}
         <P x={40} y={15} w={2} h={20} fill="#0D1116" />
 
-        {/* ═══ 좀비 택배기사 — CJ 모자·조끼 ═══════════════════════
+        {/* ═══ 좀비 택배기사 — A.LTS 모자·조끼 ═══════════════════════
             ★ **머리를 크게** 잡은 2등신이다 — 같은 색·같은 옷이라도 머리가 전체의 40%를
               넘으면 무서운 것이 귀여워진다. 도트 캐릭터가 귀여운 이유는 색이 아니라 비율이다.
             ⚠️ 눈은 움푹 팬 검은 띠 대신 동그란 점으로 그린다. 흰 반짝임을 한 칸 넣으면
@@ -127,7 +127,7 @@ export function TruckDock() {
         {/* 몸통 — 셔츠가 목덜미와 허리춤에만 보인다 */}
         <P x={51} y={26} w={11} h={7} fill={SHIRT} />
         <P x={51} y={31} w={11} h={2} fill={SHIRT_DARK} />
-        {/* CJ 안전조끼 */}
+        {/* A.LTS 안전조끼 */}
         <P x={51} y={27} w={11} h={5} fill="#1E82C8" />
         <P x={51} y={27} w={11} h={1} fill="#3FA0E4" />
         <P x={52} y={28} w={1} h={4} fill="#DC3B2C" />
@@ -149,12 +149,12 @@ export function TruckDock() {
         {/* 입 — 작게 한 칸 */}
         <P x={55} y={22} w={3} h={1} fill={SKIN_DARK} />
 
-        {/* CJ대한통운 모자 — 챙이 앞으로 나와 있다 */}
-        <P x={48} y={10} w={17} h={4} fill={CJ_BLUE} />
-        <P x={48} y={10} w={17} h={1} fill={CJ_MID} />
-        <P x={46} y={13} w={21} h={1} fill={CJ_DARK} />
+        {/* A.LTS 모자 — 챙이 앞으로 나와 있다 */}
+        <P x={48} y={10} w={17} h={4} fill={ALTS_BLUE} />
+        <P x={48} y={10} w={17} h={1} fill={ALTS_MID} />
+        <P x={46} y={13} w={21} h={1} fill={ALTS_DARK} />
         <P x={54} y={11} w={5} h={2} fill="#FFFFFF" />
-        <P x={55} y={11} w={3} h={1} fill={CJ_BLUE} />
+        <P x={55} y={11} w={3} h={1} fill={ALTS_BLUE} />
 
         {/* 팔 — 상자를 받치고 앞으로 뻗었다 (상자가 뒤에 그려져 팔을 덮는다) */}
         <P x={46} y={28} w={5} h={4} fill={SKIN} />

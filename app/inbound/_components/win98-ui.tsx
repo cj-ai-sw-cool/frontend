@@ -1,6 +1,6 @@
 "use client";
 
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 import styles from "../_styles/win98.module.css";
 
 /**
@@ -126,6 +126,25 @@ export function Field({
       {...props}
       className={`${styles.input} ${styles.sunken} ${mono ? styles.mono : ""} ${className}`}
     />
+  );
+}
+
+/** 선택란 — `Field` 와 같은 파인 테두리를 쓴다(입고 화면에 select 가 처음 등장하는 자리,
+ * Stage 2 화주 선택). 화주 목록처럼 짧은 드롭다운 전용이라 별도 화살표 장식은 두지 않는다 —
+ * 네이티브 select 화살표가 win98 시대에도 있던 모양이라 그대로 둔다. */
+export function Select({
+  className = "",
+  mono = false,
+  children,
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement> & { mono?: boolean; children: ReactNode }) {
+  return (
+    <select
+      {...props}
+      className={`${styles.input} ${styles.sunken} ${mono ? styles.mono : ""} ${className}`}
+    >
+      {children}
+    </select>
   );
 }
 
