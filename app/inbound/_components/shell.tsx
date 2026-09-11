@@ -91,6 +91,19 @@ function PackingIcon({ className }: { className?: string }) {
   );
 }
 
+/** 피킹 — 손 스캐너(PDA) */
+function PickingIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" shapeRendering="crispEdges" className={className} aria-hidden>
+      <path d="M3 1h9v7H3z" fill="#c0c0c0" stroke="#000000" />
+      <path d="M4 2h7v4H4z" fill="#000000" />
+      <path d="M4 3h7v1H4z" fill="#00e05a" />
+      <path d="M6 8h4v6H6z" fill="#808080" stroke="#000000" />
+      <path d="M7 12h2v2H7z" fill="#ba1a1a" stroke="#000000" />
+    </svg>
+  );
+}
+
 /** 분석 — 막대 그래프 */
 function AnalyticsIcon({ className }: { className?: string }) {
   return (
@@ -119,6 +132,12 @@ const SCREENS: Screen[] = [
     label: "Packing",
     windowTitle: "OUTBOUND PACKING — 출고 포장",
     icon: PackingIcon, // 목업: desktop_windows
+  },
+  {
+    href: "/picking",
+    label: "Picking",
+    windowTitle: "BATCH PICKING — 피킹",
+    icon: PickingIcon, // 목업에 없던 화면(Stage 7) — 손 스캐너로 새로 그렸다
   },
   {
     /* 분석 — **아직 비어 있는 화면**이다(자리와 생김새만 잡아 둔 뼈대).
