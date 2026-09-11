@@ -13,6 +13,7 @@ import type {
   MeasurementResponse,
   PendingReceiptItem,
   ProductImagesResponse,
+  ReceiptItemCreatedResponse,
   ScanResponse,
 } from "@/lib/types";
 import { ActionButtons } from "./_components/action-buttons";
@@ -132,7 +133,7 @@ export default function InboundPage() {
   const asnDetail = asnDetailQuery.data;
   /** 이 ASN에서 지금 검수 중인 receipt — 도착 처리로 연 것. 최대 하나만 OPEN 이다(정본 §3.3) */
   const openReceipt = asnDetail?.receipts.find((r) => r.status === "OPEN") ?? null;
-  const activeReceiptId = openReceipt?.id ?? null;
+  const activeReceiptId = openReceipt?.receiptId ?? null;
   const pendingItemsQuery = usePendingItems(activeReceiptId);
   const addReceiptItem = useAddReceiptItem(selectedAsnId);
 
@@ -142,7 +143,7 @@ export default function InboundPage() {
   const isConfirmed = confirm.data !== undefined;
 
   /** 선택 ASN 화주 기준 GTIN 재고 합 — 1-1 응답의 stockQty(T5) 대신 쓴다(정본 §3.6) */
-  const sellerCode = asnDetail?.seller.code ?? null;
+  const sellerCode = asnDetail?.sellerCode ?? null;
   const sellerStockQuery = useSellerGtinStock(sellerCode, product?.gtin ?? null);
   const stockLabel =
     sellerCode === null
@@ -276,7 +277,9 @@ export default function InboundPage() {
           setManual(null);
           setHandling(EMPTY_HANDLING);
           setSelectedPendingItem(pendingItem);
-          setReceivedQty(pendingItem?.expectedQty ?? 1);
+          // 기본값은 remainingQty(예정 - 지금까지 수령) — expectedQty 가 아니다. 분할 납품에서
+          // 이미 일부 받은 품목이면 이번 도착에 받을 것으로 기대하는 수량이 더 작다.
+          setReceivedQty(pendingItem?.remainingQty ?? 1);
           setDamagedQty(0);
           setLotNo(pendingItem?.lotNo ?? "");
           setExpiresOn(pendingItem?.expiresOn ?? "");
@@ -309,7 +312,7 @@ export default function InboundPage() {
 
   /** 미검수 품목 목록에서 품목 클릭 — 그 GTIN 으로 스캔을 실행한다(정본 §3.6) */
   const handlePendingItemSelect = useCallback(
-    (item: PendingReceiptItem) => runScan(item.product.gtin, item),
+    (item: PendingReceiptItem) => runScan(item.gtin, item),
     [runScan],
   );
 
@@ -446,7 +449,7 @@ export default function InboundPage() {
         onSuccess: (data) => {
           toast.success("ASN 등록 완료", w98Toast.success);
           setIsRegisterOpen(false);
-          setSelectedAsnId(data.id);
+          setSelectedAsnId(data.asnId);
         },
         onError: (error) =>
           toast.error("ASN 등록에 실패했습니다", { ...w98Toast.notice, description: error.message }),
@@ -466,9 +469,9 @@ export default function InboundPage() {
 
   const handleCompleteReceipt = useCallback(() => {
     if (openReceipt === null) return;
-    completeReceipt.mutate(openReceipt.id, {
+    completeReceipt.mutate(openReceipt.receiptId, {
       onSuccess: (data) => {
-        toast.success(`검수 완료 · ASN ${ASN_STATUS_LABEL[data.asnStatus]}`, w98Toast.success);
+        toast.success(`검수 완료 · ASN ${ASN_STATUS_LABEL[data.asn.status]}`, w98Toast.success);
         clearScreen();
       },
       onError: (error) =>
@@ -549,7 +552,7 @@ export default function InboundPage() {
 
         {/* 도착 처리 후 뜨는 미검수 품목 목록 — 클릭하면 그 GTIN 으로 스캔한다(Stage 3 신규) */}
         <PendingItemsPanel
-          items={pendingItemsQuery.data?.items ?? []}
+          items={pendingItemsQuery.data ?? []}
           isLoading={pendingItemsQuery.isLoading}
           selectedAsnItemId={selectedPendingItem?.asnItemId ?? null}
           onSelect={handlePendingItemSelect}
@@ -651,7 +654,7 @@ function buildSubmitPlan({
   measurement: MeasurementResponse | undefined;
   isConfirmed: boolean;
   manual: { dims: Dimensions; weightKg: number | null } | null;
-  receiptItemResult: { receivedQty: number; damagedQty: number } | undefined;
+  receiptItemResult: ReceiptItemCreatedResponse | undefined;
   activeReceiptId: number | null;
   receivedQty: number;
   damagedQty: number;
@@ -674,8 +677,10 @@ function buildSubmitPlan({
 
   if (
     scanResult?.product != null &&
-    (receivedQty <= 0 || damagedQty > receivedQty || lotNo.trim() === "")
+    (receivedQty < 0 || damagedQty > receivedQty || lotNo.trim() === "")
   ) {
+    /* ⚠️ 수령 0 은 막지 않는다 — 서버가 명시적으로 허용한다(ReceiptItemRequest: "예정에 있었지만
+       이번 도착에 한 개도 안 온 품목을 기록할 수 있어야 한다"). 막을 것은 음수·파손>수령·빈 로트뿐. */
     return { kind: "BLOCKED", hint: "수령 수량·파손 수량·로트번호를 확인하세요" };
   }
 

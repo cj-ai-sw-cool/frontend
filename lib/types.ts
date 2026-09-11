@@ -464,10 +464,11 @@ export interface Page<T> {
 
 /* ── 6. 입고 — ASN·수령·검수 (Stage 3) ─────────────────────────────────────
    정본: backend/docs/02-system/02-data-model.md §3.2·§3.5, docs/tasks/
-   2026-09-11-stage3-inbound-asn-handoff.md §3. 백엔드 응답 DTO 필드명은 문서에
-   테이블(컬럼)만 있고 JSON 스키마가 없어, 이 저장소의 다른 목록/상세 응답(예: StockItem
-   의 seller/product 중첩 객체)과 같은 관례로 설계했다 — 라이브 검증에서 실제 응답과 어긋나면
-   이 파일과 `endpoints.ts` 의 `asn` 묶음만 고치면 된다(화면 컴포넌트는 타입을 통해서만 닿는다). */
+   2026-09-11-stage3-inbound-asn-handoff.md §3. 필드는 백엔드 응답 레코드
+   (AsnController/ReceiptController, backend/src/main/java/com/awesome/backend/
+   inbound/asn/controller/) 를 라이브 검증(2026-09-11)으로 그대로 옮겼다 — 평평한
+   sellerCode/sellerName·productId/gtin/productName 필드다. 이 저장소의 다른 응답
+   (StockItem 의 seller/product 중첩 객체)과는 다른 모양이니 섞어 쓰지 않는다. */
 
 export type AsnStatus = "REGISTERED" | "ARRIVED" | "RECEIVING" | "PARTIALLY_RECEIVED" | "CLOSED";
 export type ReceiptStatus = "OPEN" | "COMPLETED";
@@ -481,7 +482,7 @@ export interface AsnItemCreate {
   expiresOn?: string | null;
 }
 
-/** `POST /asns` 요청 */
+/** `POST /asns` 요청 — `AsnCreateRequest` */
 export interface CreateAsnRequest {
   sellerCode: string;
   asnNo: string;
@@ -490,14 +491,16 @@ export interface CreateAsnRequest {
   items: AsnItemCreate[];
 }
 
-/** `GET /asns` 목록 행 */
+/** `GET /asns` 목록 행 — `AsnResponse` */
 export interface AsnListItem {
-  id: number;
-  seller: { code: string; name: string };
+  asnId: number;
+  sellerCode: string;
+  sellerName: string;
   asnNo: string;
   expectedOn: string;
   status: AsnStatus;
   note: string | null;
+  itemCount: number;
   createdAt: string;
   closedAt: string | null;
 }
@@ -510,69 +513,30 @@ export interface AsnQuery {
   size?: number;
 }
 
-/** `GET /asns/{id}` 품목 한 줄 — 예정·수령 누계·파손 누계·미달을 서버가 집계해 준다 */
+/** `GET /asns/{id}` 품목 한 줄 — `AsnItemResponse`. 예정·수령·파손 누계·미달을 서버가 집계해 준다 */
 export interface AsnItemDetail {
-  id: number;
-  product: { id: number; gtin: string; name: string };
+  asnItemId: number;
+  productId: number;
+  gtin: string;
+  productName: string;
+  dimStatus: DimStatus;
   expectedQty: number;
-  lotNo: string;
-  expiresOn: string | null;
-  /** 같은 asn_item 에 걸린 receipt_item.received_qty 합(정본 §3.2) */
+  /** 파손을 포함한 수령 누계 */
   receivedQty: number;
-  /** 같은 asn_item 에 걸린 receipt_item.damaged_qty 합 */
   damagedQty: number;
   /** max(expectedQty - receivedQty, 0) */
-  shortQty: number;
-}
-
-/** `GET /asns/{id}` 의 receipt 목록 한 줄 */
-export interface AsnReceiptSummary {
-  id: number;
-  seqNo: number;
-  arrivedAt: string;
-  status: ReceiptStatus;
-  completedAt: string | null;
-}
-
-/** `GET /asns/{id}` 상세 */
-export interface AsnDetail extends AsnListItem {
-  items: AsnItemDetail[];
-  receipts: AsnReceiptSummary[];
-}
-
-/** `POST /asns/{id}/arrive` 응답 — 새로 연 receipt */
-export interface ArriveAsnResponse {
-  receiptId: number;
-  seqNo: number;
-}
-
-/** `GET /receipts/{id}/pending-items` 행 — 이 receipt 에서 아직 검수 입력 안 된 ASN 품목 */
-export interface PendingReceiptItem {
-  asnItemId: number;
-  product: { id: number; gtin: string; name: string };
-  expectedQty: number;
+  shortageQty: number;
   lotNo: string;
   expiresOn: string | null;
 }
 
-export interface PendingItemsResponse {
-  items: PendingReceiptItem[];
-}
-
-/** `POST /receipts/{id}/items` 요청 — GTIN 이 이 ASN 에 없으면 409 `ASN_ITEM_NOT_FOUND` */
-export interface AddReceiptItemRequest {
-  gtin: string;
-  receivedQty: number;
-  damagedQty: number;
-  lotNo?: string;
-  expiresOn?: string | null;
-}
-
-/** `POST /receipts/{id}/items` 응답 — 등록된 receipt_item */
-export interface ReceiptItemResponse {
-  id: number;
+/** `GET /asns/{id}` 의 receipt 안 검수 한 줄 — `ReceiptItemResponse` */
+export interface ReceiptItemDetail {
+  receiptItemId: number;
   asnItemId: number;
-  product: { id: number; gtin: string; name: string };
+  gtin: string;
+  productName: string;
+  /** 파손을 포함한 총 수령 */
   receivedQty: number;
   damagedQty: number;
   lotNo: string;
@@ -581,17 +545,84 @@ export interface ReceiptItemResponse {
   inspectedAt: string;
 }
 
-/** `POST /receipts/{id}/complete` 응답 — receipt COMPLETED, ASN 상태 판정 결과를 함께 준다 */
-export interface CompleteReceiptResponse {
+/** `GET /asns/{id}` 의 receipt 목록 한 줄 — `ReceiptResponse` */
+export interface AsnReceiptSummary {
   receiptId: number;
-  status: "COMPLETED";
+  seqNo: number;
+  status: ReceiptStatus;
+  arrivedAt: string;
+  completedAt: string | null;
+  items: ReceiptItemDetail[];
+}
+
+/** `GET /asns/{id}` 상세, `POST /asns`·`POST /asns/{id}/close` 응답 — `AsnDetailResponse` */
+export interface AsnDetail extends AsnListItem {
+  items: AsnItemDetail[];
+  receipts: AsnReceiptSummary[];
+}
+
+/** `POST /asns/{id}/arrive` 응답 — `ArriveResponse`. 새로 연 receipt 를 함께 돌려준다 */
+export interface ArriveAsnResponse {
+  asnId: number;
+  status: AsnStatus;
+  receiptId: number;
+  seqNo: number;
+}
+
+/**
+ * `GET /receipts/{id}/pending-items` 행 — `PendingItemResponse`.
+ * 이 receipt 에서 아직 검수 입력 안 된 ASN 품목. 응답은 이 타입의 **배열**이다(래퍼 객체 없음).
+ */
+export interface PendingReceiptItem {
+  asnItemId: number;
+  productId: number;
+  gtin: string;
+  productName: string;
+  imageUrl: string | null;
+  dimStatus: DimStatus;
+  expectedQty: number;
+  /** 지금까지(이전 receipt 포함) 수령 누계 */
+  receivedQty: number;
+  /** expectedQty - receivedQty — 이번 도착에 받을 것으로 기대하는 수량. 검수 입력의 기본값 */
+  remainingQty: number;
+  lotNo: string;
+  expiresOn: string | null;
+}
+
+/** `POST /receipts/{id}/items` 요청 — `ReceiptItemRequest`. GTIN 이 이 ASN 에 없으면 409 `ASN_ITEM_NOT_FOUND` */
+export interface AddReceiptItemRequest {
+  gtin: string;
+  /** 0 도 받는다 — 예정 품목이 이번 도착에 하나도 안 왔음을 기록할 때 */
+  receivedQty: number;
+  damagedQty: number;
+  lotNo?: string;
+  expiresOn?: string | null;
+}
+
+/** `POST /receipts/{id}/items` 응답 — `ReceiptItemCreatedResponse` */
+export interface ReceiptItemCreatedResponse {
+  receiptItemId: number;
+  receiptId: number;
+  asnItemId: number;
+  gtin: string;
+  productName: string;
+  receivedQty: number;
+  damagedQty: number;
+  lotNo: string;
+  expiresOn: string | null;
+  discrepancy: Discrepancy | null;
+  expectedQty: number;
+  /** 이번 입력을 포함한 수령 누계 */
+  receivedTotalQty: number;
+  shortageQty: number;
   asnId: number;
   asnStatus: AsnStatus;
 }
 
-/** `POST /asns/{id}/close` 응답 */
-export interface CloseAsnResponse {
-  id: number;
-  status: "CLOSED";
+/** `POST /receipts/{id}/complete` 응답 — `ReceiptCompleteResponse`. ASN 상태 판정까지 끝난 상세를 함께 준다 */
+export interface CompleteReceiptResponse {
+  receiptId: number;
+  receiptStatus: ReceiptStatus;
+  asn: AsnDetail;
 }
 

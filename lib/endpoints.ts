@@ -13,7 +13,6 @@ import type {
   AsnQuery,
   BoxOverrideResponse,
   BoxType,
-  CloseAsnResponse,
   CompleteReceiptResponse,
   CompleteResponse,
   ConfirmRequest,
@@ -28,9 +27,9 @@ import type {
   LocationsQuery,
   MeasurementResponse,
   Page,
-  PendingItemsResponse,
+  PendingReceiptItem,
   ProductImagesResponse,
-  ReceiptItemResponse,
+  ReceiptItemCreatedResponse,
   ScanResponse,
   Seller,
   ShipmentDetail,
@@ -175,12 +174,13 @@ export const inventory = {
 
 /* ── 입고 — ASN·수령·검수 (Stage 3) ──────────────────────────────────────
    정본: backend/docs/02-system/02-data-model.md §3.5, docs/tasks/
-   2026-09-11-stage3-inbound-asn-handoff.md §3. */
+   2026-09-11-stage3-inbound-asn-handoff.md §3. 응답 타입은 라이브 검증(2026-09-11)으로
+   실제 백엔드 레코드(AsnController/ReceiptController)에 맞췄다. */
 export const asn = {
   /** ASN 목록 — 상태 필터 탭 */
   list: (params?: AsnQuery) => api.get<Page<AsnListItem>>(`/asns${toAsnQueryString(params)}`),
 
-  /** ASN 등록 — GTIN 이 product 에 없으면 마스터에서 생성, 마스터에도 없으면 400 */
+  /** ASN 등록 — GTIN 이 product 에 없으면 마스터에서 생성, 마스터에도 없으면 400. 등록 상세를 바로 돌려준다 */
   create: (body: CreateAsnRequest) => api.post<AsnDetail>("/asns", body),
 
   /** ASN 상세 — 품목별 예정·수령 누계·파손 누계·미달, receipt 목록 */
@@ -189,20 +189,20 @@ export const asn = {
   /** 도착 처리 — ARRIVED(첫 도착) 또는 RECEIVING(재도착), receipt OPEN 생성 */
   arrive: (id: number) => api.post<ArriveAsnResponse>(`/asns/${id}/arrive`),
 
-  /** 이 receipt 에서 아직 검수 입력 안 된 ASN 품목 — 입고 화면의 미검수 품목 목록 */
+  /** 이 receipt 에서 아직 검수 입력 안 된 ASN 품목 — 입고 화면의 미검수 품목 목록. 응답은 배열이다 */
   pendingItems: (receiptId: number) =>
-    api.get<PendingItemsResponse>(`/receipts/${receiptId}/pending-items`),
+    api.get<PendingReceiptItem[]>(`/receipts/${receiptId}/pending-items`),
 
   /** 검수 입력 — receipt_item + RECEIVE tx. ASN 에 없는 GTIN 은 409 ASN_ITEM_NOT_FOUND */
   addItem: (receiptId: number, body: AddReceiptItemRequest) =>
-    api.post<ReceiptItemResponse>(`/receipts/${receiptId}/items`, body),
+    api.post<ReceiptItemCreatedResponse>(`/receipts/${receiptId}/items`, body),
 
-  /** receipt 완료 — ASN 상태 판정(CLOSED / PARTIALLY_RECEIVED) */
+  /** receipt 완료 — ASN 상태 판정(CLOSED / PARTIALLY_RECEIVED)까지 끝난 상세를 함께 준다 */
   completeReceipt: (receiptId: number) =>
     api.post<CompleteReceiptResponse>(`/receipts/${receiptId}/complete`),
 
-  /** 수동 마감 — PARTIALLY_RECEIVED → CLOSED, 미달 품목 SHORT 기록 */
-  close: (id: number) => api.post<CloseAsnResponse>(`/asns/${id}/close`),
+  /** 수동 마감 — PARTIALLY_RECEIVED → CLOSED, 미달 품목 SHORT 기록. ASN 상세를 돌려준다 */
+  close: (id: number) => api.post<AsnDetail>(`/asns/${id}/close`),
 };
 
 function toAsnQueryString(params?: AsnQuery): string {

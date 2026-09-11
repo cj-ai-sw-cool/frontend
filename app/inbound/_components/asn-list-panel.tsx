@@ -79,13 +79,13 @@ export function AsnListPanel({
         ) : (
           <ul>
             {items.map((item) => (
-              <li key={item.id}>
+              <li key={item.asnId}>
                 <button
                   type="button"
-                  onClick={() => onSelect(item.id)}
-                  aria-current={selectedId === item.id ? "true" : undefined}
+                  onClick={() => onSelect(item.asnId)}
+                  aria-current={selectedId === item.asnId ? "true" : undefined}
                   className={`flex w-full flex-col gap-0.5 border-b border-[color:var(--surface-dim)] px-2 py-1.5 text-left ${
-                    selectedId === item.id ? "bg-[color:var(--surface-variant)]" : ""
+                    selectedId === item.asnId ? "bg-[color:var(--surface-variant)]" : ""
                   }`}
                 >
                   <span className="flex items-center justify-between gap-2">
@@ -95,7 +95,7 @@ export function AsnListPanel({
                     </span>
                   </span>
                   <span className={`${w98.small} truncate text-[color:var(--muted-foreground)]`}>
-                    {item.seller.code} · {item.seller.name} · {item.expectedOn}
+                    {item.sellerCode} · {item.sellerName} · {item.expectedOn}
                   </span>
                 </button>
               </li>

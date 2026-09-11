@@ -52,7 +52,7 @@ export function AsnDetailPanel({
             </span>
           </div>
           <p className={`${w98.small} truncate text-[color:var(--muted-foreground)]`}>
-            {detail.seller.code} · {detail.seller.name} · 예정일 {detail.expectedOn}
+            {detail.sellerCode} · {detail.sellerName} · 예정일 {detail.expectedOn}
           </p>
 
           <div className="flex gap-1.5">
@@ -87,9 +87,9 @@ export function AsnDetailPanel({
               </thead>
               <tbody>
                 {detail.items.map((item) => (
-                  <tr key={item.id} className="border-t border-[color:var(--surface-dim)]">
-                    <td className="max-w-0 truncate px-1 py-1" title={item.product.name}>
-                      {item.product.name}
+                  <tr key={item.asnItemId} className="border-t border-[color:var(--surface-dim)]">
+                    <td className="max-w-0 truncate px-1 py-1" title={item.productName}>
+                      {item.productName}
                     </td>
                     <td className={`${w98.mono} px-1 py-1 text-right tabular-nums`}>
                       {item.expectedQty}
@@ -102,10 +102,10 @@ export function AsnDetailPanel({
                     </td>
                     <td
                       className={`${w98.mono} px-1 py-1 text-right tabular-nums ${
-                        item.shortQty > 0 ? "font-bold text-[color:var(--status-error)]" : ""
+                        item.shortageQty > 0 ? "font-bold text-[color:var(--status-error)]" : ""
                       }`}
                     >
-                      {item.shortQty}
+                      {item.shortageQty}
                     </td>
                   </tr>
                 ))}
@@ -117,7 +117,7 @@ export function AsnDetailPanel({
             <Sunken className={`${w98.scroll} max-h-16 shrink-0 overflow-y-auto p-1`}>
               {detail.receipts.map((receipt) => (
                 <p
-                  key={receipt.id}
+                  key={receipt.receiptId}
                   className={`${w98.small} ${w98.mono} flex items-center justify-between gap-2 px-1`}
                 >
                   <span className="truncate">

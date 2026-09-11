@@ -46,8 +46,8 @@ export function PendingItemsPanel({
                     selectedAsnItemId === item.asnItemId ? "bg-[color:var(--surface-variant)]" : ""
                   }`}
                 >
-                  <span className="truncate" title={item.product.name}>
-                    {item.product.name}
+                  <span className="truncate" title={item.productName}>
+                    {item.productName}
                   </span>
                   <span className={`${w98.mono} shrink-0 tabular-nums`}>{item.expectedQty}</span>
                 </button>
