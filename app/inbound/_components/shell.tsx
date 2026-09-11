@@ -243,9 +243,13 @@ export function Win98Shell({ children }: { children: ReactNode }) {
 
           {/* 창 내용 — 좌측 네비 + 화면 */}
           {/* ⚠️ 아래 여백만 절반으로 줄였다(p-2 → pb-1). 버튼이 창 바닥에 조금 더 붙고,
-                 늘어나는 칸(Product Manifest)이 그만큼 커진다. 좌우·위는 그대로 둔다 —
-                 win98 창은 안쪽 여백이 사방으로 같아야 베벨이 제대로 보인다. */}
-          <div className="flex min-h-0 flex-1 gap-2 px-2 pt-2 pb-1">
+                 늘어나는 칸(Product Manifest)이 그만큼 커진다. 좌우는 그대로 둔다 —
+                 win98 창은 안쪽 여백이 사방으로 같아야 베벨이 제대로 보인다.
+             ⚠️ 위쪽도 pt-2 → **pt-1** 로 줄였다(Stage 4, 검수/진열 탭 바 추가). 탭 바가
+                생기며 본문(children)이 쓸 수 있는 세로 예산이 그만큼 줄었는데, 우측 열
+                (검수 탭)이 이미 여유 없이 꽉 차 있어(`f9b7d9c`) 그 4px 을 여기서 되찾는다.
+                탭 바를 넣지 않는 화면(packing/analytics, 각자 사본)에는 옮기지 않는다. */}
+          <div className="flex min-h-0 flex-1 gap-2 px-2 pt-1 pb-1">
             <SideNav activeHref={active.href} />
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
           </div>

@@ -24,11 +24,18 @@ import type {
   InvariantMismatch,
   LinesResponse,
   Location,
+  LocationCapacity,
   LocationsQuery,
   MeasurementResponse,
   Page,
   PendingReceiptItem,
   ProductImagesResponse,
+  PutawayConfirmRequest,
+  PutawayConfirmResponse,
+  PutawayPendingItem,
+  PutawayPendingQuery,
+  PutawayRecommendRequest,
+  PutawayRecommendResponse,
   ReceiptItemCreatedResponse,
   ScanResponse,
   Seller,
@@ -205,6 +212,37 @@ export const asn = {
   close: (id: number) => api.post<AsnDetail>(`/asns/${id}/close`),
 };
 
+/* ── 진열 — directed putaway (Stage 4) ──────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §4.5, docs/tasks/
+   2026-09-11-stage4-putaway-handoff.md §3. */
+export const putaway = {
+  /** 진열 대기 — 입고장 AVAILABLE 재고, 화주 필터 */
+  pending: (params?: PutawayPendingQuery) =>
+    api.get<Page<PutawayPendingItem>>(`/putaway/pending${toPutawayPendingQueryString(params)}`),
+
+  /** 추천 — `qty` 생략 시 전량. 상한 5칸 + `unplacedQty` */
+  recommend: (body: PutawayRecommendRequest) =>
+    api.post<PutawayRecommendResponse>("/putaway/recommend", body),
+
+  /** 확정 — 잠금 아래 재검증 후 이동. 실패는 전체 롤백 + 409 `PUTAWAY_REJECTED` */
+  confirm: (body: PutawayConfirmRequest) =>
+    api.post<PutawayConfirmResponse>("/putaway/confirm", body),
+
+  /** 칸 하나의 부피·적재율·현재 항목 — "다른 칸" 입력의 확인용 */
+  capacity: (locationCode: string) =>
+    api.get<LocationCapacity>(`/locations/${encodeURIComponent(locationCode)}/capacity`),
+};
+
+function toPutawayPendingQueryString(params?: PutawayPendingQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.seller !== undefined && params.seller !== "") qs.set("seller", params.seller);
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.size !== undefined) qs.set("size", String(params.size));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
 function toAsnQueryString(params?: AsnQuery): string {
   if (!params) return "";
   const qs = new URLSearchParams();
@@ -261,4 +299,6 @@ export const queryKeys = {
   asns: (params?: AsnQuery) => ["asns", params ?? {}] as const,
   asn: (id: number) => ["asns", id] as const,
   pendingItems: (receiptId: number) => ["receipts", receiptId, "pending-items"] as const,
+  putawayPending: (params?: PutawayPendingQuery) => ["putaway", "pending", params ?? {}] as const,
+  locationCapacity: (code: string) => ["locations", code, "capacity"] as const,
 };

@@ -25,7 +25,9 @@ export type ApiErrorCode =
    * 다른 로트를 놓으려 할 때 409 */
   | "MIXING_VIOLATION"
   /** 검수 입력(Stage 3) — 스캔한 GTIN이 선택한 ASN의 품목에 없을 때 409(정본 §3.5) */
-  | "ASN_ITEM_NOT_FOUND";
+  | "ASN_ITEM_NOT_FOUND"
+  /** 진열 확정(Stage 4) — 잠금 아래 재검증 실패. `detail` 이 `PutawayRejectedDetail` 모양(정본 §4.5) */
+  | "PUTAWAY_REJECTED";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -624,5 +626,94 @@ export interface CompleteReceiptResponse {
   receiptId: number;
   receiptStatus: ReceiptStatus;
   asn: AsnDetail;
+}
+
+/* ── 7. 진열 — directed putaway (Stage 4) ──────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §4.5(API)·§4.6(프론트 계약), docs/tasks/
+   2026-09-11-stage4-putaway-handoff.md §3. 백엔드가 동시에 만드는 중이라 필드는 계약
+   문서 그대로 옮겼다 — 다른 Stage 응답과 같은 관례(seller/product/lot 중첩 객체, StockItem
+   §5 참고)를 따랐다. 라이브 검증에서 실제 응답과 다르면 이 절을 정정한다. */
+
+export type PutawayTier = "SAME_LOT" | "SAME_SELLER" | "EMPTY";
+
+/**
+ * `GET /putaway/pending` 행 — 입고장(RCV-01)의 AVAILABLE 재고. `StockItem`(§5)과 같은
+ * 모양이지만 이 화면 전용으로 별도 타입을 둔다 — 로케이션이 항상 RCV-01 이라 그 필드가 없다.
+ */
+export interface PutawayPendingItem {
+  stockId: number;
+  seller: { code: string; name: string };
+  product: { id: number; gtin: string; name: string };
+  lot: { lotNo: string; expiresOn: string | null };
+  qty: number;
+  dimStatus: DimStatus;
+}
+
+/** `GET /putaway/pending` 쿼리 */
+export interface PutawayPendingQuery {
+  seller?: string;
+  page?: number;
+  size?: number;
+}
+
+/** `POST /putaway/recommend` 이동 후보 한 칸 */
+export interface PutawayMove {
+  locationCode: string;
+  qty: number;
+  tier: PutawayTier;
+  /** 이 이동을 반영한 뒤의 적재율(%) — `BinCapacity.loadLevel` */
+  loadLevelAfterPct: number;
+}
+
+/** `POST /putaway/recommend` 요청 — `qty` 생략 = 전량 */
+export interface PutawayRecommendRequest {
+  stockId: number;
+  qty?: number;
+}
+
+/** `POST /putaway/recommend` 응답 — 상한 5칸, 다 못 넣으면 `unplacedQty` */
+export interface PutawayRecommendResponse {
+  moves: PutawayMove[];
+  unplacedQty: number;
+}
+
+/** `POST /putaway/confirm` 요청 — 화면이 고른(추천 그대로 또는 다른 칸으로 바꾼) 이동 목록 */
+export interface PutawayConfirmRequest {
+  stockId: number;
+  moves: { locationCode: string; qty: number }[];
+}
+
+/** `POST /putaway/confirm` 응답 — 확정된 이동. 실패는 전체 롤백 + 409 `PUTAWAY_REJECTED` */
+export interface PutawayConfirmResponse {
+  stockId: number;
+  moves: { locationCode: string; qty: number }[];
+}
+
+/** 409 `PUTAWAY_REJECTED` 의 `detail` — `ApiError.detail` 을 이 모양으로 좁혀 읽는다 */
+export interface PutawayRejectedDetail {
+  locationCode: string;
+  reason: string;
+}
+
+/** `GET /locations/{code}/capacity` 안 항목 — 그 칸에 지금 들어 있는 재고 한 줄 */
+export interface LocationCapacityItem {
+  seller: { code: string; name: string };
+  product: { id: number; gtin: string; name: string };
+  lot: { lotNo: string; expiresOn: string | null };
+  qty: number;
+}
+
+/**
+ * `GET /locations/{code}/capacity` 응답 — "다른 칸" 입력의 확인 결과.
+ * `zoneCode`/`tempZone`/`gradeCapCm` 은 온도·규격 필터를 화면에서 설명하는 데 쓴다(§4.3).
+ */
+export interface LocationCapacity {
+  locationCode: string;
+  zoneCode: string | null;
+  tempZone: TempZone | null;
+  gradeCapCm: number | null;
+  volumeCm3: number | null;
+  loadLevelPct: number;
+  items: LocationCapacityItem[];
 }
 
