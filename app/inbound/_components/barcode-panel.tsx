@@ -1,8 +1,7 @@
 "use client";
 
-import { Keyboard } from "lucide-react";
 import { Ean13Barcode } from "./ean-13-barcode";
-import { Btn, Field, Panel, Sunken, w98 } from "./win98-ui";
+import { Field, Panel, Sunken, w98 } from "./win98-ui";
 
 /**
  * 1-1 진입점 — 목업의 `Barcode Data` 패널. 이 화면의 시작이다.
@@ -11,8 +10,10 @@ import { Btn, Field, Panel, Sunken, w98 } from "./win98-ui";
  * 바코드는 입력란에 직접 쳐서 조회한다(Enter · Scan) — 아래 EAN-13 그래픽이 조회한
  * 값을 사람이 눈으로 대조하는 수단이다.
  *
- * 키보드 버튼은 시연용 바코드 자동 발급이 쓰던 자리다. 후계 기능(ASN 미검수 품목
- * 선택, Stage 3)이 들어올 때까지 자리만 남기고 비활성화했다.
+ * ⚠️ 시연용 바코드 자동 발급 버튼이 있던 자리는 **없앴다**. 그 자리를 예약해 두던 후계
+ *    기능(ASN 미검수 품목 선택, Stage 3)이 도착해서다 — `pending-items-panel.tsx` 가 그
+ *    역할을 맡는다(page.tsx 에서 이 패널 아래에 둔다). 품목을 클릭하면 거기서 이 패널의
+ *    입력란을 채우고 스캔까지 실행하므로, 이 패널 자체는 손대지 않았다.
  */
 export function BarcodePanel({
   value,
@@ -61,16 +62,6 @@ export function BarcodePanel({
           aria-invalid={error ? true : undefined}
           className="h-10 min-w-0 flex-1 text-[22px] tabular-nums tracking-wide"
         />
-
-        {/* 시연용 바코드 자동 발급 버튼이 있던 자리 — 후계 기능 대기 중이라 비활성이다 */}
-        <Btn
-          disabled
-          title="Stage 3: ASN 미검수 품목으로 대체"
-          aria-label="다음 바코드 불러오기 — 준비 중"
-          className="flex h-10 shrink-0 items-center justify-center px-2.5"
-        >
-          <Keyboard className="size-5" aria-hidden />
-        </Btn>
       </form>
 
       {/* 조회한 값의 EAN-13 그래픽. 조회 중·실패면 같은 자리를 문구가 쓴다 —
