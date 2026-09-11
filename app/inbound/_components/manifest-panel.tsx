@@ -24,6 +24,15 @@ import { Panel, Sunken, w98 } from "./win98-ui";
  *   새로 만드는 게 아니라 이미 확보된 이 칸을 나눠 쓰면 되도록 미리 키워 둔 것이다.
  *   ⚠️ 그래서 내용이 짧아도 칸은 크다. 지금은 빈 아래쪽이 남는 게 정상이다.
  *
+ * ★ **`min-h` 를 얹었다** (우측 열 잘림 수정, Stage 3). Stage 3 가 우측 열에 "미검수 품목" ·
+ *   "검수 입력" 칸을 새로 얹으면서 고정 높이 예산을 넘겼고, `flex-1` 만으로는 이 칸이
+ *   바닥날 때까지 눌려 품목명 한 줄만 남고 잘렸다(사용자 보고). `min-h` 는 품목명(2줄) +
+ *   ITEM ID·GTIN·CLASS·STOCK·DIM 다섯 줄이 잘리지 않는 바닥선이다 — 남는 세로를 먹는
+ *   성질(`flex-1`)은 그대로 두고, 그 아래로는 못 내려가게만 막는다.
+ *   ⚠️ 글자 크기·줄 간격(`leading-*`)은 그대로 뒀다 — 여러 차례 사용자 확인을 거친 값이라
+ *      이 수정에서 건드리지 않는다. 대신 표의 줄 사이 여백(`gap-y-1.5` → `gap-y-1`)과
+ *      구분선 여백(`my-2` → `my-1.5`)만 줄여 자리를 보탰다.
+ *
  * ★ 분류는 **읽기 전용**이다 (D-21). 1-2 `POST /inbound/products` 와 1-7 `GET /categories` 가
  *   v0.5 에서 삭제되어 작업자가 분류를 고르는 UI 도 수기 등록 폼도 없다.
  *   UNKNOWN 은 안내 후 흐름 종료다.
@@ -31,10 +40,17 @@ import { Panel, Sunken, w98 } from "./win98-ui";
 export function ManifestPanel({
   result,
   isPending,
+  stockLabel,
   right,
 }: {
   result?: ScanResponse;
   isPending: boolean;
+  /**
+   * STOCK 줄에 찍을 문구 — Stage 3부터 1-1 응답의 `product.stockQty`(전역 재고, T5)는 쓰지
+   * 않는다(정본 §3.6). 선택한 ASN의 화주 기준으로 `GET /stock?seller&gtin` 합을 page.tsx 가
+   * 계산해 이 문자열로 넘긴다. ASN을 아직 안 골랐으면 그 사정을 이 문자열이 말한다.
+   */
+  stockLabel: string;
   /** 제목 줄 오른쪽에 놓을 것 — 지금은 취급 주의사항 창을 여는 버튼이 들어온다 */
   right?: React.ReactNode;
 }) {
@@ -48,9 +64,14 @@ export function ManifestPanel({
   const status = hasResult ? buildStatus(result) : null;
 
   return (
-    <Panel title="상품 정보" right={right} className="min-h-0 flex-1" bodyClassName="min-h-0 gap-2">
+    <Panel
+      title="상품 정보"
+      right={right}
+      className="min-h-[300px] flex-1 shrink-0"
+      bodyClassName="min-h-0 gap-2"
+    >
       {/* 위 — 텍스트 명세. 남는 세로를 여기가 먹는다 */}
-      <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto p-2`}>
+      <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto p-1`}>
         {/* ★ **품목명만 따로 뽑아 맨 위에 크게 둔다** (사용자 결정 — "우선순위가 필요해").
             여섯 줄이 전부 같은 크기·굵기·색이라 눈이 값을 골라내지 못했다. 그중 작업자가
             실제로 확인하는 건 "지금 든 게 무슨 물건인가" 하나인데, 그게 ITEM ID 와 동급으로
@@ -62,7 +83,7 @@ export function ManifestPanel({
         <ProductName product={result?.product ?? null} isPending={isPending} />
         {hasResult ? (
           <>
-          <div className={`${w98.etched} my-2`} />
+          <div className={`${w98.etched} my-1`} />
 
           {/* ★ **공백으로 맞추던 정렬을 진짜 2단 표로 바꿨다** (사용자 결정 —
                 "글씨끼리 여백을 붙이고 글씨 크기를 키우는 게 가독성 좋을 듯").
@@ -87,8 +108,8 @@ export function ManifestPanel({
               ⚠️ 대신 `tabular-nums` 를 건다. 모노를 포기하면 숫자 폭이 글자마다 달라져
                  GTIN·재고의 자릿수가 세로로 안 맞는데, 이 설정이 숫자만 고정폭으로 만든다.
                  모노가 이 칸에서 실제로 하던 일이 그것 하나였다. */}
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[22px] leading-8 font-bold tabular-nums">
-            {buildRows(result, isPending).map((row) => (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-[22px] leading-7 font-bold tabular-nums">
+            {buildRows(result, isPending, stockLabel).map((row) => (
               <Fragment key={row.label}>
                 <dt className="text-[color:var(--muted-foreground)]">{row.label}</dt>
                 <dd className="break-keep">
@@ -182,6 +203,7 @@ function ProductName({ product, isPending }: { product: Product | null; isPendin
 function buildRows(
   result: ScanResponse | undefined,
   isPending: boolean,
+  stockLabel: string,
 ): { label: string; value: string; accent?: boolean; note?: string }[] {
   const product = isPending ? null : (result?.product ?? null);
 
@@ -201,7 +223,7 @@ function buildRows(
       value: `${product.categoryL} / ${product.categoryM}`,
       accent: true,
     },
-    { label: "STOCK", value: String(product.stockQty) },
+    { label: "STOCK", value: stockLabel },
     {
       label: "DIM",
       value: product.dimStatus,
