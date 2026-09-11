@@ -1,6 +1,6 @@
 "use client";
 
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 import styles from "../_styles/win98.module.css";
 
 /**
@@ -124,6 +124,24 @@ export function Field({
       {...props}
       className={`${styles.input} ${styles.sunken} ${mono ? styles.mono : ""} ${className}`}
     />
+  );
+}
+
+/** 셀렉트 — 입고 화면 `win98-ui.tsx` 의 `Select` 와 같은 모양(파인 + 모노 옵션). 주문 탭의
+ * 화주·상태 필터가 처음 쓴다(Stage 5) — 이 화면에는 지금까지 셀렉트가 없어서 새로 옮겨 왔다. */
+export function Select({
+  className = "",
+  mono = false,
+  children,
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement> & { mono?: boolean; children: ReactNode }) {
+  return (
+    <select
+      {...props}
+      className={`${styles.input} ${styles.sunken} ${mono ? styles.mono : ""} ${className}`}
+    >
+      {children}
+    </select>
   );
 }
 

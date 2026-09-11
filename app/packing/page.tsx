@@ -9,6 +9,7 @@ import { BoxRecommendationPanel, boxLabel } from "./_components/box-recommendati
 import { Box3DViewer } from "./_components/box-3d-viewer";
 import { LineShipmentsPanel } from "./_components/line-shipments-panel";
 import { PackActions } from "./_components/pack-actions";
+import { OrdersTab } from "./_components/orders-tab";
 import { ProductImagePanel } from "./_components/product-image-panel";
 import { ShipmentItemsPanel } from "./_components/shipment-items-panel";
 import { ToteScanPanel } from "./_components/tote-scan-panel";
@@ -46,8 +47,19 @@ import {
  *   우측 세로: 3D 상자 flex-1 + gap 8 + [제품 이미지 | 박스 추천] 230 + 액션(버튼 64)
  *             → 실패 배너가 뜨면 그만큼 3D 상자가 줄어든다. 합은 항상 고정이다.
  *   ⚠️ 이 화면은 스크롤이 없다 — 표와 박스 패널만 자기 안에서 스크롤한다.
+ *
+ * ── 탭 — 포장 / 주문 (Stage 5, 브리프 §3 S5.4) ────────────────────────────
+ *   입고 화면의 검수/진열 탭(`app/inbound/page.tsx`)과 같은 방식: 탭 바 h-5(20px) +
+ *   루트 gap 을 2(8px)→1(4px) 로 줄여 4px 를 되찾고, 나머지 20px 은 아래 872px 짜리
+ *   포장 영역의 flex-1 칸(3D 상자·품목 표)이 그만큼 줄어들며 흡수한다 — 둘 다 flex-1 이라
+ *   찌그러질 뿐 넘치지 않는다(브라우저로 두 탭 모두 overflow 0 재확인, 브리프 §5).
+ *   "주문" 탭은 언마운트 없이 hidden 으로만 감춘다 — 포장 탭의 스캔 중간 상태(아래
+ *   `barcode`/`shipmentId` 등)가 탭을 오가도 사라지지 않아야 한다(입고 화면 주석과 같은 이유).
  */
 export default function PackingV2Page() {
+  /** 포장 / 주문 두 탭. "주문" 탭은 자기 상태·데이터 훅을 통째로 들고 있다(`orders-tab.tsx`
+   * 머리말 참고) — 여기서는 지금 켜진 탭만 기억한다. */
+  const [activeTab, setActiveTab] = useState<"packing" | "orders">("packing");
   /* ── 화면 상태 (서버 데이터가 아닌 것만) ────────────────── */
   const [barcode, setBarcode] = useState("");
   const [shipmentId, setShipmentId] = useState<number | null>(null);
@@ -213,7 +225,32 @@ export default function PackingV2Page() {
 
   /* ── 표시 ──────────────────────────────────────────────── */
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-1">
+      {/* ── 탭 — 포장 / 주문 (Stage 5) ────────────────────────
+          ⚠️ 높이 h-5(20px) — 입고 화면의 검수/진열 탭 바와 같은 값. 위 docstring "세로 예산"
+             참고. 아래 gap-1 도 그 계산에 들어간다. */}
+      <div className="flex shrink-0 gap-1">
+        <Btn
+          pressed={activeTab === "packing"}
+          onClick={() => setActiveTab("packing")}
+          className="h-5 px-3 text-[13px] font-bold"
+        >
+          포장
+        </Btn>
+        <Btn
+          pressed={activeTab === "orders"}
+          onClick={() => setActiveTab("orders")}
+          className="h-5 px-3 text-[13px] font-bold"
+        >
+          주문
+        </Btn>
+      </div>
+
+      {activeTab === "orders" ? <OrdersTab /> : null}
+
+      {/* 포장 탭 — 기존 화면. 언마운트하지 않고 숨기기만 한다: 토트 스캔 중간 상태가 탭을
+          오가도 사라지지 않아야, 실수로 주문 탭을 눌렀다가 돌아와도 하던 작업이 남는다. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2" hidden={activeTab !== "packing"}>
       {/* 3-5 진입점. TOTE_NOT_ASSIGNED(404) 는 이 바 오른쪽에 표시된다 */}
       <ToteScanPanel
         value={barcode}
@@ -373,6 +410,7 @@ export default function PackingV2Page() {
             error={completePacking.error}
           />
         </div>
+      </div>
       </div>
     </div>
   );
