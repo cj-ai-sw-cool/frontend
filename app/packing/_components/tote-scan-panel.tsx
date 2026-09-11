@@ -121,13 +121,6 @@ export function ToteScanPanel({
             ))}
           </select>
         )}
-        <Btn
-          disabled
-          title="Stage 6: 웨이브 생성으로 대체"
-          className="h-9 shrink-0 px-3 text-[14px]"
-        >
-          Load
-        </Btn>
       </div>
 
       {/* 실패 · 요약이 같은 자리를 쓴다. 스캔 전에는 비워 둔다 — 높이는 고정폭 컨테이너가 잡는다.

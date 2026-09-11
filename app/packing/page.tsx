@@ -13,6 +13,7 @@ import { OrdersTab } from "./_components/orders-tab";
 import { ProductImagePanel } from "./_components/product-image-panel";
 import { ShipmentItemsPanel } from "./_components/shipment-items-panel";
 import { ToteScanPanel } from "./_components/tote-scan-panel";
+import { WaveCreateDialog } from "./_components/wave-create-dialog";
 import { useLines } from "./_data/use-lines";
 import { useLineShipments } from "./_data/use-line-shipments";
 import {
@@ -23,6 +24,7 @@ import {
   useShipmentDetail,
   useToteScan,
 } from "./_data/use-shipment-detail";
+import { useCreateWave } from "./_data/use-waves";
 
 /**
  * 출고 포장 화면 (win98 스킨) — P2 담당 화면의 디자인 작업본이다.
@@ -58,8 +60,13 @@ import {
  */
 export default function PackingV2Page() {
   /** 포장 / 주문 두 탭. "주문" 탭은 자기 상태·데이터 훅을 통째로 들고 있다(`orders-tab.tsx`
-   * 머리말 참고) — 여기서는 지금 켜진 탭만 기억한다. */
+   * 머리말 참고) — 여기서는 지금 켜진 탭만 기억한다. ("웨이브" 탭은 Stage 6 다음 커밋에서
+   * 추가한다 — 지금 커밋은 "주문 투입" 버튼·대화 상자만.) */
   const [activeTab, setActiveTab] = useState<"packing" | "orders">("packing");
+  /** "주문 투입" 대화 상자 — 탭과 무관하게 항상 누를 수 있어 탭 바 옆에 둔다(정본 §6.7,
+   * 브리프 §3 S6.5 "포장 화면 '주문 투입' 버튼"). */
+  const [isWaveDialogOpen, setIsWaveDialogOpen] = useState(false);
+  const createWave = useCreateWave();
   /* ── 화면 상태 (서버 데이터가 아닌 것만) ────────────────── */
   const [barcode, setBarcode] = useState("");
   const [shipmentId, setShipmentId] = useState<number | null>(null);
@@ -223,26 +230,68 @@ export default function PackingV2Page() {
 
   const isScanning = scan.isPending || shipmentQuery.isLoading;
 
+  /**
+   * "웨이브 생성" 제출 — 정본 §6.4. 성공은 대화 상자 안 결과 뷰로 보여 주고(토스트로만
+   * 흘려보내지 않는다 — 화면 체크 2번이 주문 수·배치 수·태스크 수·skipped 를 직접 봐야
+   * 한다), 실패는 대화 상자 안 에러 문구로만 보여준다(폼이 그대로 남아 다시 시도할 수 있게).
+   */
+  const handleCreateWave = useCallback(
+    (cutoffAt: string) => {
+      createWave.mutate(
+        { cutoffAt },
+        {
+          onSuccess: (data) => {
+            toast.success(`웨이브 ${data.waveNo} 생성 완료`, w98Toast.success);
+          },
+          onError: (error) => {
+            toast.error("웨이브 생성에 실패했습니다", { ...w98Toast.notice, description: error.message });
+          },
+        },
+      );
+    },
+    [createWave],
+  );
+
+  /** 대화 상자를 닫을 때 이전 결과를 지운다 — 안 지우면 다시 열었을 때 결과 뷰가 먼저
+   * 보이고 폼으로 못 돌아간다(뮤테이션 상태는 대화 상자 열림과 무관하게 남아 있다). */
+  const handleWaveDialogOpenChange = useCallback(
+    (open: boolean) => {
+      setIsWaveDialogOpen(open);
+      if (!open) createWave.reset();
+    },
+    [createWave],
+  );
+
   /* ── 표시 ──────────────────────────────────────────────── */
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1">
       {/* ── 탭 — 포장 / 주문 (Stage 5) ────────────────────────
           ⚠️ 높이 h-5(20px) — 입고 화면의 검수/진열 탭 바와 같은 값. 위 docstring "세로 예산"
              참고. 아래 gap-1 도 그 계산에 들어간다. */}
-      <div className="flex shrink-0 gap-1">
+      <div className="flex shrink-0 items-center justify-between gap-1">
+        <div className="flex gap-1">
+          <Btn
+            pressed={activeTab === "packing"}
+            onClick={() => setActiveTab("packing")}
+            className="h-5 px-3 text-[13px] font-bold"
+          >
+            포장
+          </Btn>
+          <Btn
+            pressed={activeTab === "orders"}
+            onClick={() => setActiveTab("orders")}
+            className="h-5 px-3 text-[13px] font-bold"
+          >
+            주문
+          </Btn>
+        </div>
+
+        {/* "주문 투입" — 탭과 무관한 전역 액션이라 탭 바 오른쪽에 고정한다(정본 §6.7) */}
         <Btn
-          pressed={activeTab === "packing"}
-          onClick={() => setActiveTab("packing")}
+          onClick={() => setIsWaveDialogOpen(true)}
           className="h-5 px-3 text-[13px] font-bold"
         >
-          포장
-        </Btn>
-        <Btn
-          pressed={activeTab === "orders"}
-          onClick={() => setActiveTab("orders")}
-          className="h-5 px-3 text-[13px] font-bold"
-        >
-          주문
+          주문 투입
         </Btn>
       </div>
 
@@ -412,6 +461,15 @@ export default function PackingV2Page() {
         </div>
       </div>
       </div>
+
+      <WaveCreateDialog
+        open={isWaveDialogOpen}
+        onOpenChange={handleWaveDialogOpenChange}
+        onSubmit={handleCreateWave}
+        isSubmitting={createWave.isPending}
+        result={createWave.data ?? null}
+        error={createWave.error?.message ?? null}
+      />
     </div>
   );
 }
