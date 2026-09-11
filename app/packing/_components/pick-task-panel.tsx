@@ -4,11 +4,13 @@ import type { PickBatchDetail, PickTaskStatus } from "@/lib/types";
 import { PICK_BATCH_STATUS_LABEL } from "./wave-detail-panel";
 import { Panel, Sunken, w98 } from "./win98-ui";
 
-/** 피킹 태스크 상태 → 화면 표기 — 정본 §6.3. 배치 생성 직후는 전부 PENDING */
+/** 피킹 태스크 상태 → 화면 표기 — 정본 §6.3·§7.2. 배치 생성 직후는 전부 PENDING.
+ * `CANCELLED` 는 Stage 7 — 재할당 실패로 주문이 취소돼 남은 태스크가 이 상태가 된다 */
 const PICK_TASK_STATUS_LABEL: Record<PickTaskStatus, string> = {
   PENDING: "대기",
   PICKED: "완료",
   SHORT: "부족",
+  CANCELLED: "취소",
 };
 
 /**

@@ -1,5 +1,5 @@
 /**
- * 화면 3개 정의 — Windows 98 스킨 화면이 완성본이다(Stage 0 정리, docs/tasks/
+ * 화면 4개 정의 — Windows 98 스킨 화면이 완성본이다(Stage 0 정리, docs/tasks/
  * 2026-09-09-stage0-frontend-cleanup-handoff.md §2 S0.2). 서버·클라이언트 양쪽에서
  * 쓰므로 "use client" 모듈에 두지 않는다.
  *
@@ -20,6 +20,11 @@ export const NAV = [
     href: "/packing",
     label: "출고 포장",
     description: "토트 스캔 → 박스 추천 → 포장 완료",
+  },
+  {
+    href: "/picking",
+    label: "피킹",
+    description: "작업자 코드 → 배치 claim → 칸 순서 집품",
   },
   {
     href: "/analytics",
