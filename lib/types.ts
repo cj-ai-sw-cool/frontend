@@ -120,11 +120,12 @@ export interface ConfirmResponse {
 }
 
 /**
- * 1-5 `POST /inbound/stock-in` — 재고 증가의 유일한 경로 (D-09).
- *
- * Stage 2 전환기 규칙 T1(정본 02-data-model.md §2.5) — 화주·로트번호가 필수로 추가됐다.
- * 로트가 없으면 서버가 새로 만든다. 유통기한은 선택이다.
- * // Stage 2 transitional (T1): replaced in Stage 3 (ASN 검수가 대체)
+ * ~~1-5 `POST /inbound/stock-in`~~ — Stage 3 에서 삭제(정본 §3.5 "기존 POST /inbound/stock-in
+ * 은 삭제"). Stage 2 전환기(T1)의 화주·로트 필수 재고 증가 경로였는데, ASN 검수
+ * (`POST /receipts/{id}/items`, `AddReceiptItemRequest`)로 대체됐다.
+ * `lib/endpoints.ts`·`_data/use-inbound.ts` 는 이 계약을 더 이상 부르지 않는다 — 타입만 남긴
+ * 이유는 미사용 데모 목업(`app/inbound/_mock/inbound.ts`, 어디서도 import 되지 않는다)이
+ * 여전히 참조해서다.
  */
 export interface StockInRequest {
   productId: number;

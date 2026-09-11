@@ -36,8 +36,6 @@ import type {
   ShipmentDetail,
   ShipmentListItem,
   ShipmentStatus,
-  StockInRequest,
-  StockInResponse,
   StockItem,
   StockLedgerEntry,
   StockOccupancyRow,
@@ -61,12 +59,8 @@ export const inbound = {
   confirm: (sessionId: number, body: ConfirmRequest) =>
     api.post<ConfirmResponse>(`/inbound/measurements/${sessionId}/confirm`, body),
 
-  /**
-   * 1-5 수량 입고 — 재고 증가의 유일한 경로 (D-09).
-   * Stage 2 T1 — 화주·로트번호 필수, 유통기한 선택 (정본 §2.5).
-   * // Stage 2 transitional (T1): replaced in Stage 3 (ASN 검수가 대체)
-   */
-  stockIn: (body: StockInRequest) => api.post<StockInResponse>("/inbound/stock-in", body),
+  /* Stage 2 T1 의 1-5 `stockIn`(`POST /inbound/stock-in`)은 Stage 3 에서 삭제됐다 — 재고 증가는
+     `asn.addItem`(`POST /receipts/{id}/items`)으로 대체됐다(정본 §3.5). */
 
   /** 1-6 제품 원본 이미지 (출고 화면에서도 재사용) */
   productImages: (productId: number) =>

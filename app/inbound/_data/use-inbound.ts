@@ -4,8 +4,7 @@
  * 입고(win98) 화면의 데이터 훅 — 실제 API 호출 (docs/02-api-spec.md §1).
  *
  * 호출 래퍼는 `@/lib/endpoints` 의 `inbound` 를 쓴다(컴포넌트에서 fetch 직접 호출 금지).
- * 대응 관계: 1-1 useBarcodeScan / 1-3 useMeasure / 1-4 useConfirmMeasurement
- *            1-5 useStockIn / 1-6 useProductImages
+ * 대응 관계: 1-1 useBarcodeScan / 1-3 useMeasure / 1-4 useConfirmMeasurement / 1-6 useProductImages
  *
  * 에러는 `lib/api.ts` 가 계약 포맷(§0)을 `ApiError` 로 바꿔 던진다 — 화면은
  * `error.is("GATE_NOT_PASSED")` 처럼 코드로 분기한다(page.tsx 의 describeConfirmFailure).
@@ -14,18 +13,21 @@
  *    두 계약이 v0.5 에서 삭제됐다 (D-21). 미등록 바코드는 1-1 에서 "코리안넷 마스터에 없는
  *    상품"으로 안내하고 흐름을 종료하므로 임시 마스터를 만들 이유가 없고, 분류는 1-1 응답의
  *    categoryL/categoryM 을 표시만 하므로 목록 조회도 필요 없다.
+ *
+ * ⚠️ 1-5 `useStockIn`(`POST /inbound/stock-in`)도 **없다.** Stage 2 전환기(T1)에서 화주·
+ *    로트번호를 받아 재고를 늘리던 경로였는데, Stage 3 에서 `POST /receipts/{id}/items` 로
+ *    대체되며 백엔드 엔드포인트 자체가 삭제됐다(정본 §3.5 "기존 POST /inbound/stock-in 은
+ *    삭제"). 그 경로는 `_data/use-asn.ts` 의 `useAddReceiptItem` 이 잇는다.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { inbound, master, queryKeys } from "@/lib/endpoints";
-import type { ConfirmRequest, StockInRequest } from "@/lib/types";
+import type { ConfirmRequest } from "@/lib/types";
 
 export interface ConfirmVariables {
   sessionId: number;
   body: ConfirmRequest;
 }
-
-export type StockInVariables = StockInRequest;
 
 /**
  * 1-1 바코드 스캔 — 입고 화면 진입점. 3분기 판정을 그대로 돌려준다.
@@ -80,26 +82,7 @@ export function useConfirmMeasurement() {
 }
 
 /**
- * 1-5 수량 입고 — 촬영분 포함 전체 수량. 재고 증가의 **유일한** 경로다 (D-09).
- * 1-4 확정은 재고를 건드리지 않으므로, 촬영에 쓴 실물 1개도 여기 수량에 포함해 한 번에 넣는다.
- *
- * Stage 2 T1 — 화주·로트번호가 필수로 추가됐다(정본 §2.5). 로트가 없으면 서버가 만든다.
- * // Stage 2 transitional (T1): replaced in Stage 3 (ASN 검수가 대체)
- */
-export function useStockIn() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (body: StockInVariables) => inbound.stockIn(body),
-    onSuccess: () => {
-      // 대시보드의 입고 집계가 바뀐다
-      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboardSummary });
-    },
-  });
-}
-
-/**
- * 화주 목록 — 수량 패널의 화주 select (Stage 2 T1).
+ * 화주 목록 — ASN 등록 폼의 화주 select.
  * `master.sellers()` 는 분석 화면과 같은 엔드포인트·쿼리 키를 쓴다 — 화주 목록은 화면마다
  * 다시 정의할 계약이 아니다.
  */
