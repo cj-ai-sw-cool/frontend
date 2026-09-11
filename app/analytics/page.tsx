@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { FlowPanel } from "./_components/flow-panel";
 import { InventoryWindow } from "./_components/inventory-window";
 import { MasterWindow, type WarehouseApi } from "./_components/master-window";
@@ -41,6 +42,36 @@ const WarehouseSlot3D = dynamic(
     ),
   },
 );
+
+/**
+ * `/analytics?highlight=<로케이션 코드>` 진입점 — 진열(Stage 4) 탭의 "3D에서 보기" 버튼이
+ * 이 쿼리로 옮겨 온다(정본 §4.6). **존 단위까지만 강조한다** — 3D `flyTo`/`setHighlight`
+ * 가 지금 받는 값은 구역 하나(zone id)뿐이다(`master-window.tsx` 머리말 "존·랙 단위 강조까지만
+ * 한다" 참고). 그래서 로케이션 코드의 첫 글자(zone, 예 "A-03-02-14" → "A")만 잘라 쓴다 —
+ * 칸 하나까지 정확히 확대하려면 3D 엔진에 칸 단위 flyTo 를 새로 만들어야 하는데, 그건 이
+ * 파일(P3)이 아니라 3D 엔진(`warehouse-slot-3d.jsx`) 쪽 작업이라 범위 밖이다(Stage 4 프론트
+ * 인수인계 보고 참고).
+ *
+ * `useSearchParams` 를 쓰는 조각만 따로 떼어 `<Suspense>` 로 감싼다 — 페이지 전체가 아니라
+ * 이 훅을 쓰는 자리만 감싸면 된다(App Router 규칙, 정적 렌더에서 에러가 나지 않게 하는 최소
+ * 단위). 렌더할 것이 없어 `null` 만 돌려준다.
+ */
+function HighlightFromQuery({ onHighlight }: { onHighlight: (zoneCode: string) => void }) {
+  const searchParams = useSearchParams();
+  const highlight = searchParams.get("highlight");
+  /** 같은 값으로 두 번 열지 않는다 — 사용자가 3D 안에서 다른 존으로 옮겨도 URL 은 안 바뀌므로,
+   * 이 값이 그대로면 그 조작을 덮어쓰지 않는다. */
+  const appliedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (highlight === null || highlight === appliedRef.current) return;
+    appliedRef.current = highlight;
+    const zoneCode = highlight.split("-")[0]?.toUpperCase();
+    if (zoneCode) onHighlight(zoneCode);
+  }, [highlight, onHighlight]);
+
+  return null;
+}
 
 /**
  * 분석 화면 (win98 스킨) — **아직 비어 있다.** 자리와 생김새만 잡아 둔 뼈대다 (사용자 요청).
@@ -91,6 +122,13 @@ export default function AnalyticsPage() {
   const close = useCallback(() => {
     setFull(false);
     setHighlightZone(null);
+  }, []);
+
+  /** `HighlightFromQuery` 가 URL 의 `?highlight=` 를 읽고 부르는 콜백 — `locateZone` 과 같은
+   * "닫혀 있으면 initialHighlight 로 새로 연다" 규칙을 쓴다(위 경쟁 상태 주의 참고). */
+  const applyHighlightFromQuery = useCallback((zoneCode: string) => {
+    setHighlightZone(zoneCode);
+    setFull(true);
   }, []);
 
   /* `WarehouseSlot3D` 가 `onReady` 로 넘긴 api 핸들 — 3D 가 이미 열려 있을 때 마스터
@@ -150,6 +188,10 @@ export default function AnalyticsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <Suspense fallback={null}>
+        <HighlightFromQuery onHighlight={applyHighlightFromQuery} />
+      </Suspense>
+
       {/* ── 위 — 흐름도 한 줄이 **화면 폭을 다 쓴다** ────────────────────
           ★ 전에는 왼쪽 3/4 만 쓰고 오른쪽 칸이 위아래로 붙어 있었다. 흐름도를 더 넓게
             달라는 요청에 맞춰, 이 줄을 **전체 폭**으로 올리고 지도·재고를 그 아래 나란히

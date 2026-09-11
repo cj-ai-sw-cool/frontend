@@ -27,8 +27,10 @@ import { ManualInputDialog } from "./_components/manual-input-dialog";
 import { MeasurementPanel } from "./_components/measurement-panel";
 import { PendingItemsPanel } from "./_components/pending-items-panel";
 import { PrecautionsPanel } from "./_components/precautions-panel";
+import { PutawayTab } from "./_components/putaway-tab";
 import { ReceiptInputPanel } from "./_components/receipt-input-panel";
 import { VisualInspectionPanel } from "./_components/visual-inspection-panel";
+import { Btn } from "./_components/win98-ui";
 import {
   useAddReceiptItem,
   useArriveAsn,
@@ -87,6 +89,11 @@ import {
  *   `page.tsx` (이 파일)    셋을 이어 붙이고 화면 상태를 들고 있다
  */
 export default function InboundPage() {
+  /* ── 탭 (Stage 4, 브리프 §3 S4.3) ─────────────────────────
+     검수(기존 3열)·진열(신규, putaway-tab.tsx) 두 탭. 진열 탭은 자기 상태·데이터 훅을 통째로
+     들고 있어(PutawayTab 머리말 참고) 여기서는 지금 켜진 탭만 기억한다. */
+  const [activeTab, setActiveTab] = useState<"inspect" | "putaway">("inspect");
+
   /* ── ASN 화면 상태 (좌측 열) ─────────────────────────────── */
   const [statusFilter, setStatusFilter] = useState<AsnStatus | "ALL">("ALL");
   const [selectedAsnId, setSelectedAsnId] = useState<number | null>(null);
@@ -493,7 +500,39 @@ export default function InboundPage() {
 
   /* ── 표시 ──────────────────────────────────────────────── */
   return (
-    <div className="relative flex min-h-0 flex-1 gap-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-1">
+      {/* ── 탭 — 검수 / 진열 (Stage 4) ──────────────────────────
+          ⚠️ 높이를 h-5(20px)로 눌러 뒀다 — 두 탭 다 이 줄만큼 세로 예산이 줄어든다.
+             검수 탭 우측 열은 Stage 3 에서 이미 872px 를 1px 여유로 채워 뒀던 자리라
+             (`f9b7d9c`), 이 탭 바가 먹는 높이를 shell.tsx(pt-1)·이 파일의 우측 열
+             gap(전부 제거)에서 되찾았다 — 세 군데를 합쳐야 다시 맞는다. 브라우저로
+             잘림 여부를 반드시 재확인했다(브리프 §5). */}
+      <div className="flex shrink-0 gap-1">
+        <Btn
+          pressed={activeTab === "inspect"}
+          onClick={() => setActiveTab("inspect")}
+          className="h-5 px-3 text-[13px] font-bold"
+        >
+          검수
+        </Btn>
+        <Btn
+          pressed={activeTab === "putaway"}
+          onClick={() => setActiveTab("putaway")}
+          className="h-5 px-3 text-[13px] font-bold"
+        >
+          진열
+        </Btn>
+      </div>
+
+      {activeTab === "putaway" ? <PutawayTab /> : null}
+
+      {/* 검수 탭 — 기존 3열. 언마운트하지 않고 숨기기만 한다: 스캔·측정·검수 입력 중간
+          상태(page.tsx 상단 상태들)가 탭을 오가도 사라지지 않아야, 실수로 진열 탭을
+          눌렀다가 돌아와도 입력하던 값이 남는다. */}
+      <div
+        className="relative flex min-h-0 flex-1 gap-2"
+        hidden={activeTab !== "inspect"}
+      >
       {/* ── 좌측 300px: ASN 목록 + 상세 (Stage 3 신규) ──────── */}
       <div className="flex w-[300px] shrink-0 flex-col gap-2">
         <AsnListPanel
@@ -541,8 +580,12 @@ export default function InboundPage() {
       {/* ── 우측 380px: 목업 right sidebar + 신규 두 칸 ──────── */}
       {/* ⚠️ 칸 사이 여백을 gap-2 → gap-1.5 로 줄였다 (우측 열 잘림 수정, Stage 3) — 패널이
           여섯 개로 늘어난 뒤 고정 높이 예산이 빠듯해져, "상품 정보" 칸이 항상 전부 보이게
-          하려면 칸마다 조금씩 자리를 돌려줘야 했다. */}
-      <div className="flex w-[380px] shrink-0 flex-col gap-1">
+          하려면 칸마다 조금씩 자리를 돌려줘야 했다.
+          ⚠️ gap-1 → **0** (Stage 4, 검수/진열 탭 바 추가) — 탭 바가 새로 먹는 높이를
+             여기서 마저 되찾는다(shell.tsx pt-1 주석과 같은 사정). 패널마다 이미 raised
+             테두리가 있어 붙여도 구분이 되므로, 간격을 없애도 어느 칸이 어느 칸인지는
+             여전히 또렷하다. */}
+      <div className="flex w-[380px] shrink-0 flex-col">
         {/* 1-1 진입점. 못 찾은 바코드도 200 + UNKNOWN 이라 에러 자리는 평소 비어 있다 */}
         <BarcodePanel
           value={barcode}
@@ -602,6 +645,7 @@ export default function InboundPage() {
           submitHint={plan.hint}
           onSubmit={handleSubmit}
         />
+      </div>
       </div>
 
       {/* Radix Dialog 라 여기 자리에는 DOM 이 생기지 않는다(스테이지로 포탈) */}
