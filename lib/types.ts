@@ -23,7 +23,9 @@ export type ApiErrorCode =
   | "LOCATION_NOT_FOUND"
   /** 혼적 규칙 위반(Stage 2) — 정본 §2.3. BIN 로케이션에 다른 화주, 또는 같은 상품에
    * 다른 로트를 놓으려 할 때 409 */
-  | "MIXING_VIOLATION";
+  | "MIXING_VIOLATION"
+  /** 검수 입력(Stage 3) — 스캔한 GTIN이 선택한 ASN의 품목에 없을 때 409(정본 §3.5) */
+  | "ASN_ITEM_NOT_FOUND";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -457,5 +459,138 @@ export interface Page<T> {
   first: boolean;
   last: boolean;
   empty: boolean;
+}
+
+/* ── 6. 입고 — ASN·수령·검수 (Stage 3) ─────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §3.2·§3.5, docs/tasks/
+   2026-09-11-stage3-inbound-asn-handoff.md §3. 백엔드 응답 DTO 필드명은 문서에
+   테이블(컬럼)만 있고 JSON 스키마가 없어, 이 저장소의 다른 목록/상세 응답(예: StockItem
+   의 seller/product 중첩 객체)과 같은 관례로 설계했다 — 라이브 검증에서 실제 응답과 어긋나면
+   이 파일과 `endpoints.ts` 의 `asn` 묶음만 고치면 된다(화면 컴포넌트는 타입을 통해서만 닿는다). */
+
+export type AsnStatus = "REGISTERED" | "ARRIVED" | "RECEIVING" | "PARTIALLY_RECEIVED" | "CLOSED";
+export type ReceiptStatus = "OPEN" | "COMPLETED";
+export type Discrepancy = "SHORT" | "OVER" | "DAMAGED" | "LOT_CHANGED";
+
+/** `POST /asns` 요청의 품목 한 줄 — 로트는 화주(ASN)가 갖고 온다(정본 §3.1) */
+export interface AsnItemCreate {
+  gtin: string;
+  expectedQty: number;
+  lotNo: string;
+  expiresOn?: string | null;
+}
+
+/** `POST /asns` 요청 */
+export interface CreateAsnRequest {
+  sellerCode: string;
+  asnNo: string;
+  expectedOn: string;
+  note?: string;
+  items: AsnItemCreate[];
+}
+
+/** `GET /asns` 목록 행 */
+export interface AsnListItem {
+  id: number;
+  seller: { code: string; name: string };
+  asnNo: string;
+  expectedOn: string;
+  status: AsnStatus;
+  note: string | null;
+  createdAt: string;
+  closedAt: string | null;
+}
+
+/** `GET /asns` 쿼리 */
+export interface AsnQuery {
+  seller?: string;
+  status?: AsnStatus;
+  page?: number;
+  size?: number;
+}
+
+/** `GET /asns/{id}` 품목 한 줄 — 예정·수령 누계·파손 누계·미달을 서버가 집계해 준다 */
+export interface AsnItemDetail {
+  id: number;
+  product: { id: number; gtin: string; name: string };
+  expectedQty: number;
+  lotNo: string;
+  expiresOn: string | null;
+  /** 같은 asn_item 에 걸린 receipt_item.received_qty 합(정본 §3.2) */
+  receivedQty: number;
+  /** 같은 asn_item 에 걸린 receipt_item.damaged_qty 합 */
+  damagedQty: number;
+  /** max(expectedQty - receivedQty, 0) */
+  shortQty: number;
+}
+
+/** `GET /asns/{id}` 의 receipt 목록 한 줄 */
+export interface AsnReceiptSummary {
+  id: number;
+  seqNo: number;
+  arrivedAt: string;
+  status: ReceiptStatus;
+  completedAt: string | null;
+}
+
+/** `GET /asns/{id}` 상세 */
+export interface AsnDetail extends AsnListItem {
+  items: AsnItemDetail[];
+  receipts: AsnReceiptSummary[];
+}
+
+/** `POST /asns/{id}/arrive` 응답 — 새로 연 receipt */
+export interface ArriveAsnResponse {
+  receiptId: number;
+  seqNo: number;
+}
+
+/** `GET /receipts/{id}/pending-items` 행 — 이 receipt 에서 아직 검수 입력 안 된 ASN 품목 */
+export interface PendingReceiptItem {
+  asnItemId: number;
+  product: { id: number; gtin: string; name: string };
+  expectedQty: number;
+  lotNo: string;
+  expiresOn: string | null;
+}
+
+export interface PendingItemsResponse {
+  items: PendingReceiptItem[];
+}
+
+/** `POST /receipts/{id}/items` 요청 — GTIN 이 이 ASN 에 없으면 409 `ASN_ITEM_NOT_FOUND` */
+export interface AddReceiptItemRequest {
+  gtin: string;
+  receivedQty: number;
+  damagedQty: number;
+  lotNo?: string;
+  expiresOn?: string | null;
+}
+
+/** `POST /receipts/{id}/items` 응답 — 등록된 receipt_item */
+export interface ReceiptItemResponse {
+  id: number;
+  asnItemId: number;
+  product: { id: number; gtin: string; name: string };
+  receivedQty: number;
+  damagedQty: number;
+  lotNo: string;
+  expiresOn: string | null;
+  discrepancy: Discrepancy | null;
+  inspectedAt: string;
+}
+
+/** `POST /receipts/{id}/complete` 응답 — receipt COMPLETED, ASN 상태 판정 결과를 함께 준다 */
+export interface CompleteReceiptResponse {
+  receiptId: number;
+  status: "COMPLETED";
+  asnId: number;
+  asnStatus: AsnStatus;
+}
+
+/** `POST /asns/{id}/close` 응답 */
+export interface CloseAsnResponse {
+  id: number;
+  status: "CLOSED";
 }
 

@@ -4,13 +4,21 @@
  */
 import { api } from "./api";
 import type {
+  AddReceiptItemRequest,
   AdjustInventoryRequest,
   AdjustInventoryResponse,
+  ArriveAsnResponse,
+  AsnDetail,
+  AsnListItem,
+  AsnQuery,
   BoxOverrideResponse,
   BoxType,
+  CloseAsnResponse,
+  CompleteReceiptResponse,
   CompleteResponse,
   ConfirmRequest,
   ConfirmResponse,
+  CreateAsnRequest,
   CreateSellerRequest,
   DailyInventory,
   DashboardSummary,
@@ -20,7 +28,9 @@ import type {
   LocationsQuery,
   MeasurementResponse,
   Page,
+  PendingItemsResponse,
   ProductImagesResponse,
+  ReceiptItemResponse,
   ScanResponse,
   Seller,
   ShipmentDetail,
@@ -169,6 +179,49 @@ export const inventory = {
     api.post<AdjustInventoryResponse>("/admin/inventory/adjust", body),
 };
 
+/* ── 입고 — ASN·수령·검수 (Stage 3) ──────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §3.5, docs/tasks/
+   2026-09-11-stage3-inbound-asn-handoff.md §3. */
+export const asn = {
+  /** ASN 목록 — 상태 필터 탭 */
+  list: (params?: AsnQuery) => api.get<Page<AsnListItem>>(`/asns${toAsnQueryString(params)}`),
+
+  /** ASN 등록 — GTIN 이 product 에 없으면 마스터에서 생성, 마스터에도 없으면 400 */
+  create: (body: CreateAsnRequest) => api.post<AsnDetail>("/asns", body),
+
+  /** ASN 상세 — 품목별 예정·수령 누계·파손 누계·미달, receipt 목록 */
+  get: (id: number) => api.get<AsnDetail>(`/asns/${id}`),
+
+  /** 도착 처리 — ARRIVED(첫 도착) 또는 RECEIVING(재도착), receipt OPEN 생성 */
+  arrive: (id: number) => api.post<ArriveAsnResponse>(`/asns/${id}/arrive`),
+
+  /** 이 receipt 에서 아직 검수 입력 안 된 ASN 품목 — 입고 화면의 미검수 품목 목록 */
+  pendingItems: (receiptId: number) =>
+    api.get<PendingItemsResponse>(`/receipts/${receiptId}/pending-items`),
+
+  /** 검수 입력 — receipt_item + RECEIVE tx. ASN 에 없는 GTIN 은 409 ASN_ITEM_NOT_FOUND */
+  addItem: (receiptId: number, body: AddReceiptItemRequest) =>
+    api.post<ReceiptItemResponse>(`/receipts/${receiptId}/items`, body),
+
+  /** receipt 완료 — ASN 상태 판정(CLOSED / PARTIALLY_RECEIVED) */
+  completeReceipt: (receiptId: number) =>
+    api.post<CompleteReceiptResponse>(`/receipts/${receiptId}/complete`),
+
+  /** 수동 마감 — PARTIALLY_RECEIVED → CLOSED, 미달 품목 SHORT 기록 */
+  close: (id: number) => api.post<CloseAsnResponse>(`/asns/${id}/close`),
+};
+
+function toAsnQueryString(params?: AsnQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.seller !== undefined && params.seller !== "") qs.set("seller", params.seller);
+  if (params.status !== undefined) qs.set("status", params.status);
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.size !== undefined) qs.set("size", String(params.size));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
 function toStockQueryString(params?: StockQuery): string {
   if (!params) return "";
   const qs = new URLSearchParams();
@@ -211,4 +264,7 @@ export const queryKeys = {
   zonesSummary: ["zones", "summary"] as const,
   dailyInventory: (from: string, to: string) => ["inventory", "daily", from, to] as const,
   invariant: ["admin", "inventory", "invariant"] as const,
+  asns: (params?: AsnQuery) => ["asns", params ?? {}] as const,
+  asn: (id: number) => ["asns", id] as const,
+  pendingItems: (receiptId: number) => ["receipts", receiptId, "pending-items"] as const,
 };
