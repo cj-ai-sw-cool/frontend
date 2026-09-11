@@ -72,9 +72,9 @@ export function PickTaskPanel({
                     <td className={`${w98.mono} p-1.5`}>{task.seqNo}</td>
                     <td className={`${w98.mono} p-1.5 font-bold`}>{task.locationCode}</td>
                     <td className="p-1.5">
-                      {task.name}
+                      {task.productName}
                       <span className={`${w98.mono} block text-[11px] text-[color:var(--muted-foreground)]`}>
-                        {task.gtin}
+                        {task.sellerCode} · {task.gtin}
                       </span>
                     </td>
                     <td className={`${w98.mono} p-1.5`}>{task.lotNo}</td>

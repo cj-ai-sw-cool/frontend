@@ -173,7 +173,7 @@ function WaveResultView({
               {result.skipped.map((skipped, index) => (
                 <li key={index} className={`${w98.small} border-t border-[color:var(--border)] pt-1`}>
                   <span className={w98.mono}>
-                    주문 #{skipped.orderId} ·{" "}
+                    {skipped.receiptNo} ·{" "}
                     <b className="text-[color:var(--status-error)]">{skipped.reason}</b>
                   </span>
                   {skipped.detail !== undefined ? (

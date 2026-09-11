@@ -60,7 +60,7 @@ import type {
   WaveCreateResponse,
   WaveDetail,
   WaveListItem,
-  WaveTaskRow,
+  WaveTasksResponse,
   WavesQuery,
   Zone,
   ZoneSummary,
@@ -289,7 +289,7 @@ export const waves = {
 
   /** 배치별 피킹 지시 전체 — 계약에는 있으나 이 화면은 배치 클릭마다 `pickBatches.get` 을
    * 쓴다(더 직접적인 대응이라, outbound.load 와 같은 관례로 래퍼만 둔다) */
-  tasks: (id: number) => api.get<WaveTaskRow[]>(`/waves/${id}/tasks`),
+  tasks: (id: number) => api.get<WaveTasksResponse>(`/waves/${id}/tasks`),
 };
 
 export const pickBatches = {

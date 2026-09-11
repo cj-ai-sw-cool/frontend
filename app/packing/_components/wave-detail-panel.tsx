@@ -136,7 +136,12 @@ export function WaveDetailPanel({
             </table>
           </Sunken>
 
-          {wave.skipped !== undefined && wave.skipped.length > 0 ? (
+          {/* ⚠️ 백엔드 2026-09-11 보고 — 이 목록은 항상 비어 있다(§6.3 스키마에 skipped
+              저장 표가 없어 GET 이 못 채운다). skipped 는 웨이브 생성 결과(`wave-create-
+              dialog.tsx`)에서만 실제로 채워진다 — `lib/types.ts` `WaveDetail.skipped` 주석,
+              사용자 보고 "의사결정 필요 사항" 참고. 그래도 필드는 계약대로 두고, 나중에
+              백엔드가 저장하게 되면 이 화면이 따로 손볼 것 없이 그대로 채워진다. */}
+          {wave.skipped.length > 0 ? (
             <>
               <span className={`${w98.small} shrink-0 font-bold text-[color:var(--status-error)]`}>
                 skipped ({wave.skipped.length}건)
@@ -145,7 +150,7 @@ export function WaveDetailPanel({
                 <ul className="flex flex-col gap-0.5">
                   {wave.skipped.map((skipped, index) => (
                     <li key={index} className={`${w98.small} ${w98.mono}`}>
-                      주문 #{skipped.orderId} · {skipped.reason}
+                      {skipped.receiptNo} · {skipped.reason}
                     </li>
                   ))}
                 </ul>
