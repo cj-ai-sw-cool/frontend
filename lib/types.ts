@@ -774,12 +774,13 @@ export type AllocationStage = "SOFT" | "HARD";
 export type AllocationStatus = "ACTIVE" | "CONSUMED" | "CANCELLED";
 
 /**
- * 주문 품목 한 줄의 할당 — 정본 §5.2. `lotNo`/`locationCode` 는 HARD 에서만 채워진다(Stage 6).
- * `allocationId`/`orderItemId` — 2026-09-11 라이브 검증으로 정정. 계약 초안에는 품목 아래
- * 중첩으로 적었지만, 실제로는 `OrderDetail.allocations` 가 **품목과 나란한 최상위 배열**이고
- * `orderItemId` 로 그 품목을 가리킨다 — 화면(`order-detail-panel.tsx`)이 이 값으로 묶는다.
- * SOFT 단계에서는 `lotNo`/`locationCode` 가 응답에 아예 없다(`null` 이 아니라 필드 자체가
- * 빠진다) — 그래서 옵셔널로 둔다.
+ * 주문 품목 한 줄의 할당 — 정본 §5.2. `lotNo`/`locationCode`/`expiresOn` 은 HARD 에서만
+ * 채워진다(Stage 6, 정본 §6.7 "HARD 할당(칸·로트·유통기한)"). `allocationId`/`orderItemId`
+ * — 2026-09-11 라이브 검증으로 정정. 계약 초안에는 품목 아래 중첩으로 적었지만, 실제로는
+ * `OrderDetail.allocations` 가 **품목과 나란한 최상위 배열**이고 `orderItemId` 로 그 품목을
+ * 가리킨다 — 화면(`order-detail-panel.tsx`)이 이 값으로 묶는다.
+ * SOFT 단계에서는 `lotNo`/`locationCode`/`expiresOn` 이 응답에 아예 없다(`null` 이 아니라
+ * 필드 자체가 빠진다) — 그래서 옵셔널로 둔다.
  */
 export interface OrderAllocation {
   allocationId: number;
@@ -791,6 +792,8 @@ export interface OrderAllocation {
   status: AllocationStatus;
   lotNo?: string | null;
   locationCode?: string | null;
+  /** 로트 유통기한 — HARD 할당에서만(Stage 6). 라이브 검증 전까지 필드 존재를 가정만 한다 */
+  expiresOn?: string | null;
 }
 
 /** `orderItemId` — 2026-09-11 라이브 검증으로 정정(계약 초안의 `id` 대신) */
@@ -891,11 +894,15 @@ export interface OrdersImportRejected {
   detail?: Record<string, unknown>;
 }
 
-/** `POST /admin/orders/import` 응답 — 기존 형식 유지(정본 §5.7) */
+/**
+ * `POST /admin/orders/import` 응답. `shipments` 는 Stage 6 에서 사라진다(T6 종료, 정본 §6.5
+ * "배송단위 생성 제거 — 응답의 shipments 필드는 0 또는 삭제") — 필드 자체가 없을 수도 있어
+ * 옵셔널로 둔다. 화면(`order-import-panel.tsx`)은 이 필드를 더 이상 표시하지 않는다.
+ */
 export interface OrdersImportResponse {
   batchId: string;
   orders: number;
-  shipments: number;
+  shipments?: number;
   splitOrders: number;
   rejected: OrdersImportRejected[];
 }
@@ -919,5 +926,133 @@ export interface AtpRow {
 /** `PATCH /sellers/{code}` 요청 — 금지선 일수만 바꾼다(정본 §5.1) */
 export interface UpdateSellerRequest {
   minShelfLifeDays: number;
+}
+
+/* ── 6. 웨이브·hard 할당·피킹 배치 (Stage 6) ─────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §6.3·§6.5, docs/tasks/
+   2026-09-11-stage6-wave-hard-handoff.md §3. 백엔드가 이 화면과 동시에 만들어지는 중이라 —
+   계약(§6.5)대로 먼저 붙이고 라이브 검증은 완료 보고에서 남긴다(정본 필드명은 엔티티 컬럼을
+   그대로 옮겼다 — 다른 도메인처럼 `<entity>Id` 로 노출된다고 가정. 라이브에서 다르면 정정). */
+
+/** 웨이브 상태 — 정본 §6.6. RELEASED(생성) 만 Stage 6 범위, PICKING·DONE 은 Stage 7 전이 */
+export type WaveStatus = "RELEASED" | "PICKING" | "DONE";
+
+/** 피킹 배치 상태 — 정본 §6.3. OPEN 만 Stage 6 범위, 나머지는 Stage 7 claim 이후 */
+export type PickBatchStatus = "OPEN" | "CLAIMED" | "PICKING" | "DONE";
+
+/** 피킹 태스크 상태 — 정본 §6.3 */
+export type PickTaskStatus = "PENDING" | "PICKED" | "SHORT";
+
+/** 웨이브 생성 때 hard 할당이 안 되어 빠진 주문 — 정본 §6.4. `reason` 은 지금은 항상
+ * `HARD_SHORT` (재고 부족). 그 주문은 ALLOCATED 로 남고 다음 웨이브 후보가 된다 */
+export interface WaveSkipped {
+  orderId: number;
+  reason: string;
+  detail?: Record<string, unknown>;
+}
+
+/** `GET /waves` 목록 항목 — 정본 §6.3 `wave` 테이블 그대로 */
+export interface WaveListItem {
+  waveId: number;
+  waveNo: string;
+  cutoffAt: string;
+  status: WaveStatus;
+  orderCount: number;
+  createdAt: string;
+}
+
+/** 웨이브 상세의 주문 한 줄 — 정본 §6.5 "주문 목록" */
+export interface WaveOrderSummary {
+  orderId: number;
+  receiptNo: string;
+  sellerCode: string;
+  status: OrderStatus;
+}
+
+/** 웨이브 상세의 배치 한 줄 — 클릭하면 `pickBatches.get` 으로 태스크 표를 연다 */
+export interface WaveBatchSummary {
+  pickBatchId: number;
+  seqNo: number;
+  status: PickBatchStatus;
+  orderCount: number;
+}
+
+/**
+ * `GET /waves/{id}` — 주문 목록·배치 목록·skipped(정본 §6.5). `skipped` 는 생성 시점의
+ * 결과라 스키마에 저장 테이블이 없다 — GET 이 항상 채워 준다는 보장은 라이브 검증 전까지
+ * 미확인이라 옵셔널로 둔다(없으면 빈 배열로 취급).
+ */
+export interface WaveDetail {
+  waveId: number;
+  waveNo: string;
+  cutoffAt: string;
+  status: WaveStatus;
+  orderCount: number;
+  createdAt: string;
+  orders: WaveOrderSummary[];
+  batches: WaveBatchSummary[];
+  skipped?: WaveSkipped[];
+}
+
+/**
+ * 피킹 지시 한 줄 — 정본 §6.5 "순서·칸·상품·로트·유통기한·수량". `pick_task` 테이블에는
+ * `expires_on` 컬럼이 없다(로트 조인) — 화면이 FEFO 순서를 확인하려면 꼭 필요해서 응답에
+ * 포함된다고 가정한다(§6.7 "피킹 지시 표(...·유통기한·수량)").
+ */
+export interface PickTask {
+  pickTaskId: number;
+  seqNo: number;
+  locationCode: string;
+  productId: number;
+  gtin: string;
+  name: string;
+  lotNo: string;
+  expiresOn: string | null;
+  qty: number;
+  pickedQty: number;
+  status: PickTaskStatus;
+}
+
+/** `GET /pick-batches/{id}` — 배치 상세(Stage 7 claim 의 기초, 정본 §6.5). 지금은 태스크
+ * 표를 그리는 용도로만 쓴다 */
+export interface PickBatchDetail {
+  pickBatchId: number;
+  waveId: number;
+  seqNo: number;
+  status: PickBatchStatus;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  orderCount: number;
+  tasks: PickTask[];
+}
+
+/** `GET /waves/{id}/tasks` — 배치별 피킹 지시(정본 §6.5). 배치 클릭 흐름은
+ * `pickBatches.get` 을 쓰므로(배치 상세가 더 직접적인 대응) 이 화면은 아직 호출하지
+ * 않는다 — 계약에 있는 API 라 래퍼만 둔다(outbound.load 와 같은 관례) */
+export interface WaveTaskRow extends PickTask {
+  pickBatchId: number;
+  batchSeqNo: number;
+}
+
+/** `POST /waves` 요청 — 정본 §6.4. 마감시각 기본값은 화면이 계산한다(정본 §6.2, 브리프 §3) */
+export interface WaveCreateRequest {
+  cutoffAt: string;
+}
+
+/** `POST /waves` 응답 — 정본 §6.4 "주문 수·배치 수·태스크 수·skipped" */
+export interface WaveCreateResponse {
+  waveId: number;
+  waveNo: string;
+  orderCount: number;
+  batchCount: number;
+  taskCount: number;
+  skipped: WaveSkipped[];
+}
+
+/** `GET /waves` 쿼리 */
+export interface WavesQuery {
+  status?: WaveStatus;
+  page?: number;
+  size?: number;
 }
 
