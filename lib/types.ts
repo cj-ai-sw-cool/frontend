@@ -269,6 +269,8 @@ export interface Seller {
   code: string;
   name: string;
   status: SellerStatus;
+  /** 유통기한 출고 금지선(일) — Stage 5, 정본 §5.1·§5.2. 기본 7 */
+  minShelfLifeDays: number;
 }
 
 /** `POST /sellers` 요청 */
@@ -747,5 +749,137 @@ export interface LocationCapacity {
   acceptable: boolean | null;
   rejectReason: string | null;
   maxQty: number | null;
+}
+
+/* ── 9. 주문·soft 할당 (Stage 5) ────────────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §5.2·§5.7, docs/tasks/
+   2026-09-11-stage5-orders-allocation-handoff.md §3 S5.4. 백엔드가 이 화면과 동시에
+   만들어지는 중이라 — 계약(§5.7)대로 먼저 붙이고 라이브 검증은 완료 보고에서 남긴다. */
+
+/** 정본 §5.2 — 기존 IN_PACKING/PACKED/LOADED 는 PACKING/SHIPPED 로 흡수됐다 */
+export type OrderStatus =
+  | "RECEIVED"
+  | "ALLOCATED"
+  | "WAVED"
+  | "PICKING"
+  | "REBINNING"
+  | "PACKING"
+  | "SHIPPED"
+  | "CANCELLED";
+
+/** 주문 취소가 허용되는 상태 — 정본 §5.5. 그 밖은 409 `INVALID_STATE` */
+export const CANCELLABLE_ORDER_STATUSES: readonly OrderStatus[] = ["RECEIVED", "ALLOCATED"];
+
+export type AllocationStage = "SOFT" | "HARD";
+export type AllocationStatus = "ACTIVE" | "CONSUMED" | "CANCELLED";
+
+/** 주문 품목 한 줄의 할당 — 정본 §5.2. `lotNo`/`locationCode` 는 HARD 에서만 채워진다(Stage 6) */
+export interface OrderAllocation {
+  id: number;
+  stage: AllocationStage;
+  status: AllocationStatus;
+  qty: number;
+  lotNo: string | null;
+  locationCode: string | null;
+}
+
+export interface OrderDetailItem {
+  id: number;
+  productId: number;
+  gtin: string;
+  name: string;
+  qty: number;
+  allocations: OrderAllocation[];
+}
+
+/** 주문에 딸린 배송단위 요약 — T6(정본 §5.6), Stage 6에서 hard 할당 뒤로 옮겨진다 */
+export interface OrderShipmentSummary {
+  shipmentId: number;
+  seqNo: number;
+  status: ShipmentStatus;
+  tote: { toteId: number; barcode: string } | null;
+}
+
+/** `GET /orders` 목록 항목 */
+export interface OrderListItem {
+  id: number;
+  receiptNo: string;
+  seller: { code: string; name: string };
+  regionCode: string;
+  status: OrderStatus;
+  orderedAt: string;
+  cutoffAt: string | null;
+}
+
+/** `GET /orders/{id}` — 품목·할당·배송단위(정본 §5.7) */
+export interface OrderDetail extends OrderListItem {
+  cancelledAt: string | null;
+  items: OrderDetailItem[];
+  shipments: OrderShipmentSummary[];
+}
+
+/** `GET /orders` 쿼리 */
+export interface OrdersQuery {
+  seller?: string;
+  status?: OrderStatus;
+  page?: number;
+  size?: number;
+}
+
+/** `POST /orders/{id}/cancel` 응답 */
+export interface OrderCancelResponse {
+  id: number;
+  status: "CANCELLED";
+  cancelledAt: string;
+}
+
+/** `POST /admin/orders/import` 요청 한 줄 — 기존 형식 + `cutoffAt`(정본 §5.7) */
+export interface OrdersImportRequest {
+  batchId: string;
+  sellerCode: string;
+  orders: {
+    receiptNo: string;
+    regionCode: string;
+    orderedAt: string;
+    /** 마감시각 — 출처는 Stage 6 결정, 지금은 선택 입력(정본 §5.2) */
+    cutoffAt?: string;
+    items: { gtin: string; qty: number }[];
+  }[];
+}
+
+/** `POST /admin/orders/import` 거부 한 건 — `reason` 이 `INSUFFICIENT_STOCK` 이면 `detail` 에
+ * `{gtin, requested, available}` 이 온다(정본 §5.4) */
+export interface OrdersImportRejected {
+  receiptNo: string;
+  reason: string;
+  detail?: Record<string, unknown>;
+}
+
+/** `POST /admin/orders/import` 응답 — 기존 형식 유지(정본 §5.7) */
+export interface OrdersImportResponse {
+  batchId: string;
+  orders: number;
+  shipments: number;
+  splitOrders: number;
+  rejected: OrdersImportRejected[];
+}
+
+/**
+ * `GET /sellers/{code}/atp` 행 — 화주 가용재고 표(분석 화면 마스터 창).
+ * `onHand` 는 BIN·AVAILABLE 만, `blockedByShelfLife` 는 금지선에 걸려 ATP 에서 빠진 수량
+ * (정본 §5.3). `productName` 은 표시용으로 백엔드가 함께 준다.
+ */
+export interface AtpRow {
+  gtin: string;
+  productName: string;
+  onHand: number;
+  allocated: number;
+  blockedByShelfLife: number;
+  atp: number;
+}
+
+/** `PATCH /sellers/{code}` 요청 — 금지선 일수만 바꾼다(정본 §5.1) */
+export interface UpdateSellerRequest {
+  minShelfLifeDays: number;
 }
 
