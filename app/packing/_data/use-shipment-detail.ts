@@ -26,6 +26,19 @@ export interface OverrideBoxVariables {
   boxTypeId: number;
 }
 
+export interface ItemScanVariables {
+  shipmentId: number;
+  gtin: string;
+  qty?: number;
+}
+
+export interface DamageReportVariables {
+  shipmentId: number;
+  gtin: string;
+  qty: number;
+  worker: string;
+}
+
 /**
  * 3-2 배송단위 상세.
  * `shipmentId` 가 null 이면 조회하지 않는다(`enabled: false`) — queryKey 는 그 순간에도
@@ -126,6 +139,56 @@ export function useCompletePacking() {
     onSuccess: (_data, shipmentId) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.shipment(shipmentId) });
       // 완료되면 목록에서도 완료로 내려가야 한다
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lines });
+    },
+  });
+}
+
+/**
+ * 낱개 스캔 대조(Stage 9, 정본 §9.3) — 품목 표의 "스캔/필요"·진행이 이 값을 쓴다.
+ * 성공 응답에 최신 누계가 오지만 `ShipmentDetail` 과 모양이 달라(품목이 `gtin` 기준
+ * 평평한 배열) 화면 상태로 옮기지 않고, 배송단위 상세를 무효화해 같은 소스(3-2)로
+ * 다시 읽는다 — 실수량 표시가 두 갈래로 갈라지지 않는다.
+ */
+export function useScanItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ shipmentId, gtin, qty }: ItemScanVariables) =>
+      packing.scan(shipmentId, { gtin, qty }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.shipment(variables.shipmentId) });
+    },
+  });
+}
+
+/** "재스캔" 버튼(정본 §9.3·§9.4) — 이 배송단위의 verified_qty 를 전부 0으로 되돌린다 */
+export function useRescan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (shipmentId: number) => packing.rescan(shipmentId),
+    onSuccess: (_data, shipmentId) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.shipment(shipmentId) });
+    },
+  });
+}
+
+/**
+ * 파손 신고(정본 §9.3) — 품목 행의 "파손 신고" 버튼. 성공하면 보충 배치가 열리거나
+ * (웨이브 탭에 새 배치가 뜬다) 주문이 취소된다(라인 목록·주문 탭에도 영향) — 관련 캐시를
+ * 함께 무효화한다.
+ */
+export function useDamageReport() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ shipmentId, gtin, qty, worker }: DamageReportVariables) =>
+      packing.damage(shipmentId, { gtin, qty, worker }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.shipment(variables.shipmentId) });
+      void queryClient.invalidateQueries({ queryKey: ["waves"] });
+      void queryClient.invalidateQueries({ queryKey: ["orders"] });
       void queryClient.invalidateQueries({ queryKey: queryKeys.lines });
     },
   });

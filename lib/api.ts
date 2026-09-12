@@ -95,4 +95,7 @@ export const api = {
       method: "PATCH",
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
+
+  /** 본문 없는 삭제 — Stage 9 `DELETE /shipments/{id}/scans`(재스캔)가 처음 쓴다 */
+  del: <T>(path: string, init?: RequestInit) => request<T>(path, { ...init, method: "DELETE" }),
 };

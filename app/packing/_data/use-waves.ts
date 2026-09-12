@@ -60,6 +60,10 @@ export function useCreateWave() {
  * 작업자 시뮬레이터 — 웨이브 탭 OPEN 배치의 "자동 처리" 대화 상자(정본 §7.5, 브리프 §3
  * S7.6). 성공하면 배치·웨이브 상태가 바뀌고(웨이브 DONE 가능) 주문도 REBINNING/CANCELLED
  * 로 넘어가므로 배치·웨이브·주문 캐시를 전부 무효화한다.
+ *
+ * 배송단위 캐시도 무효화한다(Stage 9). 보충(REPLENISH) 배치를 처리하면 포장 탭에 열려 있던
+ * 배송단위의 "보충 대기"가 풀려야 하는데, 이 캐시를 두면 재스캔을 누르기 전까지 옛 배지가
+ * 남는다(2026-09-13 화면 체크에서 발견).
  */
 export function useSimulateBatch() {
   const queryClient = useQueryClient();
@@ -70,6 +74,7 @@ export function useSimulateBatch() {
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
       void queryClient.invalidateQueries({ queryKey: ["waves"] });
       void queryClient.invalidateQueries({ queryKey: ["pick-batches"] });
+      void queryClient.invalidateQueries({ queryKey: ["shipments"] });
     },
   });
 }

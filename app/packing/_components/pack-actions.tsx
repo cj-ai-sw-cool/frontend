@@ -97,6 +97,21 @@ function describeFailure(error: Error): { title: string; detail: string } {
           "이미 완료되었거나 포장 진행 상태가 아닙니다. 토트를 다시 스캔해 현재 상태를 확인하세요.",
       };
     }
+    /* Stage 9 — 화면이 canComplete 로 미리 막아 두므로 보통은 안 뜨지만, 다른 창에서 먼저
+       완료·파손 신고를 했을 때(경쟁 상태) 여기로 떨어진다. detail 로 두 사유를 가른다
+       (백엔드 2026-09-12 라이브 보고: unverifiedItemCount / replenishBatchId). */
+    if (error.is("NOT_READY")) {
+      if (typeof error.detail?.replenishBatchId === "number") {
+        return {
+          title: "보충 대기 중입니다",
+          detail: "파손 보충 배치가 아직 끝나지 않았습니다. 웨이브 탭에서 처리한 뒤 다시 시도하세요.",
+        };
+      }
+      return {
+        title: "아직 대조가 끝나지 않았습니다",
+        detail: "스캔하지 않은 품목이 남아 있습니다. 토트를 다시 확인하고 남은 품목을 스캔하세요.",
+      };
+    }
   }
   return { title: "포장 완료에 실패했습니다", detail: error.message };
 }

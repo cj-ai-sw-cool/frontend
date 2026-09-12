@@ -40,14 +40,23 @@ export type ApiErrorCode =
   | "NO_TOTE"
   /** 피킹 확정(Stage 7) — `POST /pick-tasks/{id}/pick` 에서 태스크 id 가 없을 때 404 */
   | "PICK_TASK_NOT_FOUND"
-  /** 포장 완료(Stage 7~8 전환기) — PICKING/REBINNING 주문의 배송단위는 아직 칸에서
-   * 이중 차감되므로 409 로 막는다(정본 §7 S7.3, Stage 9 에서 해제) */
-  | "NOT_READY"
   /** 리빈 세션 시작(Stage 8) — 배치의 취소 아닌 주문 수만큼 빈 슬롯이 없을 때 409(정본 §8.1) */
   | "NO_SLOT"
   /** 리빈 종료(Stage 8) — 미완성 슬롯(주문)이 남아 있는데 `force` 없이 finish 를 부를 때
    * 409(정본 §8.3). 자동 처리는 `force` 를 안 보내므로 이 코드가 그대로 올라올 수 있다 */
-  | "INCOMPLETE";
+  | "INCOMPLETE"
+  /** 품목 스캔(Stage 9) — 스캔한 GTIN이 배송단위 품목에 없을 때 409(정본 §9.3) */
+  | "NOT_IN_SHIPMENT"
+  /** 품목 스캔(Stage 9) — 배송단위 토트에 위치한 그 주문의 ACTIVE HARD 할당에 없을 때
+   * 409(정본 §9.3) */
+  | "NOT_IN_TOTE"
+  /** 품목 스캔(Stage 9) — 이미 필요 수량만큼 스캔한 품목을 더 스캔할 때 409(정본 §9.3) */
+  | "OVER_SCAN"
+  /** 포장완료(Stage 9) — 대조 미완(`detail.unverifiedItemCount`) 또는 보충 대기
+   * (`detail.replenishBatchId`)로 막힐 때 409(백엔드 2026-09-12 라이브 보고). 코드 이름은
+   * Stage 7~8 전환기의 `NOT_READY`와 같지만 뜻은 Stage 9로 완전히 바뀌었다 — 전환기의
+   * PICKING/REBINNING 이중 차감 차단은 §9.1에서 제거됐다 */
+  | "NOT_READY";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -240,6 +249,15 @@ export interface ShipmentItem {
   qty: number;
   /** 파생 속성 포함해 서버가 계산 */
   handling: string[];
+  /** 낱개 스캔 누계(Stage 9, 정본 §9.3) — `qty` 와 같아지면 그 품목은 대조 완료 */
+  verifiedQty: number;
+}
+
+/** 배송단위의 보충 대기 상태(Stage 9, 정본 §9.3) — 파손 신고로 연 `REPLENISH` 배치가
+ * 아직 안 끝났으면 채워진다. 채워져 있으면 포장완료를 막고 "보충 대기" 배지를 띄운다 */
+export interface ShipmentReplenish {
+  batchId: number;
+  status: PickBatchStatus;
 }
 
 /** 3-2 / 3-5 배송단위 상세 */
@@ -255,6 +273,8 @@ export interface ShipmentDetail {
   finalBox: BoxType | null;
   fillerRecommended: boolean;
   items: ShipmentItem[];
+  /** 보충 대기 중이 아니면 null(Stage 9, 정본 §9.3) */
+  replenish: ShipmentReplenish | null;
 }
 
 /** 3-3 박스 오버라이드 */
@@ -271,6 +291,75 @@ export interface CompleteResponse {
   packedAt: string;
   /** 대시보드 처리량 +1 즉시 반영값 */
   line: { lineId: number; packedCount: number };
+}
+
+/* ── 3-5b. 낱개 스캔 대조 · 파손 (Stage 9, 정본 §9.3) ───────────────────── */
+
+/** `POST /shipments/{id}/scan` 요청 — `qty` 생략 시 서버 기본값 1 */
+export interface ItemScanRequest {
+  gtin: string;
+  qty?: number;
+}
+
+/** `POST /shipments/{id}/scan` 응답의 품목 한 줄 — 백엔드 2026-09-12 라이브 보고로 `name` 추가 */
+export interface ItemScanStatus {
+  gtin: string;
+  name: string;
+  need: number;
+  verified: number;
+}
+
+/** `POST /shipments/{id}/scan` 응답 — `complete` 는 전 품목 `verified = need` 인가.
+ * `shipmentId` 는 백엔드 2026-09-12 라이브 보고로 추가(초안에는 없었다) */
+export interface ItemScanResponse {
+  shipmentId: number;
+  items: ItemScanStatus[];
+  complete: boolean;
+}
+
+/** `POST /shipments/{id}/damage` 요청 */
+export interface DamageReportRequest {
+  gtin: string;
+  qty: number;
+  worker: string;
+}
+
+/** `POST /shipments/{id}/damage` 응답의 보충 배치 태스크 한 줄 */
+export interface DamageReplenishTask {
+  pickTaskId: number;
+  seqNo: number;
+  locationCode: string;
+  qty: number;
+}
+
+/** `outcome: "REPLENISH"` 일 때만 채워진다 — 칸에서 다시 약속해 연 배치 */
+export interface DamageReplenish {
+  pickBatchId: number;
+  status: PickBatchStatus;
+  tasks: DamageReplenishTask[];
+}
+
+/** `outcome: "ORDER_CANCELLED"` 일 때 입고장으로 반납된 정상품 한 줄 */
+export interface DamageRestockedItem {
+  gtin: string;
+  name: string;
+  lotNo: string | null;
+  qty: number;
+}
+
+/** `POST /shipments/{id}/damage` 응답 — 실제 백엔드 레코드(`DamageReportResponse.java`) 그대로.
+ * 초안에는 `{outcome, replenishBatchId}` 뿐이었으나, `replenish` 는 중첩 객체이고 `shipmentId`·
+ * `gtin`·`qty`·`restocked`·`items` 도 같이 온다(2026-09-13 라이브 대조로 정정).
+ * `replenish` 는 `REPLENISH` 일 때만, `restocked` 는 `ORDER_CANCELLED` 일 때만 값이 찬다 —
+ * 나머지 갈래에서는 각각 `null`/빈 배열이다(정본 §9.3, `ShipmentDamageService.report`). */
+export interface DamageReportResponse {
+  shipmentId: number;
+  gtin: string;
+  qty: number;
+  outcome: "REPLENISH" | "ORDER_CANCELLED";
+  replenish: DamageReplenish | null;
+  restocked: DamageRestockedItem[];
+  items: ItemScanStatus[];
 }
 
 /* ── 4. 마스터 — 화주·존·로케이션 (Stage 1) ─────────────────────────────
@@ -984,6 +1073,9 @@ export type WaveStatus = "RELEASED" | "PICKING" | "DONE";
 /** 피킹 배치 상태 — 정본 §6.3. OPEN 만 Stage 6 범위, 나머지는 Stage 7 claim 이후 */
 export type PickBatchStatus = "OPEN" | "CLAIMED" | "PICKING" | "DONE";
 
+/** 배치 종류(Stage 9, 정본 §9.2) — `REPLENISH` 는 파손 보충용, 목적지가 배송단위 토트다 */
+export type PickBatchKind = "WAVE" | "REPLENISH";
+
 /** 피킹 태스크 상태 — 정본 §6.3·§7.2. 배치 생성 직후는 전부 PENDING. `CANCELLED` 는
  * Stage 7 — 재할당 실패로 주문이 취소되면 그 주문 몫만 남은(아직 못 집은) 태스크가
  * 이 상태가 된다(백엔드 2026-09-12 보고). 화면은 이 상태를 건너뛴다 */
@@ -1049,6 +1141,9 @@ export interface WaveBatchSummary {
   claimedBy: string | null;
   claimedAt: string | null;
   pickedTaskCount?: number;
+  /** Stage 9 추가 — 옵셔널로 두는 이유는 `pickedTaskCount` 와 같다(백엔드 롤아웃 순서
+   * 보장 안 됨). 안 오면 화면이 "—" 로 보여준다 */
+  kind?: PickBatchKind;
 }
 
 /**

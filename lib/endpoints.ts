@@ -21,8 +21,12 @@ import type {
   CreateAsnRequest,
   CreateSellerRequest,
   DailyInventory,
+  DamageReportRequest,
+  DamageReportResponse,
   DashboardSummary,
   InvariantCheckResult,
+  ItemScanRequest,
+  ItemScanResponse,
   LinesResponse,
   Location,
   LocationCapacity,
@@ -346,6 +350,18 @@ export const rebin = {
    정본 §8.3·§8.4. 리빈으로 완성된 주문의 배송단위 토트 큐 — 포장 탭 "다음 토트" 버튼이 쓴다. */
 export const packing = {
   queue: (lineId: number) => api.get<PackingQueueItem[]>(`/packing/queue?lineId=${lineId}`),
+
+  /** 낱개 스캔 대조(Stage 9, 정본 §9.3) — 토트 안 물건을 GTIN 으로 하나씩 스캔한다.
+   * 품목에 없음 409 NOT_IN_SHIPMENT / 토트 할당에 없음 409 NOT_IN_TOTE / 초과 409 OVER_SCAN */
+  scan: (shipmentId: number, body: ItemScanRequest) =>
+    api.post<ItemScanResponse>(`/shipments/${shipmentId}/scan`, body),
+
+  /** 재스캔 — verified_qty 전부 0(정본 §9.3). 갱신된 값은 배송단위 상세를 다시 불러와 읽는다 */
+  rescan: (shipmentId: number) => api.del<unknown>(`/shipments/${shipmentId}/scans`),
+
+  /** 파손 신고(정본 §9.3) — 보충 hard 성공이면 REPLENISH 배치, 칸에 없으면 주문 취소 */
+  damage: (shipmentId: number, body: DamageReportRequest) =>
+    api.post<DamageReportResponse>(`/shipments/${shipmentId}/damage`, body),
 };
 
 function toWavesQueryString(params?: WavesQuery): string {

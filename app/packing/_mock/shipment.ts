@@ -34,6 +34,7 @@ export const MOCK_SHIPMENT_DETAIL: ShipmentDetail = {
   },
   finalBox: null, // 오버라이드 전 상태. 3-3 호출 후에는 값이 들어온다
   fillerRecommended: true,
+  /* verifiedQty 는 Stage 9 낱개 스캔 대조(정본 §9.3) 누계 — 스캔 전 mock 이라 전부 0 */
   items: [
     {
       productId: 41,
@@ -41,6 +42,7 @@ export const MOCK_SHIPMENT_DETAIL: ShipmentDetail = {
       name: "○○ 오렌지주스 500ml",
       qty: 2,
       handling: ["REFRIGERATE", "LIQUID_CAUTION"],
+      verifiedQty: 0,
     },
     {
       productId: 58,
@@ -48,6 +50,7 @@ export const MOCK_SHIPMENT_DETAIL: ShipmentDetail = {
       name: "△△ 머그컵 350ml",
       qty: 1,
       handling: ["FRAGILE"],
+      verifiedQty: 0,
     },
     {
       productId: 72,
@@ -55,8 +58,11 @@ export const MOCK_SHIPMENT_DETAIL: ShipmentDetail = {
       name: "□□ 즉석밥 210g 3입",
       qty: 3,
       handling: [],
+      verifiedQty: 0,
     },
   ],
+  // 보충 대기 없음(Stage 9, 정본 §9.3) — 파손 신고 전 mock
+  replenish: null,
 };
 
 /**
