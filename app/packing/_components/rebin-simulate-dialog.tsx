@@ -32,8 +32,6 @@ export function RebinSimulateDialog({
   pickBatchId: number | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const simulate = useSimulateRebin();
-
   return (
     <Dialog open={pickBatchId !== null} onOpenChange={onOpenChange}>
       <DialogContent
@@ -50,33 +48,25 @@ export function RebinSimulateDialog({
         </DialogHeader>
 
         {pickBatchId === null ? null : (
-          <DialogBody
-            result={simulate.data ?? null}
-            isSubmitting={simulate.isPending}
-            errorMessage={describeError(simulate.error)}
-            onSubmit={(worker) => simulate.mutate({ pickBatchId, worker })}
-            onClose={() => onOpenChange(false)}
-          />
+          <DialogBody pickBatchId={pickBatchId} onClose={() => onOpenChange(false)} />
         )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function DialogBody({
-  result,
-  isSubmitting,
-  errorMessage,
-  onSubmit,
-  onClose,
-}: {
-  result: RebinSimulateResponse | null;
-  isSubmitting: boolean;
-  errorMessage: string | null;
-  onSubmit: (worker: string) => void;
-  onClose: () => void;
-}) {
+/**
+ * 뮤테이션 훅은 여기(DialogContent 안)에 둔다. 바깥 컴포넌트에 두면 닫아도 `data`가 남아
+ * 다음 배치로 열었을 때 앞 배치의 결과 뷰가 먼저 뜨고 실행 폼이 나오지 않는다(2026-09-12
+ * 화면 체크에서 발견). DialogContent는 닫힐 때 언마운트되므로 여기 두면 열 때마다 새로 시작한다.
+ */
+function DialogBody({ pickBatchId, onClose }: { pickBatchId: number; onClose: () => void }) {
+  const simulate = useSimulateRebin();
   const [worker, setWorker] = useState(DEFAULT_WORKER);
+  const result: RebinSimulateResponse | null = simulate.data ?? null;
+  const isSubmitting = simulate.isPending;
+  const errorMessage = describeError(simulate.error);
+  const onSubmit = (code: string) => simulate.mutate({ pickBatchId, worker: code });
 
   if (result !== null) {
     return <RebinResultView result={result} onClose={onClose} />;

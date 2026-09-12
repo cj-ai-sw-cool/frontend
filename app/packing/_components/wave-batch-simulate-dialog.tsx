@@ -33,9 +33,6 @@ export function WaveBatchSimulateDialog({
   batchId: number | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const batchQuery = usePickBatchDetail(batchId);
-  const simulate = useSimulateBatch();
-
   return (
     <Dialog open={batchId !== null} onOpenChange={onOpenChange}>
       <DialogContent
@@ -52,43 +49,31 @@ export function WaveBatchSimulateDialog({
         </DialogHeader>
 
         {batchId === null ? null : (
-          <DialogBody
-            batchId={batchId}
-            batch={batchQuery.data ?? null}
-            isLoadingBatch={batchQuery.isLoading}
-            batchErrorMessage={batchQuery.error?.message ?? null}
-            result={simulate.data ?? null}
-            isSubmitting={simulate.isPending}
-            submitErrorMessage={describeSimulateError(simulate.error)}
-            onSubmit={(body) => simulate.mutate({ id: batchId, body })}
-            onClose={() => onOpenChange(false)}
-          />
+          <DialogBody batchId={batchId} onClose={() => onOpenChange(false)} />
         )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function DialogBody({
-  batch,
-  isLoadingBatch,
-  batchErrorMessage,
-  result,
-  isSubmitting,
-  submitErrorMessage,
-  onSubmit,
-  onClose,
-}: {
-  batchId: number;
-  batch: PickBatchDetail | null;
-  isLoadingBatch: boolean;
-  batchErrorMessage: string | null;
-  result: SimulateResponse | null;
-  isSubmitting: boolean;
-  submitErrorMessage: string | null;
-  onSubmit: (body: { worker: string; shorts: { pickTaskId: number; foundQty: number }[] }) => void;
-  onClose: () => void;
-}) {
+/**
+ * 조회·뮤테이션 훅은 여기(DialogContent 안)에 둔다. 바깥 컴포넌트에 두면 닫아도 뮤테이션의
+ * `data`가 남아 다음 배치로 열었을 때 앞 배치의 결과 뷰가 먼저 뜨고 폼이 나오지 않는다
+ * (2026-09-12 리빈 대화 상자에서 발견, 같은 골격이라 함께 고침). DialogContent는 닫힐 때
+ * 언마운트되므로 여기 두면 열 때마다 새로 시작한다.
+ */
+function DialogBody({ batchId, onClose }: { batchId: number; onClose: () => void }) {
+  const batchQuery = usePickBatchDetail(batchId);
+  const simulate = useSimulateBatch();
+  const batch: PickBatchDetail | null = batchQuery.data ?? null;
+  const isLoadingBatch = batchQuery.isLoading;
+  const batchErrorMessage = batchQuery.error?.message ?? null;
+  const result: SimulateResponse | null = simulate.data ?? null;
+  const isSubmitting = simulate.isPending;
+  const submitErrorMessage = describeSimulateError(simulate.error);
+  const onSubmit = (body: { worker: string; shorts: { pickTaskId: number; foundQty: number }[] }) =>
+    simulate.mutate({ id: batchId, body });
+
   if (result !== null) {
     return <SimulateResultView result={result} onClose={onClose} />;
   }
