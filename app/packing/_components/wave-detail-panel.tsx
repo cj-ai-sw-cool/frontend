@@ -1,6 +1,6 @@
 "use client";
 
-import type { PickBatchStatus, WaveDetail } from "@/lib/types";
+import type { PickBatchKind, PickBatchStatus, WaveDetail } from "@/lib/types";
 import { ORDER_STATUS_LABEL } from "./order-list-panel";
 import { WAVE_STATUS_LABEL } from "./wave-list-panel";
 import { Btn, Panel, Sunken, w98 } from "./win98-ui";
@@ -11,6 +11,12 @@ export const PICK_BATCH_STATUS_LABEL: Record<PickBatchStatus, string> = {
   CLAIMED: "배정됨",
   PICKING: "피킹중",
   DONE: "완료",
+};
+
+/** 배치 종류 → 화면 표기(Stage 9, 정본 §9.2) — REPLENISH 는 파손 보충용 배치 */
+export const PICK_BATCH_KIND_LABEL: Record<PickBatchKind, string> = {
+  WAVE: "웨이브",
+  REPLENISH: "보충",
 };
 
 /**
@@ -106,6 +112,7 @@ export function WaveDetailPanel({
               <thead className="sticky top-0 bg-[color:var(--surface)]">
                 <tr>
                   <th className="p-1.5">#</th>
+                  <th className="p-1.5">종류</th>
                   <th className="p-1.5">상태</th>
                   <th className="p-1.5">담당</th>
                   <th className="p-1.5 text-right">진행</th>
@@ -116,7 +123,7 @@ export function WaveDetailPanel({
               <tbody>
                 {wave.batches.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-1.5 text-[color:var(--muted-foreground)]">
+                    <td colSpan={7} className="p-1.5 text-[color:var(--muted-foreground)]">
                       배치가 없습니다.
                     </td>
                   </tr>
@@ -133,6 +140,10 @@ export function WaveDetailPanel({
                       }`}
                     >
                       <td className={`${w98.mono} p-1.5`}>#{batch.seqNo}</td>
+                      {/* Stage 9 — 옵셔널 필드(백엔드 롤아웃 순서 보장 안 됨), 안 오면 "—" */}
+                      <td className="p-1.5">
+                        {batch.kind === undefined ? "—" : PICK_BATCH_KIND_LABEL[batch.kind]}
+                      </td>
                       <td className="p-1.5">{PICK_BATCH_STATUS_LABEL[batch.status]}</td>
                       <td className={`${w98.mono} p-1.5`}>{batch.claimedBy ?? "—"}</td>
                       {/* pickedTaskCount 는 옵셔널이다(lib/types.ts WaveBatchSummary 주석) —
