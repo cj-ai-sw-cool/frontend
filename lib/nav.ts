@@ -22,11 +22,6 @@ export const NAV = [
     description: "토트 스캔 → 박스 추천 → 포장 완료",
   },
   {
-    href: "/picking",
-    label: "피킹",
-    description: "작업자 코드 → 배치 claim → 칸 순서 집품",
-  },
-  {
     href: "/analytics",
     label: "분석",
     description: "창고 지도 · 입출고 흐름 · 규격별 재고",
