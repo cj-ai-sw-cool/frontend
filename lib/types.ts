@@ -1315,8 +1315,12 @@ export interface RebinLeftover {
  * `GET /rebin/sessions/{id}` 및 `GET /rebin/sessions?pickBatchId=` 응답 — 리빈 벽(정본 §8.3).
  * `pickBatchId=` 조회는 세션이 없으면 **404** — 화면은 이 404 를 "리빈 자동 처리" 버튼을 보여줄
  * 신호로 쓴다(브리프 §3, `lib/api.ts` 의 `ApiError.status`로 판별).
+ * `sessionId`/`pickBatchId` — 라이브 대조(2026-09-12, 별도 배치 R-REBIN8-1)로 확인. 정본 §8.3
+ * 문안에는 없었지만 실제 응답에 항상 온다.
  */
 export interface RebinSessionDetail {
+  sessionId: number;
+  pickBatchId: number;
   status: RebinSessionStatus;
   worker: string;
   toteLocationCode: string;
@@ -1372,9 +1376,11 @@ export interface RebinSimulateScan {
   unmovedQty: number;
 }
 
-/** 반납(RESTOCK) 한 줄 — 정본 §8.3 "restocked:[{gtin, lotNo, qty}]" */
+/** 반납(RESTOCK) 한 줄 — 정본 §8.3 "restocked:[{gtin, lotNo, qty}]" + `productName`
+ * (2026-09-12 백엔드 라이브 보고로 추가 — 정본 초안에는 없었다) */
 export interface RebinRestockRow {
   gtin: string;
+  productName: string;
   lotNo: string;
   qty: number;
 }
@@ -1383,12 +1389,16 @@ export interface RebinRestockRow {
  * `POST /admin/rebin/simulate` 응답 — 정본 §8.3. `completedOrders` 는 `receiptNo` 문자열
  * 배열이다(`/scan` 응답의 `completedOrders:[receiptNo]`과 같은 모양 — Stage 7B
  * `cancelledOrders`처럼 객체 배열이 아니다).
+ * `cancelledOrders` — 2026-09-12 백엔드 라이브 보고로 추가(정본 §8.3 문안에는 없었다).
+ * force 종료로 미완성 슬롯이 취소되는 경로에서만 채워질 것으로 보여 옵셔널로 둔다 — 이번
+ * 라이브 대조(정상 완주 배치)에서는 항상 빈 배열이었다.
  */
 export interface RebinSimulateResponse {
   sessionId: number;
   scans: RebinSimulateScan[];
   completedOrders: string[];
   restocked: RebinRestockRow[];
+  cancelledOrders?: ReallocationCancelledOrder[];
   elapsedMs: number;
 }
 

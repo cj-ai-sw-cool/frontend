@@ -104,7 +104,7 @@ export function RebinResultView({
                 <ul className="flex flex-col gap-0.5">
                   {result.restocked.map((row, index) => (
                     <li key={index} className={`${w98.small} ${w98.mono}`}>
-                      {row.gtin} · {row.lotNo} · {row.qty}
+                      {row.productName} · {row.lotNo} · {row.qty}
                     </li>
                   ))}
                 </ul>
@@ -112,6 +112,26 @@ export function RebinResultView({
             ) : null}
           </div>
         </div>
+
+        {/* 정상 완주(force 없이 종료)면 항상 비어 있다 — 미완성 슬롯을 force 로 취소한
+            경로에서만 채워진다(정본 §8.3 문안에는 없고 백엔드 라이브 보고로 추가, `lib/types.ts`
+            `RebinSimulateResponse.cancelledOrders` 주석 참고). 있을 때만 자리를 차지한다 */}
+        {result.cancelledOrders !== undefined && result.cancelledOrders.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <span className={`${w98.small} font-bold text-[color:var(--status-error)]`}>
+              취소 주문 ({result.cancelledOrders.length}건)
+            </span>
+            <Sunken className={`${w98.scroll} h-16 overflow-y-auto p-1`}>
+              <ul className="flex flex-col gap-0.5">
+                {result.cancelledOrders.map((order) => (
+                  <li key={order.orderId} className={`${w98.small} ${w98.mono}`}>
+                    {order.receiptNo}
+                  </li>
+                ))}
+              </ul>
+            </Sunken>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex justify-end gap-2 border-t-2 border-[color:var(--surface-dim)] p-2">
