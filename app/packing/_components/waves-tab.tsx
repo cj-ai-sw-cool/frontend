@@ -3,7 +3,8 @@
 import { useCallback, useState } from "react";
 import type { WaveStatus } from "@/lib/types";
 import { usePickBatchDetail, useWaveDetail, useWavesList } from "../_data/use-waves";
-import { PickTaskPanel } from "./pick-task-panel";
+import { BatchDetailPanel } from "./batch-detail-panel";
+import { RebinSimulateDialog } from "./rebin-simulate-dialog";
 import { WaveBatchSimulateDialog } from "./wave-batch-simulate-dialog";
 import { WaveDetailPanel } from "./wave-detail-panel";
 import { WaveListPanel } from "./wave-list-panel";
@@ -25,6 +26,11 @@ export function WavesTab() {
   /** "자동 처리" 대화 상자가 여는 배치 — 오른쪽 열 선택(`selectedBatchId`)과는 별개다.
    * 목록 행을 클릭하지 않고도 자동 처리를 열 수 있어야 한다(브리프 §3 S7.6). */
   const [simulateBatchId, setSimulateBatchId] = useState<number | null>(null);
+  /** "리빈 자동 처리" 대화 상자가 여는 배치 — `rebin-panel.tsx`의 버튼이 연다(정본 §8.1,
+   * 브리프 §3 S8.3). 오른쪽 열의 리빈 탭에서만 열리므로 `selectedBatchId`가 항상 채워져
+   * 있지만, 대화 상자 자체의 열림 상태는 이 값으로 따로 관리한다(위 `simulateBatchId`와
+   * 같은 이유). */
+  const [rebinBatchId, setRebinBatchId] = useState<number | null>(null);
 
   const wavesQuery = useWavesList({
     status: statusFilter === "ALL" ? undefined : statusFilter,
@@ -76,16 +82,25 @@ export function WavesTab() {
         className="w-[380px] shrink-0"
       />
 
-      <PickTaskPanel
+      <BatchDetailPanel
+        key={selectedBatchId ?? "none"}
         batch={batch}
         isLoading={pickBatchQuery.isLoading}
         errorMessage={pickBatchQuery.error?.message ?? null}
+        onOpenRebin={setRebinBatchId}
       />
 
       <WaveBatchSimulateDialog
         batchId={simulateBatchId}
         onOpenChange={(open) => {
           if (!open) setSimulateBatchId(null);
+        }}
+      />
+
+      <RebinSimulateDialog
+        pickBatchId={rebinBatchId}
+        onOpenChange={(open) => {
+          if (!open) setRebinBatchId(null);
         }}
       />
     </div>

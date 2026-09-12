@@ -22,7 +22,7 @@ import type {
   CreateSellerRequest,
   DailyInventory,
   DashboardSummary,
-  InvariantMismatch,
+  InvariantCheckResult,
   LinesResponse,
   Location,
   LocationCapacity,
@@ -36,6 +36,7 @@ import type {
   OrdersImportResponse,
   OrdersQuery,
   Page,
+  PackingQueueItem,
   PendingReceiptItem,
   PickBatchDetail,
   PickBatchesResponse,
@@ -48,6 +49,9 @@ import type {
   PutawayRecommendRequest,
   PutawayRecommendResponse,
   ReceiptItemCreatedResponse,
+  RebinSessionDetail,
+  RebinSimulateRequest,
+  RebinSimulateResponse,
   ScanResponse,
   Seller,
   ShipmentDetail,
@@ -191,8 +195,8 @@ export const inventory = {
   daily: (from: string, to: string) =>
     api.get<DailyInventory[]>(`/inventory/daily?from=${from}&to=${to}`),
 
-  /** 불변식 검사 — 빈 배열이 정상 */
-  invariant: () => api.get<InvariantMismatch[]>("/admin/inventory/invariant"),
+  /** 불변식 검사 — 두 불변식을 객체로 받는다(Stage 8, §7.9 결정). 둘 다 빈 배열이 정상 */
+  invariant: () => api.get<InvariantCheckResult>("/admin/inventory/invariant"),
 
   /** 재고 조정 — 화면 체크·ICQA 전 임시 창구 */
   adjust: (body: AdjustInventoryRequest) =>
@@ -320,6 +324,30 @@ export const picking = {
     api.post<SimulateResponse>(`/admin/pick-batches/${id}/simulate`, body),
 };
 
+/* ── 리빈 — put wall (Stage 8) ────────────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §8.3·§8.4, docs/tasks/
+   2026-09-12-stage8-rebin-handoff.md §3 S8.3. 작업자 화면 없음(§8.1) — 시뮬레이터가 세션을
+   처리하고 웨이브 탭이 관전한다. */
+export const rebin = {
+  /** 배치의 세션 조회 — 없으면 404. 웨이브 탭이 이 404 를 "리빈 자동 처리" 버튼을 보여줄
+   * 신호로 쓴다(정본 §8.4) */
+  sessionByBatch: (pickBatchId: number) =>
+    api.get<RebinSessionDetail>(`/rebin/sessions?pickBatchId=${pickBatchId}`),
+
+  /** 세션 단건 — 계약(정본 §8.3)에 있는 API 라 래퍼만 둔다. 지금 화면은 `sessionByBatch` 만 쓴다 */
+  session: (id: number) => api.get<RebinSessionDetail>(`/rebin/sessions/${id}`),
+
+  /** 리빈 자동 처리 — 세션 시작→scan→finish 를 서버가 대신 한다(§8.1 "작업자 화면은 없다") */
+  simulate: (body: RebinSimulateRequest) =>
+    api.post<RebinSimulateResponse>("/admin/rebin/simulate", body),
+};
+
+/* ── 포장 큐 (Stage 8) ────────────────────────────────────────────────────
+   정본 §8.3·§8.4. 리빈으로 완성된 주문의 배송단위 토트 큐 — 포장 탭 "다음 토트" 버튼이 쓴다. */
+export const packing = {
+  queue: (lineId: number) => api.get<PackingQueueItem[]>(`/packing/queue?lineId=${lineId}`),
+};
+
 function toWavesQueryString(params?: WavesQuery): string {
   if (!params) return "";
   const qs = new URLSearchParams();
@@ -437,4 +465,6 @@ export const queryKeys = {
   wave: (id: number) => ["waves", id] as const,
   pickBatch: (id: number) => ["pick-batches", id] as const,
   pickBatchesList: (status?: PickBatchStatus) => ["pick-batches", "list", status ?? "ALL"] as const,
+  rebinSessionByBatch: (pickBatchId: number) => ["rebin", "session-by-batch", pickBatchId] as const,
+  packingQueue: (lineId: number) => ["packing", "queue", lineId] as const,
 };

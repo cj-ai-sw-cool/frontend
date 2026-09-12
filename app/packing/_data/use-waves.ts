@@ -11,8 +11,8 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { picking, pickBatches, queryKeys, waves } from "@/lib/endpoints";
-import type { SimulateRequest, WaveCreateRequest, WavesQuery } from "@/lib/types";
+import { picking, pickBatches, queryKeys, rebin, waves } from "@/lib/endpoints";
+import type { RebinSimulateRequest, SimulateRequest, WaveCreateRequest, WavesQuery } from "@/lib/types";
 
 /** 웨이브 목록 — 좌측 열. 상태 필터가 바뀔 때마다 쿼리 키가 바뀌어 다시 불러온다 */
 export function useWavesList(params?: WavesQuery) {
@@ -70,6 +70,38 @@ export function useSimulateBatch() {
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
       void queryClient.invalidateQueries({ queryKey: ["waves"] });
       void queryClient.invalidateQueries({ queryKey: ["pick-batches"] });
+    },
+  });
+}
+
+/**
+ * 리빈 벽 — DONE 배치의 세션 조회(정본 §8.4). 세션이 없으면 404 다 — 그 응답을 그대로
+ * `error`(`ApiError`, `status === 404`)로 받아 웨이브 탭이 "리빈 자동 처리" 버튼을 보여줄
+ * 신호로 쓴다(`retry: false` — 404 는 재시도해도 같은 결과라 기본 재시도를 끈다).
+ */
+export function useRebinSession(pickBatchId: number | null) {
+  return useQuery({
+    queryKey: queryKeys.rebinSessionByBatch(pickBatchId ?? -1),
+    queryFn: () => rebin.sessionByBatch(pickBatchId as number),
+    enabled: pickBatchId !== null,
+    retry: false,
+  });
+}
+
+/**
+ * 리빈 자동 처리 — 배치 상세의 "리빈 자동 처리" 버튼(정본 §8.1·§8.4, 브리프 §3 S8.3).
+ * 성공하면 세션·주문(REBINNING→PACKING)·재고·배치가 전부 바뀌므로 관련 캐시를 무효화한다.
+ */
+export function useSimulateRebin() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: RebinSimulateRequest) => rebin.simulate(body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["waves"] });
+      void queryClient.invalidateQueries({ queryKey: ["pick-batches"] });
+      void queryClient.invalidateQueries({ queryKey: ["rebin"] });
     },
   });
 }
