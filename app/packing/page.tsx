@@ -244,7 +244,8 @@ export default function PackingV2Page() {
         gtin: item.gtin,
         name: item.name,
         qty: item.qty,
-        verifiedQty: item.verifiedQty,
+        // ?? 0 — shipment-items-panel.tsx 상단 주석과 같은 방어(백엔드 롤아웃 순서)
+        verifiedQty: item.verifiedQty ?? 0,
       });
     },
     [shipment],
