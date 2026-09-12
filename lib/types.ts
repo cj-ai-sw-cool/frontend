@@ -51,7 +51,12 @@ export type ApiErrorCode =
    * 409(정본 §9.3) */
   | "NOT_IN_TOTE"
   /** 품목 스캔(Stage 9) — 이미 필요 수량만큼 스캔한 품목을 더 스캔할 때 409(정본 §9.3) */
-  | "OVER_SCAN";
+  | "OVER_SCAN"
+  /** 포장완료(Stage 9) — 대조 미완(`detail.unverifiedItemCount`) 또는 보충 대기
+   * (`detail.replenishBatchId`)로 막힐 때 409(백엔드 2026-09-12 라이브 보고). 코드 이름은
+   * Stage 7~8 전환기의 `NOT_READY`와 같지만 뜻은 Stage 9로 완전히 바뀌었다 — 전환기의
+   * PICKING/REBINNING 이중 차감 차단은 §9.1에서 제거됐다 */
+  | "NOT_READY";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -296,15 +301,18 @@ export interface ItemScanRequest {
   qty?: number;
 }
 
-/** `POST /shipments/{id}/scan` 응답의 품목 한 줄 */
+/** `POST /shipments/{id}/scan` 응답의 품목 한 줄 — 백엔드 2026-09-12 라이브 보고로 `name` 추가 */
 export interface ItemScanStatus {
   gtin: string;
+  name: string;
   need: number;
   verified: number;
 }
 
-/** `POST /shipments/{id}/scan` 응답 — `complete` 는 전 품목 `verified = need` 인가 */
+/** `POST /shipments/{id}/scan` 응답 — `complete` 는 전 품목 `verified = need` 인가.
+ * `shipmentId` 는 백엔드 2026-09-12 라이브 보고로 추가(초안에는 없었다) */
 export interface ItemScanResponse {
+  shipmentId: number;
   items: ItemScanStatus[];
   complete: boolean;
 }
