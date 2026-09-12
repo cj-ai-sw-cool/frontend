@@ -3,10 +3,11 @@
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { w98Toast } from "@/lib/win98-toast";
-import type { BoxType } from "@/lib/types";
+import type { BoxType, DamageReportResponse, ShipmentItem } from "@/lib/types";
 import { Btn, Panel, w98 } from "./_components/win98-ui";
 import { BoxRecommendationPanel, boxLabel } from "./_components/box-recommendation-panel";
 import { Box3DViewer } from "./_components/box-3d-viewer";
+import { DamageReportDialog, type DamageReportTarget } from "./_components/damage-report-dialog";
 import { LineShipmentsPanel } from "./_components/line-shipments-panel";
 import { PackActions } from "./_components/pack-actions";
 import { OrdersTab } from "./_components/orders-tab";
@@ -23,6 +24,8 @@ import {
   useNextTote,
   useOverrideBox,
   useProductImages,
+  useRescan,
+  useScanItem,
   useShipmentDetail,
   useToteScan,
 } from "./_data/use-shipment-detail";
@@ -75,8 +78,8 @@ export default function PackingV2Page() {
   /** "다음 토트" 큐가 비었을 때만 채운다(Stage 8, 정본 §8.4) — 스캔 실패(`scan.error`)와
    * 자리를 나눠 쓰므로 `runScan`이 부르면(성공이든 실패든) 지운다. */
   const [nextToteMessage, setNextToteMessage] = useState<string | null>(null);
-  /** 실수량 — **프론트 상태로만** 존재한다 (D-06). 서버로 나가지 않는다 */
-  const [actualQty, setActualQty] = useState<Record<number, number>>({});
+  /** "파손 신고" 대화 상자가 다룰 품목 — null 이면 닫힌 상태(정본 §9.4) */
+  const [damageTarget, setDamageTarget] = useState<DamageReportTarget | null>(null);
   const [selectedBoxTypeId, setSelectedBoxTypeId] = useState<number | null>(
     null,
   );
@@ -112,6 +115,8 @@ export default function PackingV2Page() {
   const completePacking = useCompletePacking(); // 3-8
   const linesQuery = useLines(); // 라인 목록 — LINE 탭
   const nextTote = useNextTote(); // Stage 8 — "다음 토트" 버튼
+  const scanItem = useScanItem(); // Stage 9 — 품목 낱개 스캔
+  const rescan = useRescan(); // Stage 9 — "재스캔" 버튼
 
   const shipment = shipmentQuery.data;
   const boxes = useMemo<BoxType[]>(
@@ -165,22 +170,45 @@ export default function PackingV2Page() {
       scan.mutate(value, {
         onSuccess: (detail) => {
           setShipmentId(detail.shipmentId);
-          setActualQty({});
           setSelectedBoxTypeId(null);
           // 사진은 맨 위 품목이 먼저 뜬다 — 품목이 없는 배송단위는 비운 채로 둔다
           setSelectedProductId(detail.items[0]?.productId ?? null);
           overrideBox.reset();
           completePacking.reset();
+          // 새 배송단위라 이전 것의 품목 스캔·파손 신고 상태를 들고 있으면 안 된다
+          scanItem.reset();
+          rescan.reset();
+          setDamageTarget(null);
+          setBarcode("");
           // 박스가 정해졌다 = 이제 여기 담는다. 상자가 천천히 한 번 열린다
           setIsLidOpen(true);
         },
       });
     },
-    [scan, overrideBox, completePacking],
+    [scan, overrideBox, completePacking, scanItem, rescan],
   );
 
-  /** 입력창에서 Enter · Scan 버튼 — 지금 입력창에 있는 값으로 조회한다 */
-  const handleScan = useCallback(() => runScan(barcode), [runScan, barcode]);
+  /** 입력창에서 Enter · Scan 버튼 — 토트 모드면 토트 스캔(3-5), 품목 모드면 낱개 스캔
+   * (Stage 9, 정본 §9.3)을 부른다. 같은 입력란·버튼을 두 흐름이 나눠 쓴다(정본 §9.4) */
+  const handleScan = useCallback(() => {
+    if (shipment === undefined) {
+      runScan(barcode);
+      return;
+    }
+    const gtin = barcode.trim();
+    if (gtin === "") return;
+    const currentShipmentId = shipment.shipmentId;
+    scanItem.mutate(
+      { shipmentId: currentShipmentId, gtin, qty: 1 },
+      { onSuccess: () => setBarcode("") },
+    );
+  }, [shipment, runScan, barcode, scanItem]);
+
+  /** "재스캔" — verified_qty 전부 0(정본 §9.3·§9.4) */
+  const handleRescan = useCallback(() => {
+    if (shipment === undefined) return;
+    rescan.mutate(shipment.shipmentId);
+  }, [shipment, rescan]);
 
   /** LINE 탭 — 배송 내역 조회(3-1)가 이 값을 바로 쓴다 */
   const handleSelectLine = useCallback((lineId: number) => {
@@ -206,11 +234,45 @@ export default function PackingV2Page() {
     });
   }, [effectiveLineId, nextTote, runScan]);
 
-  const handleActualQtyChange = useCallback(
-    (productId: number, qty: number) => {
-      setActualQty((prev) => ({ ...prev, [productId]: qty }));
+  /** 품목 표 "파손 신고" 버튼 — 대화 상자를 연다(정본 §9.4). `shipmentId` 는 여는 순간
+   * 값으로 굳혀 둔다(`damage-report-dialog.tsx` 상단 주석 참고) */
+  const handleOpenDamageDialog = useCallback(
+    (item: ShipmentItem) => {
+      if (shipment === undefined) return;
+      setDamageTarget({
+        shipmentId: shipment.shipmentId,
+        gtin: item.gtin,
+        name: item.name,
+        qty: item.qty,
+        verifiedQty: item.verifiedQty,
+      });
     },
-    [],
+    [shipment],
+  );
+
+  const handleDamageDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) setDamageTarget(null);
+  }, []);
+
+  /**
+   * 파손 신고 결과(정본 §9.3) — 주문 취소(ORDER_CANCELLED)면 배송단위·토트가 사라지므로
+   * 화면을 스캔 대기 상태로 되돌린다. 보충(REPLENISH)이면 배송단위가 그대로 남아 있으니
+   * 화면은 손대지 않는다 — 상세 재조회(`useDamageReport`)가 "보충 대기" 배지를 채운다.
+   */
+  const handleDamageOutcome = useCallback(
+    (result: DamageReportResponse) => {
+      if (result.outcome !== "ORDER_CANCELLED") return;
+      setShipmentId(null);
+      setBarcode("");
+      setSelectedBoxTypeId(null);
+      setSelectedProductId(null);
+      setIsLidOpen(false);
+      scan.reset();
+      completePacking.reset();
+      scanItem.reset();
+      rescan.reset();
+    },
+    [scan, completePacking, scanItem, rescan],
   );
 
   /** 3-3. 낙관적으로 화면부터 바꾸고 요청을 보낸다 — 실패하면 패널이 에러를 그린다 */
@@ -245,16 +307,29 @@ export default function PackingV2Page() {
         window.setTimeout(() => {
           setShipmentId(null);
           setBarcode("");
-          setActualQty({});
           setSelectedBoxTypeId(null);
           setSelectedProductId(null);
           scan.reset();
+          scanItem.reset();
+          rescan.reset();
         }, LID_CLOSE_MS);
       },
     });
-  }, [shipment, completePacking, scan]);
+  }, [shipment, completePacking, scan, scanItem, rescan]);
 
   const isScanning = scan.isPending || shipmentQuery.isLoading;
+
+  /** 같은 스캔 필드가 지금 무엇을 찾는 중인가(정본 §9.4) — 배송단위가 없으면 토트, 있으면
+   * 품목. `useShipmentDetail` 은 `shipmentId` 가 바뀌는 순간 이전 데이터를 들고 있을 수
+   * 있어 `shipmentId` 자체가 아니라 조회된 `shipment` 로 가른다(로딩 중엔 토트 모드로 둔다). */
+  const scanMode: "tote" | "item" = shipment === undefined ? "tote" : "item";
+  const replenishPending = shipment?.replenish !== undefined && shipment?.replenish !== null;
+  /** 포장완료 활성 조건 — 전 품목 대조 완료 + 보충 없음(정본 §9.3·§9.4) */
+  const canComplete =
+    shipment !== undefined &&
+    shipment.items.length > 0 &&
+    shipment.items.every((item) => item.verifiedQty === item.qty) &&
+    !replenishPending;
 
   /**
    * "웨이브 생성" 제출 — 정본 §6.4. 성공은 대화 상자 안 결과 뷰로 보여 주고(토스트로만
@@ -335,12 +410,14 @@ export default function PackingV2Page() {
       {/* 포장 탭 — 기존 화면. 언마운트하지 않고 숨기기만 한다: 토트 스캔 중간 상태가 탭을
           오가도 사라지지 않아야, 실수로 주문 탭을 눌렀다가 돌아와도 하던 작업이 남는다. */}
       <div className="flex min-h-0 flex-1 flex-col gap-2" hidden={activeTab !== "packing"}>
-      {/* 3-5 진입점. TOTE_NOT_ASSIGNED(404) 는 이 바 오른쪽에 표시된다 */}
+      {/* 3-5 진입점. TOTE_NOT_ASSIGNED(404) 는 이 바 오른쪽에 표시된다. 배송단위가 열리면
+          같은 입력란이 품목 스캔으로 모드를 바꾼다(Stage 9, 정본 §9.4) */}
       <ToteScanPanel
+        mode={scanMode}
         value={barcode}
         onChange={setBarcode}
         onScan={handleScan}
-        isPending={isScanning}
+        isPending={isScanning || scanItem.isPending}
         error={scan.error?.message ?? nextTote.error?.message ?? null}
         summary={
           shipment === undefined
@@ -351,6 +428,7 @@ export default function PackingV2Page() {
                 toteBarcode: shipment.tote?.barcode ?? null,
               }
         }
+        replenishPending={replenishPending}
         lines={lines}
         linesLoading={linesQuery.isLoading}
         selectedLineId={effectiveLineId}
@@ -358,6 +436,8 @@ export default function PackingV2Page() {
         onNextTote={handleNextTote}
         isNextTotePending={nextTote.isPending}
         queueMessage={nextToteMessage}
+        onRescan={handleRescan}
+        isRescanPending={rescan.isPending}
       />
 
       <div className="flex min-h-0 flex-1 gap-2">
@@ -382,13 +462,15 @@ export default function PackingV2Page() {
             shipmentsError={lineShipmentsQuery.isError}
           />
 
-          {/* 3-2 items + 파생 취급속성. 실수량 입력·불일치 표시는 프론트 상태로만 (D-06) */}
+          {/* 3-2 items + 파생 취급속성. 낱개 스캔 누계(verifiedQty)는 서버 값 그대로
+              (Stage 9, 정본 §9.3 — D-06 의 프론트 전용 실수량을 대체한다) */}
           <ShipmentItemsPanel
             items={shipment?.items ?? []}
-            actualQty={actualQty}
-            onActualQtyChange={handleActualQtyChange}
             selectedProductId={selectedProductId}
             onSelectProduct={setSelectedProductId}
+            onDamageReport={handleOpenDamageDialog}
+            replenishPending={replenishPending}
+            scanError={scanItem.error ?? rescan.error}
             isLoading={shipmentQuery.isLoading}
             hasShipment={shipment !== undefined}
           />
@@ -487,18 +569,24 @@ export default function PackingV2Page() {
             />
           </div>
 
-          {/* 3-8. OUT_OF_STOCK · INVALID_STATE(409) 방어는 컴포넌트 안에서 문구를 가른다 */}
+          {/* 3-8. OUT_OF_STOCK · INVALID_STATE(409) 방어는 컴포넌트 안에서 문구를 가른다.
+              활성 조건 — 전 품목 대조 완료 + 보충 없음(Stage 9, 정본 §9.3·§9.4) */}
           <PackActions
             onComplete={handleComplete}
-            disabled={
-              shipment === undefined || completePacking.data !== undefined
-            }
+            disabled={!canComplete || completePacking.data !== undefined}
             isPending={completePacking.isPending}
             error={completePacking.error}
           />
         </div>
       </div>
       </div>
+
+      {/* 품목 표 "파손 신고" — 정본 §9.3·§9.4 */}
+      <DamageReportDialog
+        target={damageTarget}
+        onOpenChange={handleDamageDialogOpenChange}
+        onOutcome={handleDamageOutcome}
+      />
 
       <WaveCreateDialog
         open={isWaveDialogOpen}

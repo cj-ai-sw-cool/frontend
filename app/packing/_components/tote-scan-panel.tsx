@@ -22,14 +22,22 @@ import { Btn, Field, Panel, TrayBox, w98 } from "./win98-ui";
  * 토트 바코드는 입력란에 직접 쳐서 스캔한다(Enter · Scan). "다음 토트"는 리빈 완성 큐
  * (Stage 8, 정본 §8.3 `GET /packing/queue?lineId=`)의 첫 행을 이 입력란에 채우고 곧바로
  * 조회한다 — LINE 탭에서 고른 라인 기준이다. 큐가 비어 있으면 조회 없이 안내만 보여준다.
+ *
+ * ★ Stage 9 — 토트를 스캔해 배송단위가 열리면 **같은 입력란**이 품목 스캔으로 모드를
+ *   바꾼다(정본 §9.4 "같은 스캔 필드가 모드 전환"). 왼쪽 배지(`토트`/`품목`)가 지금 무엇을
+ *   스캔하는 자리인지 알려준다 — 입력란을 두 개로 나누면 작업자가 어느 칸에 찍어야 하는지
+ *   매번 헷갈린다. "재스캔"(verified_qty 전부 0)은 품목 모드에서만 의미가 있어 그때만 누를
+ *   수 있다.
  */
 export function ToteScanPanel({
+  mode,
   value,
   onChange,
   onScan,
   isPending,
   error,
   summary,
+  replenishPending,
   lines,
   linesLoading,
   selectedLineId,
@@ -37,7 +45,11 @@ export function ToteScanPanel({
   onNextTote,
   isNextTotePending,
   queueMessage,
+  onRescan,
+  isRescanPending,
 }: {
+  /** 지금 이 입력란이 스캔하는 대상 — 배송단위가 없으면 토트, 있으면 품목(정본 §9.4) */
+  mode: "tote" | "item";
   value: string;
   onChange: (value: string) => void;
   onScan: () => void;
@@ -45,6 +57,8 @@ export function ToteScanPanel({
   error?: string | null;
   /** 스캔에 성공했을 때만 채워진다 */
   summary: { lineName: string; seqNo: number; toteBarcode: string | null } | null;
+  /** 보충 배치 처리 대기 중이면 참(정본 §9.3·§9.4 "보충 대기" 배지) */
+  replenishPending: boolean;
   lines: Line[];
   linesLoading: boolean;
   selectedLineId: number | null;
@@ -55,11 +69,15 @@ export function ToteScanPanel({
   /** 큐가 비었을 때만 채워진다(예: "대기 중인 토트 없음") — 스캔 실패(`error`)와는 다른
    * 자리를 쓰지 않는다. 같은 안내 슬롯을 나눠 쓰므로 패널 높이가 흔들리지 않는다 */
   queueMessage: string | null;
+  /** "재스캔" 버튼 — 품목 모드에서만 누를 수 있다(정본 §9.4) */
+  onRescan: () => void;
+  isRescanPending: boolean;
 }) {
-  const isBusy = isPending || isNextTotePending;
+  const isBusy = isPending || isNextTotePending || isRescanPending;
   const isManualEntry = value.trim().length > 0;
   const canPressScan = !isBusy && isManualEntry;
   const canPressNextTote = !isBusy && selectedLineId !== null;
+  const canPressRescan = !isBusy && mode === "item";
 
   return (
     <Panel title="토트 스캔" className="shrink-0" bodyClassName="flex-row items-center gap-3">
@@ -71,6 +89,12 @@ export function ToteScanPanel({
           onScan();
         }}
       >
+        {/* 모드 배지 — 지금 입력란이 토트를 찾는 중인지, 품목을 대조하는 중인지 */}
+        <span
+          className={`${w98.small} shrink-0 font-bold text-[color:var(--muted-foreground)]`}
+        >
+          {mode === "tote" ? "토트" : "품목"}
+        </span>
         <Field
           id="tote-barcode"
           name="toteBarcode"
@@ -80,7 +104,7 @@ export function ToteScanPanel({
           autoComplete="off"
           autoFocus
           disabled={isBusy}
-          aria-label="토트 바코드"
+          aria-label={mode === "tote" ? "토트 바코드" : "품목 바코드"}
           aria-invalid={error ? true : undefined}
           /* ★ 28 → **40px**, 글자 15 → 17px (사용자 지적 — 너무 작았다).
                  스캐너가 쏜 값이 들어오는 칸이라, 작업자가 눈으로 확인하는 유일한 자리다. */
@@ -110,6 +134,17 @@ export function ToteScanPanel({
         className="flex h-10 shrink-0 items-center px-4 text-[15px] font-bold"
       >
         {isNextTotePending ? "조회 중…" : "다음 토트"}
+      </Btn>
+
+      {/* "재스캔" — verified_qty 전부 0(정본 §9.3·§9.4). 토트 모드에서는 되돌릴 배송단위가
+          없어 누를 수 없다 */}
+      <Btn
+        disabled={!canPressRescan}
+        onClick={onRescan}
+        title={mode === "tote" ? "먼저 토트를 스캔하세요" : "이 배송단위의 스캔 기록을 지웁니다"}
+        className="flex h-10 shrink-0 items-center px-4 text-[15px] font-bold"
+      >
+        {isRescanPending ? "처리 중…" : "재스캔"}
       </Btn>
 
       {/* LINE 선택 — 목업의 `TEST:` 셀렉트 자리를 그대로 잇는다. 배송 내역 조회와 다음 토트
@@ -170,6 +205,13 @@ export function ToteScanPanel({
           <TrayBox size="lg" className="min-w-0">
             <span className="truncate">토트 {summary.toteBarcode ?? "—"}</span>
           </TrayBox>
+          {/* 보충 배치가 아직 안 끝났으면 포장완료가 막힌다(정본 §9.3·§9.4) — 그 이유를
+              여기서 바로 보여준다 */}
+          {replenishPending ? (
+            <TrayBox size="lg" tone="error">
+              보충 대기
+            </TrayBox>
+          ) : null}
         </div>
       )}
     </Panel>
