@@ -1338,18 +1338,38 @@ export interface RebinScanMove {
 }
 
 /**
- * `POST /admin/rebin/simulate` 응답의 `scans[]` 원소 — 정본 §8.3에는 `scans:[…]`로만
- * 적혀 있어 행 모양이 정본에 없다(생략 부호). 브리프 §3 "결과 패널(스캔 행: 슬롯·수령번호·
- * 상품·수량)"을 만족하려면 gtin·상품명이 있어야 해서, `scan` 요청(gtin, qty)과 응답
- * (`moves`)을 한 스캔 단위로 합쳐 추정했다 — Stage 7B `SimulateStep`이 태스크 원본 응답에
- * gtin/productName 을 더해 주는 것과 같은 관례. **라이브 대조 전까지는 추정이다** — 실제
- * 필드가 다르면 이 타입과 `rebin-result-view.tsx`만 고치면 된다(사용자 보고 "판단 필요 사항").
+ * `POST /rebin/sessions/{id}/scan` 응답 — 정본 §8.3 + 조율자 결정 3번(2026-09-12, 백엔드
+ * 세션 안 라이브 보고)으로 `unmovedQty`/`leftover` 추가. `unmovedQty` 는 읽은 수량 중 갈
+ * 곳이 없어 배치 토트에 그대로 둔 몫(그 상품을 기다리는 주문이 벽에 없거나, 기다리는 양보다
+ * 많이 읽었을 때 0 보다 커진다). `leftover` 는 이제 `unmovedQty > 0` 과 동치다 — 이전에는
+ * `moves` 가 비었는지로 정했으나 일부만 옮겨간 경우를 놓쳤다. 지금 화면은 이 엔드포인트를
+ * 직접 부르지 않고 시뮬레이터만 쓰지만, 계약에 있는 응답이라 타입을 맞춰 둔다.
+ */
+export interface RebinScanResponse {
+  moves: RebinScanMove[];
+  completedOrders: string[];
+  unmovedQty: number;
+  leftover: boolean;
+}
+
+/**
+ * `POST /admin/rebin/simulate` 응답의 `scans[]` 원소 — 백엔드 실 구현 확정(2026-09-12,
+ * 조율자 결정 3번). 이미 이동 단위로 펼쳐진 평평한 행이다(스캔 한 번에 여러 줄이 나올 수
+ * 있다) — 이 프로젝트가 앞서 추정했던 `{gtin, productName, qty, moves[]}` 중첩 모양은
+ * 폐기한다.
+ * - 옮긴 줄: `slotCode`/`receiptNo` 채워짐, `qty` = 옮긴 수량, `unmovedQty: 0`
+ * - 옮기지 못한 몫이 있으면 별도 줄로: `slotCode`/`receiptNo` 는 `null`, `qty: 0`,
+ *   `unmovedQty > 0` — 결과 패널이 "옮기지 못함 n" 으로 보여준다(`rebin-result-view.tsx`).
+ *   시뮬레이터는 벽이 기다리는 몫만 골라 읽으므로(§8.1) 실제로는 거의 나오지 않는다 — 잉여는
+ *   스캔하지 않고 종료(finish)가 입고장으로 되돌린다.
  */
 export interface RebinSimulateScan {
+  slotCode: string | null;
+  receiptNo: string | null;
   gtin: string;
   productName: string;
   qty: number;
-  moves: RebinScanMove[];
+  unmovedQty: number;
 }
 
 /** 반납(RESTOCK) 한 줄 — 정본 §8.3 "restocked:[{gtin, lotNo, qty}]" */
