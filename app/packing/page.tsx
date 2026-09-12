@@ -20,6 +20,7 @@ import { useLineShipments } from "./_data/use-line-shipments";
 import {
   useBoxTypes,
   useCompletePacking,
+  useNextTote,
   useOverrideBox,
   useProductImages,
   useShipmentDetail,
@@ -71,6 +72,9 @@ export default function PackingV2Page() {
   /* ── 화면 상태 (서버 데이터가 아닌 것만) ────────────────── */
   const [barcode, setBarcode] = useState("");
   const [shipmentId, setShipmentId] = useState<number | null>(null);
+  /** "다음 토트" 큐가 비었을 때만 채운다(Stage 8, 정본 §8.4) — 스캔 실패(`scan.error`)와
+   * 자리를 나눠 쓰므로 `runScan`이 부르면(성공이든 실패든) 지운다. */
+  const [nextToteMessage, setNextToteMessage] = useState<string | null>(null);
   /** 실수량 — **프론트 상태로만** 존재한다 (D-06). 서버로 나가지 않는다 */
   const [actualQty, setActualQty] = useState<Record<number, number>>({});
   const [selectedBoxTypeId, setSelectedBoxTypeId] = useState<number | null>(
@@ -107,6 +111,7 @@ export default function PackingV2Page() {
   const overrideBox = useOverrideBox(); // 3-3
   const completePacking = useCompletePacking(); // 3-8
   const linesQuery = useLines(); // 라인 목록 — LINE 탭
+  const nextTote = useNextTote(); // Stage 8 — "다음 토트" 버튼
 
   const shipment = shipmentQuery.data;
   const boxes = useMemo<BoxType[]>(
@@ -156,6 +161,7 @@ export default function PackingV2Page() {
   const runScan = useCallback(
     (value: string) => {
       setBarcode(value);
+      setNextToteMessage(null);
       scan.mutate(value, {
         onSuccess: (detail) => {
           setShipmentId(detail.shipmentId);
@@ -180,6 +186,25 @@ export default function PackingV2Page() {
   const handleSelectLine = useCallback((lineId: number) => {
     setSelectedLineId(lineId);
   }, []);
+
+  /**
+   * "다음 토트" — Stage 8, 정본 §8.3·§8.4. `GET /packing/queue?lineId=`의 첫 행을 스캔
+   * 입력에 넣고 곧바로 조회한다(브리프 §3 "첫 토트 코드를 스캔 입력에 넣고 조회"). 큐가
+   * 비면 조회 없이 안내만 남긴다.
+   */
+  const handleNextTote = useCallback(() => {
+    if (effectiveLineId === null) return;
+    setNextToteMessage(null);
+    nextTote.mutate(effectiveLineId, {
+      onSuccess: (queue) => {
+        if (queue.length === 0) {
+          setNextToteMessage("대기 중인 토트 없음");
+          return;
+        }
+        runScan(queue[0].toteCode);
+      },
+    });
+  }, [effectiveLineId, nextTote, runScan]);
 
   const handleActualQtyChange = useCallback(
     (productId: number, qty: number) => {
@@ -330,6 +355,9 @@ export default function PackingV2Page() {
         linesLoading={linesQuery.isLoading}
         selectedLineId={effectiveLineId}
         onSelectLine={handleSelectLine}
+        onNextTote={handleNextTote}
+        isNextTotePending={nextTote.isPending}
+        queueMessage={nextToteMessage}
       />
 
       <div className="flex min-h-0 flex-1 gap-2">

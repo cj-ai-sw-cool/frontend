@@ -19,9 +19,9 @@ import { Btn, Field, Panel, TrayBox, w98 } from "./win98-ui";
  *   작업자가 토트를 헷갈리지 않게 하는 것이 목적이고, 안내와 에러가 자리를 나눠 쓰므로
  *   패널 높이가 상태에 따라 흔들리지 않는다.
  *
- * 토트 바코드는 입력란에 직접 쳐서 스캔한다(Enter · Scan). 시연용 다음 토트 자동 발급은
- * 후계 기능(리빈 완성 큐, Stage 8)이 들어올 때까지 비활성이다 — 칸이 비어 있으면 Scan 을
- * 누를 수 없다.
+ * 토트 바코드는 입력란에 직접 쳐서 스캔한다(Enter · Scan). "다음 토트"는 리빈 완성 큐
+ * (Stage 8, 정본 §8.3 `GET /packing/queue?lineId=`)의 첫 행을 이 입력란에 채우고 곧바로
+ * 조회한다 — LINE 탭에서 고른 라인 기준이다. 큐가 비어 있으면 조회 없이 안내만 보여준다.
  */
 export function ToteScanPanel({
   value,
@@ -34,6 +34,9 @@ export function ToteScanPanel({
   linesLoading,
   selectedLineId,
   onSelectLine,
+  onNextTote,
+  isNextTotePending,
+  queueMessage,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -46,10 +49,17 @@ export function ToteScanPanel({
   linesLoading: boolean;
   selectedLineId: number | null;
   onSelectLine: (lineId: number) => void;
+  /** "다음 토트" 버튼 — 정본 §8.4 "nextTote 후계" */
+  onNextTote: () => void;
+  isNextTotePending: boolean;
+  /** 큐가 비었을 때만 채워진다(예: "대기 중인 토트 없음") — 스캔 실패(`error`)와는 다른
+   * 자리를 쓰지 않는다. 같은 안내 슬롯을 나눠 쓰므로 패널 높이가 흔들리지 않는다 */
+  queueMessage: string | null;
 }) {
-  const isBusy = isPending;
+  const isBusy = isPending || isNextTotePending;
   const isManualEntry = value.trim().length > 0;
   const canPressScan = !isBusy && isManualEntry;
+  const canPressNextTote = !isBusy && selectedLineId !== null;
 
   return (
     <Panel title="토트 스캔" className="shrink-0" bodyClassName="flex-row items-center gap-3">
@@ -79,17 +89,28 @@ export function ToteScanPanel({
         <Btn
           disabled={!canPressScan}
           onClick={onScan}
-          title={
-            isManualEntry
-              ? "입력한 바코드로 조회합니다"
-              : "Stage 8: 리빈 완성 큐로 대체"
-          }
+          title="입력한 바코드로 조회합니다"
           className="flex h-10 items-center gap-1.5 px-4 text-[15px] font-bold"
         >
           <ScanBarcode className="size-5" aria-hidden />
           {isPending ? "조회 중…" : "Scan"}
         </Btn>
       </form>
+
+      {/* "다음 토트" — 리빈 완성 큐(Stage 8, 정본 §8.4)의 첫 행을 받아 온다. 라인을 아직
+          안 골랐으면 누를 수 없다(큐가 라인별이라 대상이 없다) */}
+      <Btn
+        disabled={!canPressNextTote}
+        onClick={onNextTote}
+        title={
+          selectedLineId === null
+            ? "먼저 LINE 을 고르세요"
+            : "이 라인의 다음 토트를 스캔 입력에 채웁니다"
+        }
+        className="flex h-10 shrink-0 items-center px-4 text-[15px] font-bold"
+      >
+        {isNextTotePending ? "조회 중…" : "다음 토트"}
+      </Btn>
 
       {/* LINE 선택 — 목업의 `TEST:` 셀렉트 자리를 그대로 잇는다. 배송 내역 조회와 다음 토트
           발급이 여기서 고른 라인을 함께 쓴다. 운영 중이 아닌 라인도 목록에 남기되 고를 수 없게
@@ -123,8 +144,9 @@ export function ToteScanPanel({
         )}
       </div>
 
-      {/* 실패 · 요약이 같은 자리를 쓴다. 스캔 전에는 비워 둔다 — 높이는 고정폭 컨테이너가 잡는다.
-          ⚠️ 잘라 버리지 않고 title 로 전문을 남긴다 — 창고에서 경고를 놓치면 오출고가 된다. */}
+      {/* 실패 · 큐 안내 · 요약이 같은 자리를 쓴다. 스캔 전에는 비워 둔다 — 높이는 고정폭
+          컨테이너가 잡는다. ⚠️ 잘라 버리지 않고 title 로 전문을 남긴다 — 창고에서 경고를
+          놓치면 오출고가 된다. */}
       {error ? (
         <p
           role="alert"
@@ -132,6 +154,10 @@ export function ToteScanPanel({
           className="min-w-0 flex-1 truncate text-[15px] text-[color:var(--status-error)]"
         >
           {error}
+        </p>
+      ) : queueMessage ? (
+        <p className="min-w-0 flex-1 truncate text-[15px] text-[color:var(--muted-foreground)]">
+          {queueMessage}
         </p>
       ) : summary === null ? (
         <div className="min-w-0 flex-1" />
