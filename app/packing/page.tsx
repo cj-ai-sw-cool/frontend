@@ -341,7 +341,7 @@ export default function PackingV2Page() {
         onChange={setBarcode}
         onScan={handleScan}
         isPending={isScanning}
-        error={scan.error?.message ?? null}
+        error={scan.error?.message ?? nextTote.error?.message ?? null}
         summary={
           shipment === undefined
             ? null
