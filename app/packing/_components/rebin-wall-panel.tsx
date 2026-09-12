@@ -3,11 +3,14 @@
 import type { RebinSessionDetail, RebinSlotStatus } from "@/lib/types";
 import { Panel, Sunken, w98 } from "./win98-ui";
 
-/** 슬롯 상태 → 화면 표기 — 정본 §8.2 스키마(ACTIVE/COMPLETED/RELEASED) */
+/**
+ * 슬롯 상태 → 화면 표기 — 정본 §8.2 스키마(ACTIVE/COMPLETED/RELEASED). COMPLETED 는 완성해서
+ * 배송단위 토트로 옮긴 슬롯(수령/필요가 필요량으로 찬다), RELEASED 는 미완성으로 반납하고 비운 슬롯.
+ */
 const REBIN_SLOT_STATUS_LABEL: Record<RebinSlotStatus, string> = {
   ACTIVE: "진행중",
-  COMPLETED: "완성",
-  RELEASED: "해제",
+  COMPLETED: "완성 · 배송 토트로",
+  RELEASED: "취소 · 반납",
 };
 
 /**
