@@ -42,7 +42,12 @@ export type ApiErrorCode =
   | "PICK_TASK_NOT_FOUND"
   /** 포장 완료(Stage 7~8 전환기) — PICKING/REBINNING 주문의 배송단위는 아직 칸에서
    * 이중 차감되므로 409 로 막는다(정본 §7 S7.3, Stage 9 에서 해제) */
-  | "NOT_READY";
+  | "NOT_READY"
+  /** 리빈 세션 시작(Stage 8) — 배치의 취소 아닌 주문 수만큼 빈 슬롯이 없을 때 409(정본 §8.1) */
+  | "NO_SLOT"
+  /** 리빈 종료(Stage 8) — 미완성 슬롯(주문)이 남아 있는데 `force` 없이 finish 를 부를 때
+   * 409(정본 §8.3). 자동 처리는 `force` 를 안 보내므로 이 코드가 그대로 올라올 수 있다 */
+  | "INCOMPLETE";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -438,7 +443,8 @@ export interface DailyInventory {
   utilizationIsCurrent?: boolean;
 }
 
-/** `GET /admin/inventory/invariant` 행 — 빈 배열이 정상 */
+/** 불변식 1 위반 행(`stock.qty ≠ Σtx`) — `GET /admin/inventory/invariant` 응답의
+ * `stockVsLedger[]`(정본 §2.6). 빈 배열이 정상 */
 export interface InvariantMismatch {
   location: { code: string };
   seller: { code: string };
@@ -447,6 +453,28 @@ export interface InvariantMismatch {
   status: StockStatus;
   stockQty: number;
   txQty: number;
+}
+
+/** 불변식 2 위반 행(`Σ ACTIVE HARD allocation.qty > stock.qty(AVAILABLE)`) — 정본 §7.9,
+ * `GET /admin/inventory/invariant` 응답의 `allocationOverStock[]`. `InvariantMismatch`와
+ * 같은 키(로케이션·화주·상품·로트)지만 원장 대신 활성 HARD 할당 합을 견준다. 빈 배열이 정상 */
+export interface AllocationOverStockRow {
+  location: { code: string };
+  seller: { code: string };
+  product: { id: number; gtin: string };
+  lot: { lotNo: string };
+  allocatedQty: number;
+  stockQty: number;
+}
+
+/**
+ * `GET /admin/inventory/invariant` 응답 — Stage 7 까지는 배열이었으나(§7.9 결정, 브리프
+ * "S7.7 변경 반영") 이제 두 불변식을 한 객체로 함께 담는다. 정본 §8.4·§8.5 "불변식
+ * {stockVsLedger:[], allocationOverStock:[]}" — 둘 다 빈 배열이 정상.
+ */
+export interface InvariantCheckResult {
+  stockVsLedger: InvariantMismatch[];
+  allocationOverStock: AllocationOverStockRow[];
 }
 
 /** `POST /admin/inventory/adjust` 요청 — 화면 체크·ICQA 전 임시 창구 */
@@ -1244,5 +1272,111 @@ export interface SimulateResponse {
   steps: SimulateStep[];
   cancelledOrders: ReallocationCancelledOrder[];
   addedTasks: ReallocationNewTask[];
+}
+
+/* ── 8. 리빈 — put wall (Stage 8) ─────────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §8.2·§8.3·§8.4, docs/tasks/
+   2026-09-12-stage8-rebin-handoff.md §3 S8.3. 작업자 화면 없음(§8.1과 같은 결정) — 시뮬레이터가
+   세션을 처리하고 웨이브 탭이 관전한다. 백엔드와 같은 세션에서 동시에 만들어지는 중이라 —
+   §8.3에 적힌 필드명은 그대로 옮겼고, 라이브 대조는 완료 보고에서 남긴다. */
+
+export type RebinSessionStatus = "ACTIVE" | "FINISHED";
+
+/** `rebin_slot_assignment.status` — 정본 §8.2 스키마 그대로(ACTIVE/COMPLETED/RELEASED) */
+export type RebinSlotStatus = "ACTIVE" | "COMPLETED" | "RELEASED";
+
+/** 리빈 벽 한 슬롯의 품목 한 줄 — 정본 §8.3 "품목별 have/need". `need`=`order_item.qty`,
+ * `have`=그 슬롯에 위치한 이 주문의 ACTIVE HARD 할당 합(§8.2 "주문별 진행은 저장하지 않고
+ * 유도한다"). `have === need` 인 품목이 전부면 그 슬롯은 완성이다. */
+export interface RebinSlotItem {
+  gtin: string;
+  name: string;
+  need: number;
+  have: number;
+}
+
+/** `GET /rebin/sessions/{id}` 슬롯 한 줄 — 정본 §8.3 */
+export interface RebinSlot {
+  slotCode: string;
+  orderId: number;
+  receiptNo: string;
+  status: RebinSlotStatus;
+  items: RebinSlotItem[];
+}
+
+/** 토트에 남았고 ACTIVE 할당이 없는 잉여 — 정본 §8.1 "잉여·취소분은 입고장으로 되돌린다" */
+export interface RebinLeftover {
+  gtin: string;
+  lotNo: string;
+  qty: number;
+}
+
+/**
+ * `GET /rebin/sessions/{id}` 및 `GET /rebin/sessions?pickBatchId=` 응답 — 리빈 벽(정본 §8.3).
+ * `pickBatchId=` 조회는 세션이 없으면 **404** — 화면은 이 404 를 "리빈 자동 처리" 버튼을 보여줄
+ * 신호로 쓴다(브리프 §3, `lib/api.ts` 의 `ApiError.status`로 판별).
+ */
+export interface RebinSessionDetail {
+  status: RebinSessionStatus;
+  worker: string;
+  toteLocationCode: string;
+  slots: RebinSlot[];
+  leftovers: RebinLeftover[];
+}
+
+/** `POST /admin/rebin/simulate` 요청 — 브리프 §3 "작업자 코드 기본 SIM-01"(화면이 채운다) */
+export interface RebinSimulateRequest {
+  pickBatchId: number;
+  worker: string;
+}
+
+/** 리빈 이동 한 줄 — `POST /rebin/sessions/{id}/scan` 응답의 `moves[]`(정본 §8.3) 그대로 */
+export interface RebinScanMove {
+  slotCode: string;
+  receiptNo: string;
+  qty: number;
+}
+
+/**
+ * `POST /admin/rebin/simulate` 응답의 `scans[]` 원소 — 정본 §8.3에는 `scans:[…]`로만
+ * 적혀 있어 행 모양이 정본에 없다(생략 부호). 브리프 §3 "결과 패널(스캔 행: 슬롯·수령번호·
+ * 상품·수량)"을 만족하려면 gtin·상품명이 있어야 해서, `scan` 요청(gtin, qty)과 응답
+ * (`moves`)을 한 스캔 단위로 합쳐 추정했다 — Stage 7B `SimulateStep`이 태스크 원본 응답에
+ * gtin/productName 을 더해 주는 것과 같은 관례. **라이브 대조 전까지는 추정이다** — 실제
+ * 필드가 다르면 이 타입과 `rebin-result-view.tsx`만 고치면 된다(사용자 보고 "판단 필요 사항").
+ */
+export interface RebinSimulateScan {
+  gtin: string;
+  productName: string;
+  qty: number;
+  moves: RebinScanMove[];
+}
+
+/** 반납(RESTOCK) 한 줄 — 정본 §8.3 "restocked:[{gtin, lotNo, qty}]" */
+export interface RebinRestockRow {
+  gtin: string;
+  lotNo: string;
+  qty: number;
+}
+
+/**
+ * `POST /admin/rebin/simulate` 응답 — 정본 §8.3. `completedOrders` 는 `receiptNo` 문자열
+ * 배열이다(`/scan` 응답의 `completedOrders:[receiptNo]`과 같은 모양 — Stage 7B
+ * `cancelledOrders`처럼 객체 배열이 아니다).
+ */
+export interface RebinSimulateResponse {
+  sessionId: number;
+  scans: RebinSimulateScan[];
+  completedOrders: string[];
+  restocked: RebinRestockRow[];
+  elapsedMs: number;
+}
+
+/** `GET /packing/queue?lineId=` 행 — PACKING 상태 주문의 배송단위 토트 큐, `ordered_at` 순
+ * (정본 §8.3). 포장 탭 "다음 토트" 버튼이 첫 행의 `toteCode` 를 스캔 입력에 채운다(브리프 §3). */
+export interface PackingQueueItem {
+  toteCode: string;
+  receiptNo: string;
+  shipmentSeq: number;
 }
 
