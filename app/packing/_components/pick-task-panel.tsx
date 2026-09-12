@@ -5,8 +5,9 @@ import { PICK_BATCH_STATUS_LABEL } from "./wave-detail-panel";
 import { Panel, Sunken, w98 } from "./win98-ui";
 
 /** 피킹 태스크 상태 → 화면 표기 — 정본 §6.3·§7.2. 배치 생성 직후는 전부 PENDING.
- * `CANCELLED` 는 Stage 7 — 재할당 실패로 주문이 취소돼 남은 태스크가 이 상태가 된다 */
-const PICK_TASK_STATUS_LABEL: Record<PickTaskStatus, string> = {
+ * `CANCELLED` 는 Stage 7 — 재할당 실패로 주문이 취소돼 남은 태스크가 이 상태가 된다.
+ * 자동 처리 결과 패널(`wave-batch-simulate-dialog.tsx`)도 같은 맵을 쓴다. */
+export const PICK_TASK_STATUS_LABEL: Record<PickTaskStatus, string> = {
   PENDING: "대기",
   PICKED: "완료",
   SHORT: "부족",
@@ -64,14 +65,15 @@ export function PickTaskPanel({
                   <th className="p-1.5">상품</th>
                   <th className="p-1.5">로트</th>
                   <th className="p-1.5">유통기한</th>
-                  <th className="p-1.5 text-right">수량</th>
+                  <th className="p-1.5 text-right">지시 수량</th>
+                  <th className="p-1.5 text-right">집은 수량</th>
                   <th className="p-1.5">상태</th>
                 </tr>
               </thead>
               <tbody>
                 {batch.tasks.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-1.5 text-[color:var(--muted-foreground)]">
+                    <td colSpan={8} className="p-1.5 text-[color:var(--muted-foreground)]">
                       태스크가 없습니다.
                     </td>
                   </tr>
@@ -94,6 +96,9 @@ export function PickTaskPanel({
                         {task.expiresOn ?? "—"}
                       </td>
                       <td className={`${w98.mono} p-1.5 text-right`}>{task.qty}</td>
+                      <td className={`${w98.mono} p-1.5 text-right`}>
+                        {task.status === "PENDING" ? "—" : task.pickedQty}
+                      </td>
                       <td className="p-1.5">{PICK_TASK_STATUS_LABEL[task.status]}</td>
                     </tr>
                   ))

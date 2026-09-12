@@ -3,7 +3,7 @@
 import type { PickBatchStatus, WaveDetail } from "@/lib/types";
 import { ORDER_STATUS_LABEL } from "./order-list-panel";
 import { WAVE_STATUS_LABEL } from "./wave-list-panel";
-import { Panel, Sunken, w98 } from "./win98-ui";
+import { Btn, Panel, Sunken, w98 } from "./win98-ui";
 
 /** 배치 상태 → 화면 표기 — 정본 §6.3. RELEASED 시점은 전부 OPEN(정본 §6.4-3) */
 export const PICK_BATCH_STATUS_LABEL: Record<PickBatchStatus, string> = {
@@ -26,6 +26,7 @@ export function WaveDetailPanel({
   errorMessage,
   selectedBatchId,
   onSelectBatch,
+  onSimulateBatch,
   className = "",
 }: {
   wave: WaveDetail | null;
@@ -33,6 +34,8 @@ export function WaveDetailPanel({
   errorMessage: string | null;
   selectedBatchId: number | null;
   onSelectBatch: (id: number) => void;
+  /** OPEN 배치 행의 "자동 처리" 버튼 — 정본 §7.5·§7.6, 브리프 §3 S7.6 */
+  onSimulateBatch: (id: number) => void;
   className?: string;
 }) {
   return (
@@ -107,12 +110,13 @@ export function WaveDetailPanel({
                   <th className="p-1.5">담당</th>
                   <th className="p-1.5 text-right">진행</th>
                   <th className="p-1.5 text-right">주문 수</th>
+                  <th className="p-1.5">동작</th>
                 </tr>
               </thead>
               <tbody>
                 {wave.batches.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-1.5 text-[color:var(--muted-foreground)]">
+                    <td colSpan={6} className="p-1.5 text-[color:var(--muted-foreground)]">
                       배치가 없습니다.
                     </td>
                   </tr>
@@ -137,6 +141,21 @@ export function WaveDetailPanel({
                         {batch.pickedTaskCount ?? "—"}/{batch.taskCount}
                       </td>
                       <td className={`${w98.mono} p-1.5 text-right`}>{batch.orderCount}</td>
+                      <td className="p-1.5">
+                        {batch.status === "OPEN" ? (
+                          <Btn
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onSimulateBatch(batch.pickBatchId);
+                            }}
+                            className="h-6 px-2 text-[11px]"
+                          >
+                            자동 처리
+                          </Btn>
+                        ) : (
+                          <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>—</span>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}

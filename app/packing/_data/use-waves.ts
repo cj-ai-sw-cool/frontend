@@ -11,8 +11,8 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { pickBatches, queryKeys, waves } from "@/lib/endpoints";
-import type { WaveCreateRequest, WavesQuery } from "@/lib/types";
+import { picking, pickBatches, queryKeys, waves } from "@/lib/endpoints";
+import type { SimulateRequest, WaveCreateRequest, WavesQuery } from "@/lib/types";
 
 /** 웨이브 목록 — 좌측 열. 상태 필터가 바뀔 때마다 쿼리 키가 바뀌어 다시 불러온다 */
 export function useWavesList(params?: WavesQuery) {
@@ -52,6 +52,24 @@ export function useCreateWave() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
       void queryClient.invalidateQueries({ queryKey: ["waves"] });
+    },
+  });
+}
+
+/**
+ * 작업자 시뮬레이터 — 웨이브 탭 OPEN 배치의 "자동 처리" 대화 상자(정본 §7.5, 브리프 §3
+ * S7.6). 성공하면 배치·웨이브 상태가 바뀌고(웨이브 DONE 가능) 주문도 REBINNING/CANCELLED
+ * 로 넘어가므로 배치·웨이브·주문 캐시를 전부 무효화한다.
+ */
+export function useSimulateBatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: SimulateRequest }) => picking.simulate(id, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["waves"] });
+      void queryClient.invalidateQueries({ queryKey: ["pick-batches"] });
     },
   });
 }
