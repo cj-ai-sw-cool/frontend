@@ -3,13 +3,13 @@
 /**
  * 실사 결과 패널 — `icqa-count-dialog.tsx`의 `result` 단계(정본 §10.3·§10.4).
  *
- * 라인별 전산(expected)·델타·입력(counted)·차이(diff)·조정 원장 id 를 보여준다. `blindLines`
- * (시작 응답)로 상품명을 찾아 붙인다 — 제출 응답 라인에는 이름이 없다(`lib/types.ts`
- * `SubmitCountTaskResultLine` 주석). RECOUNT_NEEDED 로 새 태스크가 생겼으면 "재카운트 실사
+ * 라인별 전산(expected)·델타·입력(counted)·차이(diff)·조정 원장 id 를 보여준다. 상품명은
+ * 제출 응답 라인의 `productName` 을 그대로 쓴다(라이브 대조로 확인, 2026-09-13 — 정본 §10.3
+ * 문안엔 없었으나 실제 응답엔 있다). RECOUNT_NEEDED 로 새 태스크가 생겼으면 "재카운트 실사
  * 열기"로 바로 이어서 연다(브리프 §3 "재카운트 태스크는 표에서 바로 열 수 있게").
  */
 
-import type { CountTaskBlindLine, CountTaskOutcome, SubmitCountTaskResponse } from "@/lib/types";
+import type { CountTaskOutcome, SubmitCountTaskResponse } from "@/lib/types";
 import { Btn, Etched, Sunken, w98 } from "./win98-ui";
 
 const OUTCOME_LABEL: Record<CountTaskOutcome, string> = {
@@ -20,18 +20,13 @@ const OUTCOME_LABEL: Record<CountTaskOutcome, string> = {
 
 export function IcqaResultView({
   result,
-  blindLines,
   onClose,
   onOpenRecount,
 }: {
   result: SubmitCountTaskResponse;
-  blindLines: CountTaskBlindLine[];
   onClose: () => void;
   onOpenRecount: (recountTaskId: number) => void;
 }) {
-  const nameOf = (gtin: string, lotNo: string, status: string) =>
-    blindLines.find((l) => l.gtin === gtin && l.lotNo === lotNo && l.status === status)?.name ?? gtin;
-
   return (
     <>
       <div className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto p-3">
@@ -58,10 +53,10 @@ export function IcqaResultView({
               </tr>
             </thead>
             <tbody>
-              {result.lines.map((line, index) => (
-                <tr key={index} className="border-t border-[color:var(--border)]">
+              {result.lines.map((line) => (
+                <tr key={line.lineId} className="border-t border-[color:var(--border)]">
                   <td className="p-1.5">
-                    {nameOf(line.gtin, line.lotNo, line.status)}
+                    {line.productName}
                     <span className={`${w98.mono} block text-[11px] text-[color:var(--muted-foreground)]`}>
                       {line.gtin}
                     </span>

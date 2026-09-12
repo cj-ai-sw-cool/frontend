@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import type { CountTaskBlindLine, StockStatus, SubmitCountTaskLine } from "@/lib/types";
+import type { CountTaskLine, StockStatus, SubmitCountTaskLine } from "@/lib/types";
 import { useSellers } from "../_data/use-master";
 import { Btn, Field, Select, Sunken, w98 } from "./win98-ui";
 
@@ -39,7 +39,7 @@ export function IcqaCountLines({
   onCancel,
   onSubmit,
 }: {
-  blindLines: CountTaskBlindLine[];
+  blindLines: CountTaskLine[];
   isSubmitting: boolean;
   errorMessage: string | null;
   onCancel: () => void;
@@ -128,7 +128,7 @@ export function IcqaCountLines({
                       <tr key={key} className="border-t border-[color:var(--border)]">
                         <td className={`${w98.mono} p-1.5`}>{line.sellerCode}</td>
                         <td className="p-1.5">
-                          {line.name}
+                          {line.productName}
                           <span className={`${w98.mono} block text-[11px] text-[color:var(--muted-foreground)]`}>
                             {line.gtin}
                           </span>

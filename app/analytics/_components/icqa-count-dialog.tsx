@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
-import type { CountTaskBlindLine, SubmitCountTaskLine, SubmitCountTaskResponse } from "@/lib/types";
+import type { CountTaskLine, SubmitCountTaskLine, SubmitCountTaskResponse } from "@/lib/types";
 import { useStartCountTask, useSubmitCountTask } from "../_data/use-icqa";
 import { IcqaCountLines } from "./icqa-count-lines";
 import { IcqaResultView } from "./icqa-result-view";
@@ -79,7 +79,7 @@ function DialogBody({
 }) {
   const [stage, setStage] = useState<Stage>("worker");
   const [worker, setWorker] = useState(DEFAULT_WORKER);
-  const [blindLines, setBlindLines] = useState<CountTaskBlindLine[]>([]);
+  const [blindLines, setBlindLines] = useState<CountTaskLine[]>([]);
   const [result, setResult] = useState<SubmitCountTaskResponse | null>(null);
 
   const start = useStartCountTask();
@@ -89,7 +89,6 @@ function DialogBody({
     return (
       <IcqaResultView
         result={result}
-        blindLines={blindLines}
         onClose={onClose}
         onOpenRecount={(recountTaskId) => {
           onOpenRecount(recountTaskId);
@@ -151,7 +150,7 @@ function DialogBody({
               { id: countTaskId, body: { worker: worker.trim() } },
               {
                 onSuccess: (data) => {
-                  setBlindLines(data.lines);
+                  setBlindLines(data.lines ?? []);
                   setStage("lines");
                 },
               },
