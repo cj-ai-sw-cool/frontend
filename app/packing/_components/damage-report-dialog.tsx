@@ -177,8 +177,8 @@ function DialogBody({
 /** 결과 문구 — 정본 §9.4 그대로("보충 배치 #n 생성 — 웨이브 탭에서 자동 처리 후 다시 스캔" /
  * "주문 취소(DAMAGED_SHORT) — 정상품 입고장 반납") */
 function outcomeMessage(result: DamageReportResponse): string {
-  if (result.outcome === "REPLENISH") {
-    return `보충 배치 #${result.replenishBatchId} 생성 — 웨이브 탭에서 자동 처리 후 다시 스캔`;
+  if (result.outcome === "REPLENISH" && result.replenish !== null) {
+    return `보충 배치 #${result.replenish.pickBatchId} 생성 — 웨이브 탭에서 자동 처리 후 다시 스캔`;
   }
   return "주문 취소(DAMAGED_SHORT) — 정상품 입고장 반납";
 }

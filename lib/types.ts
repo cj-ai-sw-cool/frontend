@@ -324,11 +324,43 @@ export interface DamageReportRequest {
   worker: string;
 }
 
-/** `POST /shipments/{id}/damage` 응답 — 보충 hard 성공이면 `REPLENISH`, 칸에 없으면
- * `ORDER_CANCELLED`(주문 취소, 정상품 반납). 정본 §9.3 */
-export type DamageReportResponse =
-  | { outcome: "REPLENISH"; replenishBatchId: number }
-  | { outcome: "ORDER_CANCELLED" };
+/** `POST /shipments/{id}/damage` 응답의 보충 배치 태스크 한 줄 */
+export interface DamageReplenishTask {
+  pickTaskId: number;
+  seqNo: number;
+  locationCode: string;
+  qty: number;
+}
+
+/** `outcome: "REPLENISH"` 일 때만 채워진다 — 칸에서 다시 약속해 연 배치 */
+export interface DamageReplenish {
+  pickBatchId: number;
+  status: PickBatchStatus;
+  tasks: DamageReplenishTask[];
+}
+
+/** `outcome: "ORDER_CANCELLED"` 일 때 입고장으로 반납된 정상품 한 줄 */
+export interface DamageRestockedItem {
+  gtin: string;
+  name: string;
+  lotNo: string | null;
+  qty: number;
+}
+
+/** `POST /shipments/{id}/damage` 응답 — 실제 백엔드 레코드(`DamageReportResponse.java`) 그대로.
+ * 초안에는 `{outcome, replenishBatchId}` 뿐이었으나, `replenish` 는 중첩 객체이고 `shipmentId`·
+ * `gtin`·`qty`·`restocked`·`items` 도 같이 온다(2026-09-13 라이브 대조로 정정).
+ * `replenish` 는 `REPLENISH` 일 때만, `restocked` 는 `ORDER_CANCELLED` 일 때만 값이 찬다 —
+ * 나머지 갈래에서는 각각 `null`/빈 배열이다(정본 §9.3, `ShipmentDamageService.report`). */
+export interface DamageReportResponse {
+  shipmentId: number;
+  gtin: string;
+  qty: number;
+  outcome: "REPLENISH" | "ORDER_CANCELLED";
+  replenish: DamageReplenish | null;
+  restocked: DamageRestockedItem[];
+  items: ItemScanStatus[];
+}
 
 /* ── 4. 마스터 — 화주·존·로케이션 (Stage 1) ─────────────────────────────
    정본: backend/docs/02-system/02-data-model.md §1, docs/tasks/
