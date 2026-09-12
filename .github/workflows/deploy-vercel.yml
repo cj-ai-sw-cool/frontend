@@ -1,4 +1,4 @@
-# develop 에 들어온 것을 Vercel 프로덕션으로 올린다.
+# main 에 들어온 것을 Vercel 프로덕션으로 올린다.
 #
 # Vercel 의 Git 연동을 쓰지 않는다. Hobby 플랜에서는 조직 소유 저장소를 연결할 수 없어서,
 # 대신 CLI 가 소스를 직접 올리는 방식을 쓴다 — 이 경로에는 그 제한이 없다.
@@ -6,7 +6,7 @@ name: deploy-vercel
 
 on:
   push:
-    branches: [develop]
+    branches: [main]
   workflow_dispatch:
 
 # 배포가 겹치면 나중 것만 남긴다. 앞선 실행은 취소한다 — 먼저 끝난 옛 커밋이
