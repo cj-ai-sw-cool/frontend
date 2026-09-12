@@ -1164,25 +1164,6 @@ export interface PickBatchesResponse {
   items: PickBatchListItem[];
 }
 
-/** `POST /pick-batches/{id}/claim` 요청 — 작업자 코드(정본 §7.1, 화면 로컬 저장) */
-export interface PickBatchClaimRequest {
-  worker: string;
-}
-
-/** `POST /pick-tasks/{id}/pick` 요청 — qty 는 지시 수량 이하(정본 §7.3) */
-export interface PickTaskPickRequest {
-  qty: number;
-  worker: string;
-}
-
-/** 불일치 신고 — 부족 피킹 시 자동 생성(정본 §7.2 `pick_discrepancy`, 백엔드 2026-09-12 보고) */
-export interface PickDiscrepancy {
-  discrepancyId: number;
-  locationCode: string;
-  expectedQty: number;
-  foundQty: number;
-}
-
 /** 재할당 새 태스크 — 부족분을 다른 칸에서 채우면 배치 끝에 붙는다(정본 §7.3) */
 export interface ReallocationNewTask {
   pickTaskId: number;
@@ -1212,21 +1193,56 @@ export interface Reallocation {
   cancelledOrders: ReallocationCancelledOrder[];
 }
 
-/**
- * `POST /pick-tasks/{id}/pick` 응답 — 정본 §7.3, 백엔드 2026-09-12 보고.
- * `status` 는 이 태스크 자체의 확정 결과(PICKED 아니면 SHORT) — `PENDING`/`CANCELLED` 는
- * 오지 않는다. PICKED 면 `discrepancy`·`reallocation` 둘 다 null. `nextTaskId` 는 seq 순으로
- * 이 태스크 뒤의 첫 PENDING 태스크(재할당으로 새로 생긴 태스크 포함) — null 이면 남은 게
- * 없다는 뜻이라 화면이 "배치 완료" 버튼을 보여준다.
- */
-export interface PickTaskPickResponse {
+/* ── 7.5 작업자 시뮬레이터 (Stage 7B) ────────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §7.5, docs/tasks/
+   2026-09-12-stage7b-simulator-handoff.md §3 S7.6. 피킹 화면(PDA) 대신 서버 시뮬레이터가
+   claim→pick→complete 를 단계별로 대신 호출한다 — 웨이브 탭 OPEN 배치의 "자동 처리". */
+
+/** `POST /admin/pick-batches/{id}/simulate` 요청의 태스크별 실제 수량 지정 — 정본 §7.5.
+ * 지정하지 않은 태스크(이 배열에 없는 `pickTaskId`)는 지시 수량대로 집는다. 재할당으로
+ * 배치 끝에 추가된 태스크는 id 를 미리 알 수 없어 항상 지시대로다. */
+export interface SimulateShortInput {
   pickTaskId: number;
-  status: PickTaskStatus;
+  foundQty: number;
+}
+
+/** `POST /admin/pick-batches/{id}/simulate` 요청 — `worker` 기본값은 화면이 `SIM-01` 로 채운다 */
+export interface SimulateRequest {
+  worker: string;
+  shorts: SimulateShortInput[];
+}
+
+/**
+ * 시뮬레이터 결과의 단계 한 줄 — 정본 §7.5 `steps[]`. `status` 는 이 태스크 자체의 확정
+ * 결과(PICKED 아니면 SHORT) — `PENDING`/`CANCELLED` 는 오지 않는다. PICKED 면
+ * `reallocation` 은 null.
+ */
+export interface SimulateStep {
+  pickTaskId: number;
+  seqNo: number;
+  locationCode: string;
+  gtin: string;
+  productName: string;
   qty: number;
   pickedQty: number;
-  batchStatus: PickBatchStatus;
-  nextTaskId: number | null;
-  discrepancy: PickDiscrepancy | null;
+  status: PickTaskStatus;
   reallocation: Reallocation | null;
+}
+
+/**
+ * `POST /admin/pick-batches/{id}/simulate` 응답 — 정본 §7.5. OPEN 이 아니면 409
+ * `INVALID_STATE`, 남이 먼저 claim 했으면(경합 중이면) claim 의 409 `ALREADY_CLAIMED` 가
+ * 그대로 나간다. `elapsedMs` 는 시뮬레이터 시작부터 배치 complete 까지.
+ */
+export interface SimulateResponse {
+  pickBatchId: number;
+  worker: string;
+  toteLocationCode: string | null;
+  batchStatus: PickBatchStatus;
+  waveStatus: WaveStatus;
+  elapsedMs: number;
+  steps: SimulateStep[];
+  cancelledOrders: ReallocationCancelledOrder[];
+  addedTasks: ReallocationNewTask[];
 }
 
