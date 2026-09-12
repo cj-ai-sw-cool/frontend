@@ -38,8 +38,12 @@ export function ShipmentItemsPanel({
   isLoading: boolean;
   hasShipment: boolean;
 }) {
+  /* verifiedQty 를 ?? 0 으로 방어한다 — 백엔드 롤아웃 순서가 보장되지 않아(S9.1이 아직 안
+     떴을 수 있다) 필드가 비어 오면 undefined + undefined = NaN 이 되고, 그 NaN 이 진행
+     막대 폭 클래스 계산까지 번져 막대가 "꽉 찬 것"처럼 보이는 사고로 이어진다
+     (2026-09-12 라이브 대조에서 발견). */
   const totalNeed = items.reduce((sum, item) => sum + item.qty, 0);
-  const totalVerified = items.reduce((sum, item) => sum + item.verifiedQty, 0);
+  const totalVerified = items.reduce((sum, item) => sum + (item.verifiedQty ?? 0), 0);
   const allVerified = items.length > 0 && totalVerified === totalNeed;
   const scanErrorMessage = describeScanError(scanError);
 
@@ -89,7 +93,8 @@ export function ShipmentItemsPanel({
             </thead>
             <tbody>
               {items.map((item) => {
-                const isComplete = item.verifiedQty === item.qty;
+                const verifiedQty = item.verifiedQty ?? 0;
+                const isComplete = verifiedQty === item.qty;
                 const isSelected = item.productId === selectedProductId;
 
                 return (
@@ -135,7 +140,7 @@ export function ShipmentItemsPanel({
                         isComplete ? "text-[color:var(--status-success)]" : ""
                       }`}
                     >
-                      {item.verifiedQty}
+                      {verifiedQty}
                     </td>
                     <td
                       className="border-b border-[color:var(--surface-variant)] px-1 py-2 align-middle text-[13px]"
@@ -254,7 +259,7 @@ const PROGRESS_WIDTH_CLASS = [
 ] as const;
 
 function progressWidthClass(verified: number, need: number): string {
-  if (need <= 0) return "w-0";
+  if (need <= 0 || !Number.isFinite(verified)) return "w-0";
   const ratio = Math.min(1, Math.max(0, verified / need));
   const step = Math.round(ratio * 10);
   return PROGRESS_WIDTH_CLASS[step];

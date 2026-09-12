@@ -324,11 +324,12 @@ export default function PackingV2Page() {
    * 있어 `shipmentId` 자체가 아니라 조회된 `shipment` 로 가른다(로딩 중엔 토트 모드로 둔다). */
   const scanMode: "tote" | "item" = shipment === undefined ? "tote" : "item";
   const replenishPending = shipment?.replenish !== undefined && shipment?.replenish !== null;
-  /** 포장완료 활성 조건 — 전 품목 대조 완료 + 보충 없음(정본 §9.3·§9.4) */
+  /** 포장완료 활성 조건 — 전 품목 대조 완료 + 보충 없음(정본 §9.3·§9.4). `verifiedQty ?? 0` 은
+   * 백엔드 롤아웃 순서가 보장 안 될 때의 방어(`shipment-items-panel.tsx` 상단 주석 참고) */
   const canComplete =
     shipment !== undefined &&
     shipment.items.length > 0 &&
-    shipment.items.every((item) => item.verifiedQty === item.qty) &&
+    shipment.items.every((item) => (item.verifiedQty ?? 0) === item.qty) &&
     !replenishPending;
 
   /**
