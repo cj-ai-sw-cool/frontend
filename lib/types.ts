@@ -1505,3 +1505,131 @@ export interface PackingQueueItem {
   shipmentSeq: number;
 }
 
+
+/* ── 10. ICQA — 순환 실사·조정 (Stage 10) ────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §10.2·§10.3, docs/tasks/
+   2026-09-13-stage10-icqa-handoff.md §3. */
+
+export type CountTaskReason = "CYCLE_ROTATION" | "CYCLE_RECENT_ADJUST" | "PICK_DISCREPANCY" | "RECOUNT";
+export type CountTaskStatus = "OPEN" | "COUNTING" | "DONE" | "RECOUNT_NEEDED" | "CANCELLED";
+export type CountTaskOutcome = "ADJUSTED" | "CONFIRMED" | "RECOUNT_NEEDED";
+
+export interface GenerateCountTasksRequest {
+  days: number;
+  topN: number;
+}
+
+export interface GenerateCountTaskCreated {
+  countTaskId: number;
+  locationCode: string;
+  reason: CountTaskReason;
+}
+
+/** `generate` 응답의 `skipped[]` — 열린 태스크가 있어 건너뛴 로케이션. 정본 §10.3 응답
+ * 문안이 `skipped:[…]`로 줄여 써 있어 `created`와 같은 모양으로 가정한다(태스크를
+ * 만들지 않았으니 `countTaskId`는 없다) — 라이브 대조로 확인 전까지는 가정이다. */
+export interface GenerateCountTaskSkipped {
+  locationCode: string;
+  reason: CountTaskReason;
+}
+
+export interface GenerateCountTasksResponse {
+  created: GenerateCountTaskCreated[];
+  skipped: GenerateCountTaskSkipped[];
+}
+
+export interface CountTasksQuery {
+  status?: CountTaskStatus;
+  page?: number;
+  size?: number;
+}
+
+/** `GET /count-tasks` 목록 행 — 정본 §10.3 그대로 */
+export interface CountTaskListItem {
+  countTaskId: number;
+  locationCode: string;
+  zoneCode: string;
+  reason: CountTaskReason;
+  status: CountTaskStatus;
+  worker: string | null;
+  createdAt: string;
+}
+
+export interface StartCountTaskRequest {
+  worker: string;
+}
+
+/** 블라인드 라인 — 전산 수량은 주지 않는다(정본 §10.1 "블라인드 카운트") */
+export interface CountTaskBlindLine {
+  sellerCode: string;
+  gtin: string;
+  name: string;
+  lotNo: string;
+  status: StockStatus;
+}
+
+export interface StartCountTaskResponse {
+  lines: CountTaskBlindLine[];
+}
+
+export interface SubmitCountTaskLine {
+  sellerCode: string;
+  gtin: string;
+  lotNo: string;
+  status: StockStatus;
+  countedQty: number;
+}
+
+export interface SubmitCountTaskRequest {
+  lines: SubmitCountTaskLine[];
+}
+
+/** 제출 결과 한 줄 — 정본 §10.3 "…" 가 블라인드 라인과 같은 식별 필드(화주·GTIN·로트·상태)를
+ * 뜻한다고 보고 그대로 붙였다. `name` 은 응답에 없을 수 있어 화면이 직접 시작 응답의
+ * 블라인드 라인과 맞춰 보여준다(`icqa-result-view.tsx`). */
+export interface SubmitCountTaskResultLine {
+  sellerCode: string;
+  gtin: string;
+  lotNo: string;
+  status: StockStatus;
+  expectedQty: number;
+  deltaQty: number;
+  countedQty: number;
+  diff: number;
+  adjustTxId: number | null;
+}
+
+/**
+ * 제출 응답 — 정본 §10.3. `reallocated`/`cancelledOrders` 는 문안에 모양이 없어(§10.1
+ * "§7.3 규칙으로 다른 칸에 재할당" · "`ShipmentDamageService`의 취소 패턴 재사용") Stage 7
+ * 재할당(`Reallocation`)·취소(`ReallocationCancelledOrder`) 타입과 같은 모양으로 가정한다 —
+ * 라이브 대조로 확인 전까지는 가정이다.
+ */
+export interface SubmitCountTaskResponse {
+  outcome: CountTaskOutcome;
+  moved: boolean;
+  lines: SubmitCountTaskResultLine[];
+  recountTaskId: number | null;
+  reallocated: ReallocationNewTask[];
+  cancelledOrders: ReallocationCancelledOrder[];
+}
+
+/** `GET /count-tasks/{id}` 상세 — COUNTING 중엔 `outcome`·`lines`가 비어 있다(수량 숨김) */
+export interface CountTaskDetail extends CountTaskListItem {
+  sourceTaskId: number | null;
+  outcome: CountTaskOutcome | null;
+  movedDuringCount: boolean;
+  lines: SubmitCountTaskResultLine[];
+}
+
+export interface SimulateCountTaskOverride {
+  gtin: string;
+  lotNo: string;
+  status: StockStatus;
+  countedQty: number;
+}
+
+export interface SimulateCountTaskRequest {
+  worker: string;
+  overrides?: SimulateCountTaskOverride[];
+}

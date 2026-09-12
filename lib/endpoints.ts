@@ -18,12 +18,17 @@ import type {
   CompleteResponse,
   ConfirmRequest,
   ConfirmResponse,
+  CountTaskDetail,
+  CountTaskListItem,
+  CountTasksQuery,
   CreateAsnRequest,
   CreateSellerRequest,
   DailyInventory,
   DamageReportRequest,
   DamageReportResponse,
   DashboardSummary,
+  GenerateCountTasksRequest,
+  GenerateCountTasksResponse,
   InvariantCheckResult,
   ItemScanRequest,
   ItemScanResponse,
@@ -61,12 +66,17 @@ import type {
   ShipmentDetail,
   ShipmentListItem,
   ShipmentStatus,
+  SimulateCountTaskRequest,
   SimulateRequest,
   SimulateResponse,
+  StartCountTaskRequest,
+  StartCountTaskResponse,
   StockItem,
   StockLedgerEntry,
   StockOccupancyRow,
   StockQuery,
+  SubmitCountTaskRequest,
+  SubmitCountTaskResponse,
   UpdateSellerRequest,
   WaveCreateRequest,
   WaveCreateResponse,
@@ -364,6 +374,45 @@ export const packing = {
     api.post<DamageReportResponse>(`/shipments/${shipmentId}/damage`, body),
 };
 
+/* ── ICQA — 순환 실사·조정 (Stage 10) ────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §10.3, docs/tasks/
+   2026-09-13-stage10-icqa-handoff.md §3. 작업자 화면은 분석 화면의 탭이다(정본 §10.1
+   "사람이 입력하는 화면 — 포장과 같은 예외"). 대량 처리용 시뮬레이터(`simulate`)는
+   조율 전용이라 이 탭은 부르지 않는다. */
+export const icqa = {
+  /** 실사 생성 — 회전 상위·최근 조정 로케이션에 OPEN 태스크. 열린 태스크 있으면 건너뜀 */
+  generate: (body: GenerateCountTasksRequest) =>
+    api.post<GenerateCountTasksResponse>("/admin/count-tasks/generate", body),
+
+  /** 목록 — 상태 필터, 페이지 */
+  list: (params?: CountTasksQuery) => api.get<Page<CountTaskListItem>>(`/count-tasks${toCountTasksQueryString(params)}`),
+
+  /** 상세 — COUNTING 중엔 수량 숨김 */
+  detail: (id: number) => api.get<CountTaskDetail>(`/count-tasks/${id}`),
+
+  /** 시작 — OPEN → COUNTING, 블라인드 라인(수량 없음) */
+  start: (id: number, body: StartCountTaskRequest) =>
+    api.post<StartCountTaskResponse>(`/count-tasks/${id}/start`, body),
+
+  /** 제출 — 델타·조정·재할당·취소까지 한 번에 */
+  submit: (id: number, body: SubmitCountTaskRequest) =>
+    api.post<SubmitCountTaskResponse>(`/count-tasks/${id}/submit`, body),
+
+  /** 시뮬레이터 — 조율만(화면에서 쓰지 않음, 래퍼만 둔다) */
+  simulate: (id: number, body: SimulateCountTaskRequest) =>
+    api.post<SubmitCountTaskResponse>(`/admin/count-tasks/${id}/simulate`, body),
+};
+
+function toCountTasksQueryString(params?: CountTasksQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.status !== undefined) qs.set("status", params.status);
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.size !== undefined) qs.set("size", String(params.size));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
 function toWavesQueryString(params?: WavesQuery): string {
   if (!params) return "";
   const qs = new URLSearchParams();
@@ -483,4 +532,6 @@ export const queryKeys = {
   pickBatchesList: (status?: PickBatchStatus) => ["pick-batches", "list", status ?? "ALL"] as const,
   rebinSessionByBatch: (pickBatchId: number) => ["rebin", "session-by-batch", pickBatchId] as const,
   packingQueue: (lineId: number) => ["packing", "queue", lineId] as const,
+  countTasks: (params?: CountTasksQuery) => ["count-tasks", params ?? {}] as const,
+  countTask: (id: number) => ["count-tasks", id] as const,
 };
