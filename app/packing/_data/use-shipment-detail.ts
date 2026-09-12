@@ -19,7 +19,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { inbound, outbound, queryKeys } from "@/lib/endpoints";
+import { inbound, outbound, packing, queryKeys } from "@/lib/endpoints";
 
 export interface OverrideBoxVariables {
   shipmentId: number;
@@ -81,6 +81,17 @@ export function useToteScan() {
       // 건이 목록에서 계속 대기중으로 보인다.
       void queryClient.invalidateQueries({ queryKey: queryKeys.lines });
     },
+  });
+}
+
+/**
+ * "다음 토트" 버튼(Stage 8, 정본 §8.3·§8.4) — `GET /packing/queue?lineId=`의 첫 행을
+ * 스캔 입력에 넣어 준다. 조회 자체가 화면 상태를 바꾸지 않아(주문·배치처럼 무효화할
+ * 캐시가 없다) 그냥 뮤테이션으로 둔다 — 버튼을 누른 순간만 조회하면 된다.
+ */
+export function useNextTote() {
+  return useMutation({
+    mutationFn: (lineId: number) => packing.queue(lineId),
   });
 }
 
