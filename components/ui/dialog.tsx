@@ -43,6 +43,9 @@ function DialogClose({
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
+// z-70: win98 화면(app/inbound·app/packing layout.tsx)의 셸이 fixed z-60 이고 포탈 목적지가
+// 같은 스테이지라, 50 이면 오버레이·내용이 셸 뒤에 그려져 보이지 않는다(2026-09-12 확인).
+// Select 내용(select.tsx)은 대화 상자 안에서도 열려야 하므로 그보다 위(z-80)다.
 function DialogOverlay({
   className,
   ...props
@@ -51,7 +54,7 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-0 isolate z-70 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -77,7 +80,7 @@ function DialogContent({
           // 모달은 화면 위에 실제로 떠 있는 표면이라 카드와 달리 그림자를 붙였고,
           // 오프셋은 샘플의 최상위 액션(615행 "포장 완료")과 같은 6px 으로 잡았다.
           // 카드에 왜 그림자를 안 붙였는지는 card.tsx 주석 참고.
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border-2 bg-popover p-4 text-sm text-popover-foreground shadow-[6px_6px_0px_0px_var(--color-foreground)] duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-70 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border-2 bg-popover p-4 text-sm text-popover-foreground shadow-[6px_6px_0px_0px_var(--color-foreground)] duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}

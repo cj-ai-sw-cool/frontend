@@ -33,7 +33,16 @@ export type ApiErrorCode =
   /** 웨이브(Stage 6) — `GET /waves/{id}`·`.../tasks` 에서 id 가 없을 때(2026-09-11 백엔드 보고) */
   | "WAVE_NOT_FOUND"
   /** 피킹 배치(Stage 6) — `GET /pick-batches/{id}` 에서 id 가 없을 때(2026-09-11 백엔드 보고) */
-  | "PICK_BATCH_NOT_FOUND";
+  | "PICK_BATCH_NOT_FOUND"
+  /** claim(Stage 7) — 먼저 가져간 작업자가 있을 때 409(정본 §7.1) */
+  | "ALREADY_CLAIMED"
+  /** claim(Stage 7) — 배치 토트 풀이 바닥났을 때 409(정본 §7.2) */
+  | "NO_TOTE"
+  /** 피킹 확정(Stage 7) — `POST /pick-tasks/{id}/pick` 에서 태스크 id 가 없을 때 404 */
+  | "PICK_TASK_NOT_FOUND"
+  /** 포장 완료(Stage 7~8 전환기) — PICKING/REBINNING 주문의 배송단위는 아직 칸에서
+   * 이중 차감되므로 409 로 막는다(정본 §7 S7.3, Stage 9 에서 해제) */
+  | "NOT_READY";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -947,8 +956,10 @@ export type WaveStatus = "RELEASED" | "PICKING" | "DONE";
 /** 피킹 배치 상태 — 정본 §6.3. OPEN 만 Stage 6 범위, 나머지는 Stage 7 claim 이후 */
 export type PickBatchStatus = "OPEN" | "CLAIMED" | "PICKING" | "DONE";
 
-/** 피킹 태스크 상태 — 정본 §6.3. 배치 생성 직후는 전부 PENDING(Stage 7 전) */
-export type PickTaskStatus = "PENDING" | "PICKED" | "SHORT";
+/** 피킹 태스크 상태 — 정본 §6.3·§7.2. 배치 생성 직후는 전부 PENDING. `CANCELLED` 는
+ * Stage 7 — 재할당 실패로 주문이 취소되면 그 주문 몫만 남은(아직 못 집은) 태스크가
+ * 이 상태가 된다(백엔드 2026-09-12 보고). 화면은 이 상태를 건너뛴다 */
+export type PickTaskStatus = "PENDING" | "PICKED" | "SHORT" | "CANCELLED";
 
 /** 웨이브 생성 때 hard 할당이 안 되어 빠진 주문의 사유 — 백엔드 2026-09-11 보고.
  * `HARD_SHORT` 만 재고 부족(정상 경로), 나머지 셋은 예외 경로 */
@@ -998,7 +1009,9 @@ export interface WaveOrderSummary {
 
 /** 웨이브 상세의 배치 한 줄 — 클릭하면 `pickBatches.get` 으로 태스크 표를 연다.
  * `taskCount`/`claimedBy`/`claimedAt` 은 백엔드 2026-09-11 보고로 추가(초안에는 없었다) —
- * claimedBy·claimedAt 은 Stage 7 전까지 항상 null. */
+ * claimedBy·claimedAt 은 Stage 7 전까지 항상 null.
+ * `pickedTaskCount` — Stage 7, 포장 화면 웨이브 탭 배치 표의 "진행 n/N"(브리프 §3). 백엔드에
+ * 필드 추가를 요청해 둔 상태라 옵셔널로 둔다 — 안 오면 화면이 n/N 대신 "—" 를 보여준다. */
 export interface WaveBatchSummary {
   pickBatchId: number;
   seqNo: number;
@@ -1007,6 +1020,7 @@ export interface WaveBatchSummary {
   taskCount: number;
   claimedBy: string | null;
   claimedAt: string | null;
+  pickedTaskCount?: number;
 }
 
 /**
@@ -1038,10 +1052,19 @@ export interface WaveDetail {
  * 들어간다(LocalDate, 유통기한 없는 로트면 null) — `seqNo` 순서가 로케이션 코드 순이라
  * FEFO 가 이 순서 그대로 보인다(화면 체크 3번, 브리프 §4).
  */
+/**
+ * ⚠️ Stage 7 — `zoneCode`/`rackNo`/`levelNo`/`colNo` 추가(정본 §7.4 "location{code,zone,
+ * rack,level,col}", 백엔드 2026-09-12 보고). BIN 이 아닌 로케이션이면 null 일 수 있어
+ * 타입은 nullable 이지만, 피킹 태스크는 항상 BIN 이라 실제로는 늘 채워진다.
+ */
 export interface PickTask {
   pickTaskId: number;
   seqNo: number;
   locationCode: string;
+  zoneCode: string | null;
+  rackNo: number | null;
+  levelNo: number | null;
+  colNo: number | null;
   sellerCode: string;
   gtin: string;
   productName: string;
@@ -1053,15 +1076,22 @@ export interface PickTask {
 }
 
 /** `GET /pick-batches/{id}` — 배치 상세(Stage 7 claim 의 기초, 정본 §6.5). `orders` 는
- * 백엔드 2026-09-11 보고로 정정(초안의 `orderCount` 숫자가 아니라 `WaveOrderSummary[]` 배열) */
+ * 백엔드 2026-09-11 보고로 정정(초안의 `orderCount` 숫자가 아니라 `WaveOrderSummary[]` 배열).
+ * `waveStatus`/`toteLocationCode`/`startedAt`/`completedAt` — Stage 7 추가(백엔드 2026-09-12
+ * 보고). `toteLocationCode` 는 claim 전 null. `complete` 응답에서 웨이브 상태는 별도 필드
+ * 없이 이 `waveStatus` 로 본다. */
 export interface PickBatchDetail {
   pickBatchId: number;
   waveId: number;
   waveNo: string;
+  waveStatus: WaveStatus;
   seqNo: number;
   status: PickBatchStatus;
   claimedBy: string | null;
   claimedAt: string | null;
+  toteLocationCode: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
   orders: WaveOrderSummary[];
   tasks: PickTask[];
 }
@@ -1106,5 +1136,113 @@ export interface WavesQuery {
   status?: WaveStatus;
   page?: number;
   size?: number;
+}
+
+/* ── 7. 피킹 (Stage 7) ──────────────────────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §7.2·§7.3·§7.4, docs/tasks/
+   2026-09-12-stage7-picking-handoff.md §3 S7.4. 백엔드(stage7-backend)와 세션 안에서
+   contract 를 맞춘 뒤(2026-09-12) 적었다 — 아직 엔드포인트가 안 떠서 curl 라이브 대조는
+   못 했지만, 응답 모양은 백엔드가 직접 확정해 보고한 것이다. */
+
+/** `GET /pick-batches?status` 한 줄 — 작업자가 받을 수 있는 배치 목록(정본 §7.3, 백엔드
+ * 2026-09-12 보고). 페이지네이션 없음. */
+export interface PickBatchListItem {
+  pickBatchId: number;
+  waveId: number;
+  waveNo: string;
+  seqNo: number;
+  status: PickBatchStatus;
+  orderCount: number;
+  taskCount: number;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  toteLocationCode: string | null;
+}
+
+/** `GET /pick-batches?status` 응답 */
+export interface PickBatchesResponse {
+  items: PickBatchListItem[];
+}
+
+/** 재할당 새 태스크 — 부족분을 다른 칸에서 채우면 배치 끝에 붙는다(정본 §7.3) */
+export interface ReallocationNewTask {
+  pickTaskId: number;
+  seqNo: number;
+  locationCode: string;
+  qty: number;
+}
+
+/** 재할당 실패로 취소된 주문 — 사유는 항상 `PICK_SHORT`(정본 §7.1) */
+export interface ReallocationCancelledOrder {
+  orderId: number;
+  receiptNo: string;
+}
+
+/**
+ * 재할당 결과 — 정본 §7.3, 백엔드 2026-09-12 보고. `outcome` 은 그 태스크(칸)에 물려 있던
+ * 부족분이 어떻게 됐는지를 요약한다:
+ *   NEW_TASK        부족분 전부 다른 칸으로 재할당(새 태스크 추가)
+ *   ORDER_CANCELLED 부족분 전부 재할당 실패 → 관련 주문 취소
+ *   MIXED           부족분이 여러 주문(HARD 할당)에 걸쳐 있어 일부는 재할당, 일부는 취소
+ * 화면은 `newTasks`/`cancelledOrders` 길이를 보고 안내 문구를 조합한다(브리프 §3 "응답의
+ * 재할당 결과 안내").
+ */
+export interface Reallocation {
+  outcome: "NEW_TASK" | "ORDER_CANCELLED" | "MIXED";
+  newTasks: ReallocationNewTask[];
+  cancelledOrders: ReallocationCancelledOrder[];
+}
+
+/* ── 7.5 작업자 시뮬레이터 (Stage 7B) ────────────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §7.5, docs/tasks/
+   2026-09-12-stage7b-simulator-handoff.md §3 S7.6. 피킹 화면(PDA) 대신 서버 시뮬레이터가
+   claim→pick→complete 를 단계별로 대신 호출한다 — 웨이브 탭 OPEN 배치의 "자동 처리". */
+
+/** `POST /admin/pick-batches/{id}/simulate` 요청의 태스크별 실제 수량 지정 — 정본 §7.5.
+ * 지정하지 않은 태스크(이 배열에 없는 `pickTaskId`)는 지시 수량대로 집는다. 재할당으로
+ * 배치 끝에 추가된 태스크는 id 를 미리 알 수 없어 항상 지시대로다. */
+export interface SimulateShortInput {
+  pickTaskId: number;
+  foundQty: number;
+}
+
+/** `POST /admin/pick-batches/{id}/simulate` 요청 — `worker` 기본값은 화면이 `SIM-01` 로 채운다 */
+export interface SimulateRequest {
+  worker: string;
+  shorts: SimulateShortInput[];
+}
+
+/**
+ * 시뮬레이터 결과의 단계 한 줄 — 정본 §7.5 `steps[]`. `status` 는 이 태스크 자체의 확정
+ * 결과(PICKED 아니면 SHORT) — `PENDING`/`CANCELLED` 는 오지 않는다. PICKED 면
+ * `reallocation` 은 null.
+ */
+export interface SimulateStep {
+  pickTaskId: number;
+  seqNo: number;
+  locationCode: string;
+  gtin: string;
+  productName: string;
+  qty: number;
+  pickedQty: number;
+  status: PickTaskStatus;
+  reallocation: Reallocation | null;
+}
+
+/**
+ * `POST /admin/pick-batches/{id}/simulate` 응답 — 정본 §7.5. OPEN 이 아니면 409
+ * `INVALID_STATE`, 남이 먼저 claim 했으면(경합 중이면) claim 의 409 `ALREADY_CLAIMED` 가
+ * 그대로 나간다. `elapsedMs` 는 시뮬레이터 시작부터 배치 complete 까지.
+ */
+export interface SimulateResponse {
+  pickBatchId: number;
+  worker: string;
+  toteLocationCode: string | null;
+  batchStatus: PickBatchStatus;
+  waveStatus: WaveStatus;
+  elapsedMs: number;
+  steps: SimulateStep[];
+  cancelledOrders: ReallocationCancelledOrder[];
+  addedTasks: ReallocationNewTask[];
 }
 

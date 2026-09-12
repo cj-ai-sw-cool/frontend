@@ -38,6 +38,8 @@ import type {
   Page,
   PendingReceiptItem,
   PickBatchDetail,
+  PickBatchesResponse,
+  PickBatchStatus,
   ProductImagesResponse,
   PutawayConfirmRequest,
   PutawayConfirmResponse,
@@ -51,6 +53,8 @@ import type {
   ShipmentDetail,
   ShipmentListItem,
   ShipmentStatus,
+  SimulateRequest,
+  SimulateResponse,
   StockItem,
   StockLedgerEntry,
   StockOccupancyRow,
@@ -297,6 +301,25 @@ export const pickBatches = {
   get: (id: number) => api.get<PickBatchDetail>(`/pick-batches/${id}`),
 };
 
+/* ── 피킹 배치·작업자 시뮬레이터 (Stage 7B) ──────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §7.3·§7.5, docs/tasks/
+   2026-09-12-stage7b-simulator-handoff.md §3 S7.6. 피킹 화면(PDA)은 두지 않는다 —
+   claim→pick→complete 는 서버 안의 작업자 시뮬레이터가 대신 호출한다(웨이브 탭 "자동 처리"). */
+export const picking = {
+  /** 받을 수 있는 배치 목록 — 웨이브 순·seq 순(정본 §7.3). status 생략 시 전체 */
+  batches: (status?: PickBatchStatus) =>
+    api.get<PickBatchesResponse>(`/pick-batches${status ? `?status=${status}` : ""}`),
+
+  /** 배치 상세 — `pickBatches.get` 과 같은 엔드포인트(Stage 7 필드 포함) */
+  batch: (id: number) => pickBatches.get(id),
+
+  /** 작업자 시뮬레이터 — OPEN 배치만 대상. claim→pick→complete 를 실제 작업자와 같은
+   * 서비스로 단계별 트랜잭션 호출한다(정본 §7.5). OPEN 이 아니면 409 `INVALID_STATE`,
+   * 남이 먼저 claim 했으면 409 `ALREADY_CLAIMED`. */
+  simulate: (id: number, body: SimulateRequest) =>
+    api.post<SimulateResponse>(`/admin/pick-batches/${id}/simulate`, body),
+};
+
 function toWavesQueryString(params?: WavesQuery): string {
   if (!params) return "";
   const qs = new URLSearchParams();
@@ -413,4 +436,5 @@ export const queryKeys = {
   waves: (params?: WavesQuery) => ["waves", params ?? {}] as const,
   wave: (id: number) => ["waves", id] as const,
   pickBatch: (id: number) => ["pick-batches", id] as const,
+  pickBatchesList: (status?: PickBatchStatus) => ["pick-batches", "list", status ?? "ALL"] as const,
 };

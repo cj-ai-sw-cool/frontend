@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import type { WaveStatus } from "@/lib/types";
 import { usePickBatchDetail, useWaveDetail, useWavesList } from "../_data/use-waves";
 import { PickTaskPanel } from "./pick-task-panel";
+import { WaveBatchSimulateDialog } from "./wave-batch-simulate-dialog";
 import { WaveDetailPanel } from "./wave-detail-panel";
 import { WaveListPanel } from "./wave-list-panel";
 
@@ -21,6 +22,9 @@ export function WavesTab() {
   const [page, setPage] = useState(0);
   const [selectedWaveId, setSelectedWaveId] = useState<number | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
+  /** "자동 처리" 대화 상자가 여는 배치 — 오른쪽 열 선택(`selectedBatchId`)과는 별개다.
+   * 목록 행을 클릭하지 않고도 자동 처리를 열 수 있어야 한다(브리프 §3 S7.6). */
+  const [simulateBatchId, setSimulateBatchId] = useState<number | null>(null);
 
   const wavesQuery = useWavesList({
     status: statusFilter === "ALL" ? undefined : statusFilter,
@@ -68,6 +72,7 @@ export function WavesTab() {
         errorMessage={waveDetailQuery.error?.message ?? null}
         selectedBatchId={selectedBatchId}
         onSelectBatch={setSelectedBatchId}
+        onSimulateBatch={setSimulateBatchId}
         className="w-[380px] shrink-0"
       />
 
@@ -75,6 +80,13 @@ export function WavesTab() {
         batch={batch}
         isLoading={pickBatchQuery.isLoading}
         errorMessage={pickBatchQuery.error?.message ?? null}
+      />
+
+      <WaveBatchSimulateDialog
+        batchId={simulateBatchId}
+        onOpenChange={(open) => {
+          if (!open) setSimulateBatchId(null);
+        }}
       />
     </div>
   );
