@@ -156,6 +156,29 @@ export function occupancyTier(ratio: number): 0 | 1 | 2 | 3 | 4 {
   return 4;
 }
 
+/** 점유율 5단계 색(16진수 정수) — `bay-mesh.ts`(3D)와 `warehouse-map.tsx`(2D)가 같은
+ * 배열을 쓴다. 여기 두는 이유는 순수 데이터라 `three` 를 끌어오지 않기 때문이다 — 2D
+ * 지도는 캔버스 2D 만 쓰고 WebGL 번들을 받지 않는다(옛 `warehouse-map.jsx` 머리말과
+ * 같은 이유) */
+export const OCCUPANCY_COLORS = [0x2c3644, 0x3d6fa3, 0x3d9e7a, 0xd0a02c, 0xc23b3b] as const;
+
+/** 16진수 정수 색 → 캔버스 2D `fillStyle` 문자열 */
+export function hexToRgba(hex: number, alpha = 1): string {
+  const r = (hex >> 16) & 255;
+  const g = (hex >> 8) & 255;
+  const b = hex & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** 베이 표시 코드 — `{존}-{통로:2}-{베이:2}`(정본 §11.0 "주소", 브리프 §2 호버 예시
+ * `AMBS-04-13`). 실제 칸 코드(`Bin.code`)는 여기에 단·위치가 더 붙는다 */
+export function bayDisplayCode(bay: Bay, index: LayoutIndex): string {
+  const aisle = index.aisleById.get(bay.aisleId);
+  const zoneCode = aisle?.zoneCode ?? "?";
+  const aisleNo = aisle?.no ?? 0;
+  return `${zoneCode}-${String(aisleNo).padStart(2, "0")}-${String(bay.no).padStart(2, "0")}`;
+}
+
 /** 레이아웃 전체를 담는 세계 좌표 바운딩 박스 — 카메라 초기 프레이밍(3D)·캔버스 fit(2D) */
 export function layoutBounds(layout: LayoutResponse): WorldRect {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
