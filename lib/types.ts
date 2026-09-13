@@ -441,6 +441,10 @@ export interface Zone {
   code: string;
   name: string;
   areaCode: string;
+  /** `GET /zones` 단독 호출에만 온다(백엔드 노트 §4.1) — `GET /layout` 의
+   * `zones[]` 에는 없다 */
+  areaName?: string;
+  tempZone?: TempZone;
   medium: Medium;
   binCount?: number;
   xM: number;
@@ -583,16 +587,16 @@ export interface Location {
 }
 
 /**
- * `GET /locations` 쿼리 — 전부 선택(§2 S1.2). `aisleId`·`bayId` 는 브리프 §3 S11.4가
- * 백엔드에 요청한 필터다 — 2026-09-13 라이브 검증(같은 날 배포)으로 **아직 안 먹힌다**
- * 확인했다(백엔드가 파라미터를 조용히 무시하고 같은 순서의 페이지를 돌려준다). `zone`
- * 은 실제로 걸러준다. 화면 쪽은 이 파라미터에 기대지 않고 `code` 접두 검색으로 한 번
- * 더 거른다(`use-layout.ts` `filterLocationsByPrefix`) — 다만 백엔드 페이지 크기 상한이
- * 2,000(요청한 `size` 와 무관)이라 존이 그보다 크면(예 AMBS 9,355) 뒤쪽 통로·베이는
- * 첫 페이지에 없어 목록이 비어 보인다(노트 "계약과 다르게 한 것").
+ * `GET /locations` 쿼리 — 전부 선택(§2 S1.2). 2026-09-13 백엔드 노트 §4.5로 최종
+ * 확정 — 브리프 §3 S11.4가 요청한 `aisleId`·`bayId` 필터가 이제 실제로 동작한다.
+ * `aisle`(통로 **번호**, `Aisle.no`)은 `zone` 과 반드시 같이 와야 한다(안 주면 400) —
+ * `aisleId`/`bayId`(`GET /layout` 이 준 진짜 id)는 단독으로도 된다. `rack` 파라미터는
+ * 사라졌다. 페이지 크기 상한은 2,000(Spring 기본값)로 유지 — 화면이 통로·베이로
+ * 범위를 좁혀 부르므로 커서 페이지네이션은 없다(노트 §4.5 "2026-09-13 프론트와 확인").
  */
 export interface LocationsQuery {
   zone?: string;
+  aisle?: number;
   aisleId?: number;
   bayId?: number;
   type?: LocationType;
@@ -660,13 +664,19 @@ export interface StockLedgerEntry {
   createdAt: string;
 }
 
-/** `GET /stock/occupancy` 행 — BIN 전체(3,888행). 3D·2D 지도가 인스턴스 매핑에 쓴다 */
+/**
+ * `GET /stock/occupancy` 행 — BIN 전체(Stage 11 규모로 13,000여 행). 화면 미사용 API 다
+ * (3D·2D 는 이제 `GET /layout`을 그린다, `master.layout` 주석 참고).
+ *
+ * ⚠️ Stage 11(11.0) — `rack`/`col` → `bayId`/`position`(2026-09-13 백엔드 노트 §4.9).
+ * 통로·베이 번호까지는 안 붙인다(13,000행 조인 비용).
+ */
 export interface StockOccupancyRow {
   code: string;
   zone: string;
-  rack: number;
+  bayId: number;
   level: number;
-  col: number;
+  position: number;
   qty: number;
   sellerCode: string | null;
 }
@@ -951,20 +961,17 @@ export interface PutawayPendingQuery {
 }
 
 /**
- * `POST /putaway/recommend` 이동 후보 한 칸.
- * `zoneCode`/`rackNo`/`levelNo`/`colNo` — 백엔드가 `locationCode` 와 함께 분해된 값도 준다
- * (2026-09-11 라이브 보고). 프론트에서 문자열을 다시 쪼갤 필요가 없다.
- */
-/**
- * ⚠️ Stage 11(11.0) — 로케이션 주소가 `{존}-{랙:2}-{단:2}-{열:2}` 4단에서 `{존}-
- * {통로:2}-{베이:2}-{단:2}-{위치:2}` 5단으로 바뀌면서, 이 응답의 분해 필드도
- * `rackNo`/`colNo` 대신 `aisleNo`/`bayNo`/`positionNo` 로 온다(2026-09-13, 백엔드가
- * 진열 API를 맞춰 고치는 중 — 라이브 검증 대기, 그 전까진 타입만 맞춘다). `locationCode`
- * 가 코드 문자열이라 화면은 이 값을 우선 보여주고, 분해 필드는 보조 표시로만 쓴다.
+ * `POST /putaway/recommend` 이동 후보 한 칸 — Stage 11(11.0) 로케이션 주소가
+ * `{존}-{랙:2}-{단:2}-{열:2}` 4단에서 `{존}-{통로:2}-{베이:2}-{단:2}-{위치:2}` 5단으로
+ * 바뀌면서 분해 필드도 `rackNo`/`colNo` 대신 `aisleNo`/`bayNo`/`positionNo`(2026-09-13
+ * 백엔드 노트 §4.6로 확정). `binTypeCode` 는 새로 추가된 필드 — 추천은 이제 피킹면
+ * (`role = PICK_FACE`)만 돌려준다. `locationCode` 가 코드 문자열이라 화면은 이 값을
+ * 우선 보여주고, 분해 필드는 보조 표시로만 쓴다.
  */
 export interface PutawayMove {
   locationCode: string;
   zoneCode: string;
+  binTypeCode: string;
   aisleNo: number;
   bayNo: number;
   levelNo: number;
@@ -981,8 +988,11 @@ export interface PutawayRecommendRequest {
   qty?: number;
 }
 
-/** `POST /putaway/recommend` 응답 — 상한 5칸, 다 못 넣으면 `unplacedQty` */
+/** `POST /putaway/recommend` 응답 — 상한 5칸, 다 못 넣으면 `unplacedQty`. `stockId`·
+ * `requestedQty` 는 2026-09-13 백엔드 노트 §4.6로 추가 확인된 필드 */
 export interface PutawayRecommendResponse {
+  stockId: number;
+  requestedQty: number;
   moves: PutawayMove[];
   unplacedQty: number;
 }
@@ -1345,15 +1355,22 @@ export interface WaveDetail {
  * ⚠️ Stage 7 — `zoneCode`/`rackNo`/`levelNo`/`colNo` 추가(정본 §7.4 "location{code,zone,
  * rack,level,col}", 백엔드 2026-09-12 보고). BIN 이 아닌 로케이션이면 null 일 수 있어
  * 타입은 nullable 이지만, 피킹 태스크는 항상 BIN 이라 실제로는 늘 채워진다.
+ *
+ * ⚠️ Stage 11(11.0) — `rackNo`/`colNo` → `aisleNo`/`bayNo`/`positionNo`, `pickSequence`
+ * 추가(2026-09-13 백엔드 노트 §4.7). 순회 순서가 로케이션 코드가 아니라 `pickSequence`
+ * 로 바뀌었다. 이 화면은 아직 `GET /waves/{id}/tasks` 를 안 불러(`pickBatches.get` 을
+ * 대신 쓴다, `WaveTasksResponse` 주석 참고) 계약에 있는 API 라 타입만 맞춘다.
  */
 export interface PickTask {
   pickTaskId: number;
   seqNo: number;
+  pickSequence: number | null;
   locationCode: string;
   zoneCode: string | null;
-  rackNo: number | null;
+  aisleNo: number | null;
+  bayNo: number | null;
   levelNo: number | null;
-  colNo: number | null;
+  positionNo: number | null;
   sellerCode: string;
   gtin: string;
   productName: string;

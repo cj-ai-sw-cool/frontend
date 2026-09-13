@@ -198,6 +198,7 @@ function toQueryString(params?: LocationsQuery): string {
   if (!params) return "";
   const qs = new URLSearchParams();
   if (params.zone !== undefined) qs.set("zone", params.zone);
+  if (params.aisle !== undefined) qs.set("aisle", String(params.aisle));
   if (params.aisleId !== undefined) qs.set("aisleId", String(params.aisleId));
   if (params.bayId !== undefined) qs.set("bayId", String(params.bayId));
   if (params.type !== undefined) qs.set("type", params.type);

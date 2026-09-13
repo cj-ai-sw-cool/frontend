@@ -92,15 +92,30 @@ export function LayoutScene({
     controls.dampingFactor = 0.08;
     controls.maxPolarAngle = Math.PI / 2.02;
     controls.minDistance = spanM * 0.08;
-    controls.maxDistance = spanM * 1.6;
 
     const setTarget = (x: number, z: number, radius: number, elevation = 0.5) => {
       controls.target.set(x, elevation, z);
       const dir = camera.position.clone().sub(controls.target).normalize();
       camera.position.copy(controls.target).addScaledVector(dir, radius);
     };
-    const overview = () => setTarget(centerX, centerZ, spanM * 0.95, spanM * 0.02);
-    camera.position.set(centerX, spanM * 0.6, centerZ + spanM * 0.9);
+    /* 오버뷰 반경 — footprint(가로·세로) 뿐 아니라 베이 높이(파렛트 5단×1.5m=7.5m 까지)
+       까지 담는 구(sphere)를 하나 씌우고, 그 구가 화면(FOV·가로세로비)에 꽉 차는
+       거리를 역산한다. spanM(가로·세로 중 큰 쪽)만 보던 예전 방식은 카메라가 기울어
+       있어(위→아래를 그대로 안 본다) 안전 마진이 없었다 — 존이 area 를 벗어나던 시절엔
+       안 드러났지만, 포함 관계가 고쳐져 랙이 방 안 제자리에 서자 앞쪽 파렛트 랙이
+       화면을 가득 채우고 나머지 방이 잘려 나갔다(2026-09-13 코디네이터 재확인). */
+    const maxHeightM = 8; // 파렛트 랙 5단×1.5m(7.5m)에 여유를 더한 값
+    const boundingRadius = Math.sqrt((bounds.x1 - bounds.x0) ** 2 + (bounds.y1 - bounds.y0) ** 2 + maxHeightM ** 2) / 2;
+    const aspect = Math.max(10, wrap.clientWidth) / Math.max(10, wrap.clientHeight);
+    const vFovHalf = THREE.MathUtils.degToRad(camera.fov / 2);
+    const hFovHalf = Math.atan(Math.tan(vFovHalf) * aspect);
+    const overviewRadius = (boundingRadius / Math.sin(Math.min(vFovHalf, hFovHalf))) * 1.12;
+    controls.maxDistance = Math.max(spanM * 1.6, overviewRadius * 1.3);
+
+    const overview = () => setTarget(centerX, centerZ, overviewRadius, spanM * 0.02);
+    /* 초기 각도는 거의 위에서 내려다보되(3D 임을 알아볼 만큼만 기울인다) — Y:Z 비를
+       가파르게 잡아야 건물 깊이(81.6m)가 화면 수직 방향에 그대로 눌려 담긴다. */
+    camera.position.set(centerX, spanM * 0.9, centerZ + spanM * 0.45);
     overview();
 
     /* ── 리사이즈 ── */

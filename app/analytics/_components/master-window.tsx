@@ -251,7 +251,7 @@ function LocationTab({ onLocateZone }: { onLocateZone: (zoneCode: string) => voi
   const selectedAisle = aisleId !== null ? (index?.aisleById.get(aisleId) ?? null) : null;
   const selectedBay = bayId !== null ? (index?.bayById.get(bayId) ?? null) : null;
 
-  const query = buildLocationsQuery(zoneCode, aisleId, bayId) ?? {};
+  const query = buildLocationsQuery(zoneCode, selectedAisle?.no ?? null, aisleId, bayId) ?? {};
   const { data: page, isLoading: locLoading, error: locError } = useLocations(query);
   const locations = useMemo(
     () => filterLocationsByPrefix(page, zoneCode, selectedAisle?.no ?? null, selectedBay?.no ?? null),
