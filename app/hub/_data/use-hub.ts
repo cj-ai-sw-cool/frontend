@@ -4,35 +4,23 @@
  * 허브 창(`/hub`) 데이터 훅 — Stage 11D, 정본 §12.6·§12.8.
  *
  * 호출 래퍼는 `@/lib/endpoints` 의 `hub` 만 쓴다(컴포넌트에서 fetch 직접 호출 금지, 다른
- * 화면과 같은 규약). 백엔드가 `feat/stage11d-multicenter`에서 같은 시각 작업 중이라
- * (브리프 머리말) 2026-09-13 시점엔 이 5개 엔드포인트가 없을 수 있다 — 조회(GET)는
- * `usingMock` 플래그로 `lib/mocks/hub.ts` 표본을 대신 그린다(다른 화면의 `useLayout`
- * 관례와 같다). 이동 생성·출발(POST)은 그 관례가 없는 자리라 — 백엔드가 없을 때는
- * `onError` 에서 표본 데이터로 낙관적 캐시를 채워 화면 체크 4(브리프 §3)가 지나가게
- * 한다. 라이브 검증 대기.
+ * 화면과 같은 규약). 2026-09-13 백엔드가 라이브로 붙었다(`localhost:8000`, 커밋 aaefe85
+ * "S11D.3 센터 간 이동") — 조회(GET)는 `usingMock` 플래그로 `lib/mocks/hub.ts` 표본을
+ * 대신 그리되, 이제는 **방어적 fallback**일 뿐이다(일시적 네트워크 실패 등,
+ * `app/analytics/_data/use-layout.ts` 의 `useLayout` 관례와 같다). 이동 생성·출발은
+ * 실제 서버 응답을 그대로 쓴다 — 404 낙관적 캐시 분기는 백엔드가 뜬 뒤 제거했다.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "@/lib/api";
 import { hub, master, queryKeys } from "@/lib/endpoints";
 import {
   mockCenters,
-  mockCreateTransfer,
-  mockDispatchTransfer,
   mockGlobalAtp,
   mockHubOrders,
   mockRoutingDecisions,
-  mockTransferDetails,
   mockTransfers,
 } from "@/lib/mocks/hub";
-import type {
-  CreateTransferRequest,
-  GlobalAtpQuery,
-  HubOrdersQuery,
-  Page,
-  TransferOrderDetail,
-  TransfersQuery,
-} from "@/lib/types";
+import type { CreateTransferRequest, GlobalAtpQuery, HubOrdersQuery, Page, TransfersQuery } from "@/lib/types";
 
 function mockPage<T>(content: T[]): Page<T> {
   return {
@@ -70,7 +58,7 @@ export function useHubOrders(params?: HubOrdersQuery) {
   const usingMock = query.isError;
   const filtered = mockHubOrders.filter(
     (o) =>
-      (params?.center === undefined || o.centerCode === params.center) &&
+      (params?.center === undefined || o.center === params.center) &&
       (params?.status === undefined || o.status === params.status),
   );
   return {
@@ -99,7 +87,7 @@ export function useOrderRouting(orderId: number | null) {
   };
 }
 
-/** "이동" 탭 표 */
+/** "이동" 탭 표 — 목록도 상세와 같은 모양(`items` 포함)으로 온다(`TransferOrder` 주석 참고) */
 export function useTransfers(params?: TransfersQuery) {
   const query = useQuery({
     queryKey: queryKeys.hubTransfers(params),
@@ -129,7 +117,7 @@ export function useTransferDetail(id: number | null) {
   });
 
   const usingMock = id !== null && query.isError;
-  const mock = id !== null ? (mockTransferDetails[id] ?? null) : null;
+  const mock = id !== null ? (mockTransfers.find((t) => t.transferId === id) ?? null) : null;
   return {
     data: query.data ?? (usingMock ? mock : undefined),
     isLoading: query.isLoading && !usingMock,
@@ -137,56 +125,33 @@ export function useTransferDetail(id: number | null) {
   };
 }
 
-let mockTransferSeq = 9900;
-
 /**
- * 이동 생성 — `POST /hub/transfers`. 백엔드가 아직 없으면(404 등) 표본 응답으로 낙관적
- * 캐시를 채운다(위 머리말) — 화면 체크 4 "이동 생성 → 출발 → 도착 센터 입고 화면에 ASN
- * TR-… 가 보인다"가 백엔드 없이도 지나가야 한다.
+ * 이동 생성 — `POST /hub/transfers`(정본 §12.5 ①). 성공하면 목록을 무효화하고 상세
+ * 캐시를 미리 채운다(행을 바로 클릭하지 않아도 상세 조회가 캐시 히트로 시작하게).
  */
 export function useCreateTransfer() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (body: CreateTransferRequest) => hub.createTransfer(body),
-    onError: (error, body) => {
-      if (!(error instanceof ApiError)) return;
-      const created = mockCreateTransfer(body, ++mockTransferSeq);
-      mockTransferDetails[created.id] = created;
-      mockTransfers.unshift(created);
-      queryClient.setQueryData(queryKeys.hubTransfer(created.id), created);
-    },
     onSuccess: (data) => {
-      queryClient.setQueryData(queryKeys.hubTransfer(data.id), data);
-    },
-    onSettled: () => {
+      queryClient.setQueryData(queryKeys.hubTransfer(data.transferId), data);
       void queryClient.invalidateQueries({ queryKey: ["hub", "transfers"] });
     },
   });
 }
 
 /**
- * 출발 — `POST /hub/transfers/{id}/dispatch`. 409 `INSUFFICIENT_ATP` 는 안내만 하고
- * (호출부가 `error.is("INSUFFICIENT_ATP")` 로 분기), 엔드포인트 자체가 없을 때만(404)
- * 표본 응답으로 대신 DISPATCHED 처리한다.
+ * 출발 — `POST /hub/transfers/{id}/dispatch`(정본 §12.5 ②). 출발 센터 ATP 부족이면
+ * 409 `INSUFFICIENT_ATP` — 호출부가 `error.is("INSUFFICIENT_ATP")` 로 분기한다.
  */
 export function useDispatchTransfer() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (id: number) => hub.dispatchTransfer(id),
-    onError: (error, id) => {
-      if (!(error instanceof ApiError) || error.status !== 404) return;
-      const cached = mockTransferDetails[id];
-      const listed = mockTransfers.find((t) => t.id === id);
-      const current: TransferOrderDetail | undefined =
-        cached ?? (listed === undefined ? undefined : { ...listed, items: [], asnNo: null, dispatchedAt: null, receivedAt: null });
-      if (current === undefined) return;
-      const dispatched = mockDispatchTransfer(current);
-      mockTransferDetails[id] = dispatched;
-      const idx = mockTransfers.findIndex((t) => t.id === id);
-      if (idx >= 0) mockTransfers[idx] = dispatched;
-      queryClient.setQueryData(queryKeys.hubTransfer(id), dispatched);
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKeys.hubTransfer(data.transferId), data);
     },
     onSettled: (_data, _error, id) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.hubTransfer(id) });
@@ -195,7 +160,7 @@ export function useDispatchTransfer() {
   });
 }
 
-/** "글로벌 ATP" 탭 — 화주 선택 필수(`enabled`) */
+/** "글로벌 ATP" 탭 — 화주 선택 필수(`enabled`). 라이브 대조: `Page<GlobalAtpRow>` 로 온다 */
 export function useGlobalAtp(params: GlobalAtpQuery | null) {
   const query = useQuery({
     queryKey: queryKeys.hubAtp(params ?? { seller: "" }),
@@ -206,7 +171,7 @@ export function useGlobalAtp(params: GlobalAtpQuery | null) {
 
   const usingMock = params !== null && params.seller !== "" && query.isError;
   return {
-    data: query.data ?? (usingMock ? mockGlobalAtp : undefined),
+    data: query.data?.content ?? (usingMock ? mockGlobalAtp : undefined),
     isLoading: query.isLoading && !usingMock,
     usingMock,
   };

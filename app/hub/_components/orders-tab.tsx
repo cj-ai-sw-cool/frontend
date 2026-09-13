@@ -13,7 +13,7 @@ import { useState } from "react";
 import { useHubCenters, useHubOrders, useOrderRouting } from "../_data/use-hub";
 import { Th, Td } from "./table";
 import { Select, Sunken, w98 } from "./win98-ui";
-import type { CenterCode, OrderStatus, RoutingRule } from "@/lib/types";
+import type { CenterCode, CenterSummary, OrderStatus, RoutingRule } from "@/lib/types";
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
   RECEIVED: "접수",
@@ -109,19 +109,19 @@ export function OrdersTab() {
               ) : (
                 page?.content.map((o) => (
                   <tr
-                    key={o.id}
-                    onClick={() => setSelectedId(o.id)}
+                    key={o.orderId}
+                    onClick={() => setSelectedId(o.orderId)}
                     className={`cursor-pointer border-t border-[color:var(--border)] hover:bg-[color:var(--surface-variant)] ${
-                      o.id === selectedId ? "bg-[color:var(--surface-variant)] font-bold" : ""
+                      o.orderId === selectedId ? "bg-[color:var(--surface-variant)] font-bold" : ""
                     }`}
                   >
-                    <Td mono>{o.orderNo}</Td>
+                    <Td mono>{o.receiptNo}</Td>
                     <Td>
                       {o.sellerName} <span className={w98.mono}>({o.sellerCode})</span>
                     </Td>
                     <Td>{o.regionCode ?? "—"}</Td>
-                    <Td mono>{o.centerCode ?? "—"}</Td>
-                    <Td>{o.rule ? RULE_LABEL[o.rule] : "—"}</Td>
+                    <Td mono>{o.center}</Td>
+                    <Td>{RULE_LABEL[o.routingRule]}</Td>
                     <Td>{STATUS_LABEL[o.status]}</Td>
                   </tr>
                 ))
@@ -143,52 +143,59 @@ export function OrdersTab() {
             라우팅 정보를 불러오지 못했습니다.
           </span>
         ) : (
-          <RoutingDetail decision={routing.data} />
+          <RoutingDetail decision={routing.data} centers={centers ?? []} />
         )}
       </Sunken>
     </div>
   );
 }
 
-function RoutingDetail({ decision }: { decision: NonNullable<ReturnType<typeof useOrderRouting>["data"]> }) {
+/**
+ * `GET /hub/orders/{id}/routing`은 성공적으로 라우팅된 주문에만 있다 — 거부된 접수는
+ * `orders.id` 자체가 안 생겨(정본 §12.3 "3. 남은 센터가 없으면 주문 거부") 이 화면에
+ * "거부" 배지가 뜰 일이 없다(`RoutingDecision` 타입 주석 참고). 후보 센터 이름은
+ * 응답에 없어 "센터" 탭이 쓰는 `useHubCenters()` 목록에서 찾는다.
+ */
+function RoutingDetail({
+  decision,
+  centers,
+}: {
+  decision: NonNullable<ReturnType<typeof useOrderRouting>["data"]>;
+  centers: CenterSummary[];
+}) {
+  const centerName = (code: string) => centers.find((c) => c.code === code)?.name ?? code;
+
   return (
     <>
       <div className="flex items-center justify-between">
-        <span className={`${w98.titleText}`}>{decision.orderNo}</span>
-        {decision.rejected ? (
-          <span className="bg-[color:var(--status-error)] px-1.5 py-0.5 text-[11px] font-bold text-white">
-            거부 — 후보 없음
-          </span>
-        ) : (
-          <span className="bg-[color:var(--status-success)] px-1.5 py-0.5 text-[11px] font-bold text-white">
-            {decision.selectedCenter} 선택 · {decision.rule ? RULE_LABEL[decision.rule] : ""}
-          </span>
-        )}
+        <span className={`${w98.titleText}`}>주문 #{decision.orderId}</span>
+        <span className="bg-[color:var(--status-success)] px-1.5 py-0.5 text-[11px] font-bold text-white">
+          {decision.center} 선택 · {RULE_LABEL[decision.rule]}
+        </span>
       </div>
 
       {decision.candidates.map((c) => (
         <div
-          key={c.centerCode}
+          key={c.center}
           className={`${w98.raised} p-1.5 ${
-            c.centerCode === decision.selectedCenter ? "bg-[color:var(--surface-variant)]" : ""
+            c.center === decision.center ? "bg-[color:var(--surface-variant)]" : ""
           }`}
         >
           <div className="mb-1 flex items-center justify-between">
             <span className="text-[13px] font-bold">
-              {c.centerCode} · {c.centerName}
+              {c.center} · {centerName(c.center)}
             </span>
             <span
               className="text-[11px] font-bold"
-              style={{ color: c.sufficient ? "var(--status-success)" : "var(--status-error)" }}
+              style={{ color: c.feasible ? "var(--status-success)" : "var(--status-error)" }}
             >
-              {c.sufficient ? "충분" : "부족"}
+              {c.feasible ? "충분" : "부족"} · 합계 {c.totalAtp}
             </span>
           </div>
           <table className="w-full border-collapse text-left text-[12px]">
             <thead>
               <tr>
                 <Th>GTIN</Th>
-                <Th>상품</Th>
                 <Th>필요</Th>
                 <Th>ATP</Th>
               </tr>
@@ -197,10 +204,11 @@ function RoutingDetail({ decision }: { decision: NonNullable<ReturnType<typeof u
               {c.lines.map((line) => (
                 <tr key={line.gtin} className="border-t border-[color:var(--border)]">
                   <Td mono>{line.gtin}</Td>
-                  <Td>{line.productName}</Td>
-                  <Td mono>{line.requiredQty}</Td>
+                  <Td mono>{line.requested}</Td>
                   <Td mono>
-                    <span style={{ color: line.sufficient ? undefined : "var(--status-error)" }}>{line.atp}</span>
+                    <span style={{ color: line.available < line.requested ? "var(--status-error)" : undefined }}>
+                      {line.available}
+                    </span>
                   </Td>
                 </tr>
               ))}

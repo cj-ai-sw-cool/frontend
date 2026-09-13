@@ -1,12 +1,12 @@
 /**
- * `GET /hub/**` 표본 — 정본 §12.6 API 를 백엔드가 아직 안 올린 시점(2026-09-13, 브리프
- * 머리말)에 화면을 먼저 그리기 위한 것이다. `app/hub/_data/use-hub.ts` 가 실제 호출이
- * 실패했을 때만(404 등) 이 표본으로 대신 그린다. 필드 이름은 `lib/types.ts` 12절 주석의
- * 가정 그대로다 — 라이브 검증 대기.
+ * `GET /hub/**` 표본 — 2026-09-13 라이브 대조(`localhost:8000`, 백엔드 커밋 aaefe85
+ * "S11D.3 센터 간 이동")로 필드 이름을 실제 응답에 맞췄다. 이제 라이브로 붙어 있으므로
+ * `app/hub/_data/use-hub.ts` 가 실제 호출이 실패했을 때만(네트워크 끊김 등) 이 표본으로
+ * 대신 그린다 — `app/analytics/_data/use-layout.ts` 의 `mockLayout` 과 같은 관례
+ * (방어적 fallback, 상시 표본이 아니다).
  *
  * 센터 3곳(C1 수도권·C2 중부·C3 남부, `00-planning/02-situation.md`)과 화주 2곳
- * (SEL-A·SEL-B, 정본 §12.7 데모 시드가 쓰는 이름)으로 라우팅·이동·글로벌 ATP 흐름을
- * 화면 체크 1~5(브리프 §3)가 전부 지나가게 구성했다.
+ * (SEL-A·SEL-B, 정본 §12.7 데모 시드가 쓰는 이름)으로 구성했다.
  */
 
 import type {
@@ -15,202 +15,162 @@ import type {
   GlobalAtpRow,
   HubOrderListItem,
   RoutingDecision,
-  TransferOrderDetail,
-  TransferOrderListItem,
+  TransferOrder,
   TransferStatus,
 } from "../types";
 
 export const mockCenters: CenterSummary[] = [
-  { code: "C1", name: "수도권", status: "ACTIVE", binCount: 13000, stockCount: 11200, openOrderCount: 42 },
-  { code: "C2", name: "중부", status: "ACTIVE", binCount: 4200, stockCount: 2600, openOrderCount: 11 },
-  { code: "C3", name: "남부", status: "ACTIVE", binCount: 13000, stockCount: 9800, openOrderCount: 6 },
+  { code: "C1", name: "수도권 센터", bins: 13000, stockQty: 11200, openOrders: 42 },
+  { code: "C2", name: "중부 센터", bins: 4200, stockQty: 2600, openOrders: 11 },
+  { code: "C3", name: "남부 센터", bins: 13000, stockQty: 9800, openOrders: 6 },
 ];
 
 export const mockHubOrders: HubOrderListItem[] = [
   {
-    id: 5001,
-    orderNo: "ORD-20260913-0501",
+    orderId: 5001,
+    receiptNo: "R-DEMO-0501",
     sellerCode: "SEL-A",
     sellerName: "화주 A",
     regionCode: "SEOUL",
-    centerCode: "C1",
-    rule: "PRIORITY",
+    center: "C1",
+    routingRule: "PRIORITY",
     status: "ALLOCATED",
-    createdAt: "2026-09-13T09:10:00+09:00",
+    orderedAt: "2026-09-13T09:10:00",
+    cutoffAt: "2026-09-13T14:00:00",
   },
   {
-    id: 5002,
-    orderNo: "ORD-20260913-0502",
+    orderId: 5002,
+    receiptNo: "R-DEMO-0502",
     sellerCode: "SEL-A",
     sellerName: "화주 A",
     regionCode: "CHUNGCHEONG",
-    centerCode: "C2",
-    rule: "REGION",
+    center: "C2",
+    routingRule: "REGION",
     status: "ALLOCATED",
-    createdAt: "2026-09-13T09:22:00+09:00",
+    orderedAt: "2026-09-13T09:22:00",
+    cutoffAt: "2026-09-13T14:00:00",
   },
   {
-    id: 5003,
-    orderNo: "ORD-20260913-0503",
+    orderId: 5003,
+    receiptNo: "R-DEMO-0503",
     sellerCode: "SEL-B",
     sellerName: "화주 B",
     regionCode: "BUSAN",
-    centerCode: "C1",
-    rule: "STOCK",
+    center: "C1",
+    routingRule: "STOCK",
     status: "ALLOCATED",
-    createdAt: "2026-09-13T09:31:00+09:00",
-  },
-  {
-    id: 5004,
-    orderNo: "ORD-20260913-0504",
-    sellerCode: "SEL-B",
-    sellerName: "화주 B",
-    regionCode: "BUSAN",
-    centerCode: null,
-    rule: null,
-    status: "RECEIVED",
-    createdAt: "2026-09-13T09:40:00+09:00",
+    orderedAt: "2026-09-13T09:31:00",
+    cutoffAt: "2026-09-13T14:00:00",
   },
 ];
 
+/** `orderId` 별 라우팅 상세 — 실제 API는 성공적으로 라우팅된 주문에만 있다(거부는
+ * 주문 자체가 안 생긴다, `lib/types.ts` `RoutingDecision` 주석 참고) */
 export const mockRoutingDecisions: Record<number, RoutingDecision> = {
   5001: {
     orderId: 5001,
-    orderNo: "ORD-20260913-0501",
-    selectedCenter: "C1",
+    center: "C1",
     rule: "PRIORITY",
-    rejected: false,
     candidates: [
-      {
-        centerCode: "C1",
-        centerName: "수도권",
-        sufficient: true,
-        lines: [
-          { gtin: "8801234567890", productName: "무선 이어폰", requiredQty: 20, atp: 340, sufficient: true },
-        ],
-      },
-      {
-        centerCode: "C2",
-        centerName: "중부",
-        sufficient: false,
-        lines: [
-          { gtin: "8801234567890", productName: "무선 이어폰", requiredQty: 20, atp: 0, sufficient: false },
-        ],
-      },
+      { center: "C1", feasible: true, totalAtp: 340, lines: [{ gtin: "8801234567890", requested: 20, available: 340 }] },
+      { center: "C2", feasible: false, totalAtp: 0, lines: [{ gtin: "8801234567890", requested: 20, available: 0 }] },
     ],
-    createdAt: "2026-09-13T09:10:01+09:00",
+    decidedAt: "2026-09-13T09:10:01",
   },
-  5004: {
-    orderId: 5004,
-    orderNo: "ORD-20260913-0504",
-    selectedCenter: null,
-    rule: null,
-    rejected: true,
+  5003: {
+    orderId: 5003,
+    center: "C1",
+    rule: "STOCK",
     candidates: [
-      {
-        centerCode: "C1",
-        centerName: "수도권",
-        sufficient: false,
-        lines: [{ gtin: "8809876543210", productName: "보조배터리", requiredQty: 50, atp: 12, sufficient: false }],
-      },
-      {
-        centerCode: "C3",
-        centerName: "남부",
-        sufficient: false,
-        lines: [{ gtin: "8809876543210", productName: "보조배터리", requiredQty: 50, atp: 0, sufficient: false }],
-      },
+      { center: "C1", feasible: true, totalAtp: 12, lines: [{ gtin: "8809876543210", requested: 10, available: 12 }] },
+      { center: "C3", feasible: false, totalAtp: 0, lines: [{ gtin: "8809876543210", requested: 10, available: 0 }] },
     ],
-    createdAt: "2026-09-13T09:40:01+09:00",
+    decidedAt: "2026-09-13T09:31:01",
   },
 };
 
 /** 화면 체크 4 — "이동 생성 → 출발 → 도착 센터 입고 화면에 ASN TR-… 가 보인다"를 표본으로
  * 시연할 수 있게, 하나는 CREATED(출발 전) 다른 하나는 DISPATCHED(도착 센터 ASN 생성됨)로 둔다. */
-export const mockTransfers: TransferOrderListItem[] = [
+export const mockTransfers: TransferOrder[] = [
   {
-    id: 9001,
+    transferId: 9001,
     transferNo: "TR-20260913-0001",
     fromCenter: "C1",
     toCenter: "C2",
     sellerCode: "SEL-A",
     status: "CREATED",
-    itemCount: 2,
-    createdAt: "2026-09-13T10:00:00+09:00",
+    asnNo: null,
+    inTransitQty: 0,
+    items: [
+      { itemId: 1, gtin: "8801234567890", productName: "무선 이어폰", lotNo: null, qty: 40, shippedQty: 0, receivedQty: 0 },
+      { itemId: 2, gtin: "8809876543210", productName: "보조배터리", lotNo: null, qty: 30, shippedQty: 0, receivedQty: 0 },
+    ],
+    createdAt: "2026-09-13T10:00:00",
+    dispatchedAt: null,
+    receivedAt: null,
   },
   {
-    id: 9002,
+    transferId: 9002,
     transferNo: "TR-20260913-0002",
     fromCenter: "C1",
     toCenter: "C3",
     sellerCode: "SEL-B",
     status: "DISPATCHED",
-    itemCount: 1,
-    createdAt: "2026-09-13T08:00:00+09:00",
+    asnNo: "TR-20260913-0002",
+    inTransitQty: 25,
+    items: [
+      { itemId: 3, gtin: "8801112223334", productName: "블루투스 스피커", lotNo: "L-2026-09-1", qty: 25, shippedQty: 25, receivedQty: 0 },
+    ],
+    createdAt: "2026-09-13T08:00:00",
+    dispatchedAt: "2026-09-13T08:05:00",
+    receivedAt: null,
   },
 ];
 
-export const mockTransferDetails: Record<number, TransferOrderDetail> = {
-  9001: {
-    ...mockTransfers[0],
-    items: [
-      { gtin: "8801234567890", productName: "무선 이어폰", qty: 40, shippedQty: 0, receivedQty: 0 },
-      { gtin: "8809876543210", productName: "보조배터리", qty: 30, shippedQty: 0, receivedQty: 0 },
-    ],
-    asnNo: null,
-    dispatchedAt: null,
-    receivedAt: null,
-  },
-  9002: {
-    ...mockTransfers[1],
-    items: [{ gtin: "8801112223334", productName: "블루투스 스피커", qty: 25, shippedQty: 25, receivedQty: 0 }],
-    asnNo: "TR-20260913-0002",
-    dispatchedAt: "2026-09-13T08:05:00+09:00",
-    receivedAt: null,
-  },
-};
-
-/** 이동 생성 — id·transferNo·시각을 새로 부여해 `mockTransfers`/`mockTransferDetails`
- * 와 같은 모양의 CREATED 건을 돌려준다. 표본 전용(로컬 상태에는 반영하지 않는다 —
- * `use-hub.ts` 가 mutation 성공을 낙관적으로 캐시에 얹는다). */
-export function mockCreateTransfer(body: CreateTransferRequest, nextId: number): TransferOrderDetail {
+/** 이동 생성 — transferId·transferNo·시각을 새로 부여해 `mockTransfers` 와 같은 모양의
+ * CREATED 건을 돌려준다. 방어적 fallback 전용(네트워크가 끊겼을 때만 탄다) */
+export function mockCreateTransfer(body: CreateTransferRequest, nextId: number): TransferOrder {
   const transferNo = `TR-20260913-${String(nextId).padStart(4, "0")}`;
   return {
-    id: nextId,
+    transferId: nextId,
     transferNo,
     fromCenter: body.fromCenter,
     toCenter: body.toCenter,
     sellerCode: body.sellerCode,
     status: "CREATED" as TransferStatus,
-    itemCount: body.items.length,
-    createdAt: new Date().toISOString(),
-    items: body.items.map((item) => ({
+    asnNo: null,
+    inTransitQty: 0,
+    items: body.items.map((item, index) => ({
+      itemId: index + 1,
       gtin: item.gtin,
       productName: item.gtin,
+      lotNo: null,
       qty: item.qty,
       shippedQty: 0,
       receivedQty: 0,
     })),
-    asnNo: null,
+    createdAt: new Date().toISOString(),
     dispatchedAt: null,
     receivedAt: null,
   };
 }
 
 /** 출발 — CREATED → DISPATCHED, ASN 번호를 transferNo 그대로 붙인다(정본 §12.5 ②) */
-export function mockDispatchTransfer(detail: TransferOrderDetail): TransferOrderDetail {
+export function mockDispatchTransfer(transfer: TransferOrder): TransferOrder {
   return {
-    ...detail,
+    ...transfer,
     status: "DISPATCHED",
-    asnNo: detail.transferNo,
+    asnNo: transfer.transferNo,
     dispatchedAt: new Date().toISOString(),
-    items: detail.items.map((item) => ({ ...item, shippedQty: item.qty })),
+    inTransitQty: transfer.items.reduce((sum, item) => sum + item.qty, 0),
+    items: transfer.items.map((item) => ({ ...item, shippedQty: item.qty })),
   };
 }
 
 export const mockGlobalAtp: GlobalAtpRow[] = [
   {
     gtin: "8801234567890",
-    productName: "무선 이어폰",
+    name: "무선 이어폰",
     total: 620,
     inTransit: 40,
     byCenter: [
@@ -221,7 +181,7 @@ export const mockGlobalAtp: GlobalAtpRow[] = [
   },
   {
     gtin: "8809876543210",
-    productName: "보조배터리",
+    name: "보조배터리",
     total: 12,
     inTransit: 0,
     byCenter: [
@@ -232,7 +192,7 @@ export const mockGlobalAtp: GlobalAtpRow[] = [
   },
   {
     gtin: "8801112223334",
-    productName: "블루투스 스피커",
+    name: "블루투스 스피커",
     total: 205,
     inTransit: 25,
     byCenter: [

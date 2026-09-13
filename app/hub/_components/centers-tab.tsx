@@ -22,21 +22,13 @@ export function CentersTab() {
       <div className="grid grid-cols-3 gap-3">
         {(centers ?? []).map((c) => (
           <div key={c.code} className={`${w98.raised} flex flex-col gap-2 bg-[color:var(--surface)] p-3`}>
-            <div className="flex items-baseline justify-between">
-              <span className="text-[18px] font-bold">{c.code}</span>
-              <span
-                className="text-[11px] font-bold"
-                style={{ color: c.status === "ACTIVE" ? "var(--status-success)" : "var(--muted-foreground)" }}
-              >
-                {c.status === "ACTIVE" ? "가동" : "중지"}
-              </span>
-            </div>
+            <span className="text-[18px] font-bold">{c.code}</span>
             <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>{c.name}</span>
 
             <div className="mt-1 grid grid-cols-3 gap-1 text-center">
-              <Stat label="칸" value={c.binCount} />
-              <Stat label="현재고" value={c.stockCount} />
-              <Stat label="OPEN 주문" value={c.openOrderCount} />
+              <Stat label="칸" value={c.bins} />
+              <Stat label="현재고" value={c.stockQty} />
+              <Stat label="OPEN 주문" value={c.openOrders} />
             </div>
           </div>
         ))}

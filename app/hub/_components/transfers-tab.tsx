@@ -49,16 +49,10 @@ export function TransfersTab() {
     createTransfer.mutate(body, {
       onSuccess: (data) => {
         toast.success(`이동 오더 ${data.transferNo} 생성`, w98Toast.success);
-        setSelectedId(data.id);
+        setSelectedId(data.transferId);
         setIsCreateOpen(false);
       },
       onError: (err) => {
-        // 백엔드가 없어(404) 표본으로 대신 처리한 경우도 성공처럼 닫는다 — use-hub.ts onError 참고
-        if (err instanceof ApiError && err.status === 404) {
-          toast.success("이동 오더 생성(표본 응답)", w98Toast.success);
-          setIsCreateOpen(false);
-          return;
-        }
         toast.error("이동 생성에 실패했습니다", { ...w98Toast.notice, description: err.message });
       },
     });
@@ -72,10 +66,6 @@ export function TransfersTab() {
       onError: (err) => {
         if (err instanceof ApiError && err.is("INSUFFICIENT_ATP")) {
           toast.error("출발 센터 ATP 부족", { ...w98Toast.notice, description: err.message });
-          return;
-        }
-        if (err instanceof ApiError && err.status === 404) {
-          toast.success("출발 처리(표본 응답) — 도착 센터 ASN 생성", w98Toast.success);
           return;
         }
         toast.error("출발 처리에 실패했습니다", { ...w98Toast.notice, description: err.message });
@@ -137,10 +127,10 @@ export function TransfersTab() {
               ) : (
                 page?.content.map((t) => (
                   <tr
-                    key={t.id}
-                    onClick={() => setSelectedId(t.id)}
+                    key={t.transferId}
+                    onClick={() => setSelectedId(t.transferId)}
                     className={`cursor-pointer border-t border-[color:var(--border)] hover:bg-[color:var(--surface-variant)] ${
-                      t.id === selectedId ? "bg-[color:var(--surface-variant)] font-bold" : ""
+                      t.transferId === selectedId ? "bg-[color:var(--surface-variant)] font-bold" : ""
                     }`}
                   >
                     <Td mono>{t.transferNo}</Td>
@@ -149,7 +139,7 @@ export function TransfersTab() {
                     </Td>
                     <Td mono>{t.sellerCode}</Td>
                     <Td>{STATUS_LABEL[t.status]}</Td>
-                    <Td mono>{t.itemCount}</Td>
+                    <Td mono>{t.items.length}</Td>
                   </tr>
                 ))
               )}
@@ -208,7 +198,7 @@ export function TransfersTab() {
 
                 {data.status === "CREATED" ? (
                   <Btn
-                    onClick={() => handleDispatch(data.id)}
+                    onClick={() => handleDispatch(data.transferId)}
                     disabled={dispatchTransfer.isPending}
                     className="h-7 font-bold"
                   >

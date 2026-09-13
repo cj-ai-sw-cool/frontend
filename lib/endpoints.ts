@@ -30,7 +30,6 @@ import type {
   DamageReportRequest,
   DamageReportResponse,
   DashboardSummary,
-  DispatchTransferResponse,
   GenerateCountTasksRequest,
   GenerateCountTasksResponse,
   GlobalAtpQuery,
@@ -87,8 +86,7 @@ import type {
   StockQuery,
   SubmitCountTaskRequest,
   SubmitCountTaskResponse,
-  TransferOrderDetail,
-  TransferOrderListItem,
+  TransferOrder,
   TransfersQuery,
   UpdateSellerRequest,
   WaveCreateRequest,
@@ -611,22 +609,21 @@ export const hub = {
   /** 라우팅 상세 — `routing_decision` + 후보 센터별 라인 ATP. 행 클릭 시 조회 */
   orderRouting: (orderId: number) => api.get<RoutingDecision>(`/hub/orders/${orderId}/routing`),
 
-  /** 이동 오더 목록 */
+  /** 이동 오더 목록 — 라이브 대조: 목록도 상세와 같은 모양(`items` 배열 포함)으로 온다 */
   transfers: (params?: TransfersQuery) =>
-    api.get<Page<TransferOrderListItem>>(`/hub/transfers${toTransfersQueryString(params)}`),
+    api.get<Page<TransferOrder>>(`/hub/transfers${toTransfersQueryString(params)}`),
 
   /** 이동 오더 상세 — shipped/received 진행 */
-  transfer: (id: number) => api.get<TransferOrderDetail>(`/hub/transfers/${id}`),
+  transfer: (id: number) => api.get<TransferOrder>(`/hub/transfers/${id}`),
 
   /** 이동 생성 — 출발 센터 ATP 부족이면 409 `INSUFFICIENT_ATP`(정본 §12.5 ①) */
-  createTransfer: (body: CreateTransferRequest) => api.post<TransferOrderDetail>("/hub/transfers", body),
+  createTransfer: (body: CreateTransferRequest) => api.post<TransferOrder>("/hub/transfers", body),
 
   /** 출발 — FEFO 확정, 도착 센터 ASN 자동 생성(정본 §12.5 ②). 409 `INSUFFICIENT_ATP` */
-  dispatchTransfer: (id: number) =>
-    api.post<DispatchTransferResponse>(`/hub/transfers/${id}/dispatch`),
+  dispatchTransfer: (id: number) => api.post<TransferOrder>(`/hub/transfers/${id}/dispatch`),
 
-  /** 글로벌 ATP 표 — 화주 선택 필수, gtin 은 검색 보조 */
-  atp: (params: GlobalAtpQuery) => api.get<GlobalAtpRow[]>(`/hub/atp${toGlobalAtpQueryString(params)}`),
+  /** 글로벌 ATP 표 — 화주 선택 필수, gtin 은 검색 보조. 라이브 대조: Page 로 온다 */
+  atp: (params: GlobalAtpQuery) => api.get<Page<GlobalAtpRow>>(`/hub/atp${toGlobalAtpQueryString(params)}`),
 };
 
 function toHubOrdersQueryString(params?: HubOrdersQuery): string {

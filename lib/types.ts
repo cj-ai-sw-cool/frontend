@@ -1874,38 +1874,39 @@ export interface SimulateCountTaskRequest {
 
 /* ── 12. 다창고 — 센터 축·주문 라우팅·센터 간 이동 (Stage 11D) ──────────────────
    정본: backend/docs/02-system/02-data-model.md §12.6·§12.8, 브리프
-   docs/tasks/2026-09-13-stage11d-frontend-handoff.md. 백엔드가 이 화면과 동시에
-   `feat/stage11d-multicenter`에서 만들어지는 중이라 — 계약대로 먼저 붙이고
-   `lib/mocks/hub.ts` 표본으로 확인한다. 필드 이름은 정본 §12.6 설명(칸·현재고·OPEN
-   주문 수, 접수번호·화주·권역·센터·규칙·상태 등)을 그대로 영문 camelCase 로 옮긴
-   것이라 백엔드 실제 응답과 다를 수 있다 — 라이브 검증 대기. */
+   docs/tasks/2026-09-13-stage11d-frontend-handoff.md.
+   2026-09-13 라이브 대조 완료(`localhost:8000`, 커밋 aaefe85 "S11D.3 센터 간 이동" 시점) —
+   필드 이름은 전부 실제 응답으로 정정했다. `GET /hub/orders`·`GET /hub/transfers`·
+   `GET /hub/atp`는 셋 다 Spring `Page<T>` 로 온다(`Page` 타입 재사용, §5 참고). */
 
 /** 센터 코드 — 시드 3곳 고정(정본 §12.2) */
 export type CenterCode = "C1" | "C2" | "C3";
 
-/** `GET /hub/centers` 행 — 센터 하나의 요약(정본 §12.6 "센터별 칸·현재고·OPEN 주문 수") */
+/** `GET /hub/centers` 행 — 센터 하나의 요약(라이브 대조: `status` 없음, 칸·현재고·OPEN
+ * 주문 필드명이 정본 문장과 다르다) */
 export interface CenterSummary {
   code: CenterCode;
   name: string;
-  status: "ACTIVE" | "INACTIVE";
-  binCount: number;
-  stockCount: number;
-  openOrderCount: number;
+  bins: number;
+  stockQty: number;
+  openOrders: number;
 }
 
 export type RoutingRule = "PRIORITY" | "REGION" | "STOCK" | "REROUTE";
 
-/** 허브 "주문" 탭 표 행(정본 §12.6 "센터·규칙 열") */
+/** 허브 "주문" 탭 표 행(라이브 대조: `orderId`·`receiptNo`·`center`·`routingRule`·
+ * `orderedAt`. `cutoffAt` 도 같이 온다) */
 export interface HubOrderListItem {
-  id: number;
-  orderNo: string;
+  orderId: number;
+  receiptNo: string;
   sellerCode: string;
   sellerName: string;
   regionCode: string | null;
-  centerCode: CenterCode | null;
-  rule: RoutingRule | null;
+  center: CenterCode;
+  routingRule: RoutingRule;
   status: OrderStatus;
-  createdAt: string;
+  orderedAt: string;
+  cutoffAt: string;
 }
 
 export interface HubOrdersQuery {
@@ -1915,59 +1916,63 @@ export interface HubOrdersQuery {
   size?: number;
 }
 
-/** 라우팅 후보 센터 하나의 라인별 ATP(정본 §12.3) */
+/** 라우팅 후보 센터 하나의 라인별 ATP(라이브 대조: `requested`·`available`, GTIN 만
+ * 오고 상품명은 없다 — 화면은 GTIN 만 보여준다) */
 export interface RoutingCandidateLine {
   gtin: string;
-  productName: string;
-  requiredQty: number;
-  atp: number;
-  sufficient: boolean;
+  requested: number;
+  available: number;
 }
 
 export interface RoutingCandidate {
-  centerCode: CenterCode;
-  centerName: string;
+  center: CenterCode;
+  feasible: boolean;
   lines: RoutingCandidateLine[];
-  sufficient: boolean;
+  totalAtp: number;
 }
 
-/** `GET /hub/orders/{id}/routing` 응답 — `routing_decision` + 후보 센터별 라인 ATP(정본 §12.6) */
+/**
+ * `GET /hub/orders/{id}/routing` 응답(라이브 대조: `center`·`decidedAt`, `orderNo`·
+ * `rejected` 필드 없음). 이 API 는 성공적으로 라우팅된 주문에만 있다 — 거부된 접수는
+ * `orders.id` 자체가 안 생기므로(정본 §12.3 "3. 남은 센터가 없으면 주문 거부") 이
+ * 화면에서 "거부" 배지를 만들 데이터가 없다. 화면은 `center`(선택된 센터)만 강조한다.
+ */
 export interface RoutingDecision {
   orderId: number;
-  orderNo: string;
-  selectedCenter: CenterCode | null;
-  rule: RoutingRule | null;
-  rejected: boolean;
+  center: CenterCode;
+  rule: RoutingRule;
   candidates: RoutingCandidate[];
-  createdAt: string;
+  decidedAt: string;
 }
 
 export type TransferStatus = "CREATED" | "DISPATCHED" | "RECEIVED" | "CLOSED";
 
-/** 허브 "이동" 탭 표 행(정본 §12.6 "번호·출발→도착·화주·상태·품목 수") */
-export interface TransferOrderListItem {
-  id: number;
-  transferNo: string;
-  fromCenter: CenterCode;
-  toCenter: CenterCode;
-  sellerCode: string;
-  status: TransferStatus;
-  itemCount: number;
-  createdAt: string;
-}
-
 export interface TransferItemRow {
+  itemId: number;
   gtin: string;
   productName: string;
+  lotNo: string | null;
   qty: number;
   shippedQty: number;
   receivedQty: number;
 }
 
-/** 이동 오더 상세 — "출발"·도착 진행 표시(정본 §12.5) */
-export interface TransferOrderDetail extends TransferOrderListItem {
-  items: TransferItemRow[];
+/**
+ * 이동 오더 — 허브 "이동" 탭 표 행과 상세가 **같은 모양**이다(라이브 대조: 목록 응답도
+ * `items` 배열을 통째로 준다, 별도 요약 DTO 가 없다). 표의 "품목 수"는 `items.length`
+ * 로 센다. 라이브 대조: `transferId`, `inTransitQty`(이동 중 수량 합계, 보너스 필드).
+ */
+export interface TransferOrder {
+  transferId: number;
+  transferNo: string;
+  fromCenter: CenterCode;
+  toCenter: CenterCode;
+  sellerCode: string;
+  status: TransferStatus;
   asnNo: string | null;
+  inTransitQty: number;
+  items: TransferItemRow[];
+  createdAt: string;
   dispatchedAt: string | null;
   receivedAt: string | null;
 }
@@ -1991,18 +1996,19 @@ export interface CreateTransferRequest {
   items: CreateTransferItemInput[];
 }
 
-/** `POST /hub/transfers/{id}/dispatch` — 출발 센터 ATP 부족이면 409 `INSUFFICIENT_ATP`(정본 §12.5 ②) */
-export type DispatchTransferResponse = TransferOrderDetail;
-
-/** 글로벌 ATP 표 한 행 — SKU 하나의 센터별 막대 + 이동 중(정본 §12.4·§12.6) */
+/** 센터별 ATP — `GET /hub/atp` 행의 `byCenter[]`(라이브 대조: `onHand`·`allocated`·
+ * `blockedByShelfLife` 도 같이 오지만 막대에는 `atp` 만 쓴다) */
 export interface GlobalAtpCenterAtp {
   center: CenterCode;
   atp: number;
 }
 
+/** 글로벌 ATP 표 한 행 — SKU 하나의 센터별 막대 + 이동 중(라이브 대조: 상품명은
+ * `name`, `productId`·`onHand`·`allocated`·`blockedByShelfLife` 도 같이 오지만
+ * 막대에는 `total`·`inTransit`·`byCenter`만 쓴다) */
 export interface GlobalAtpRow {
   gtin: string;
-  productName: string;
+  name: string;
   total: number;
   inTransit: number;
   byCenter: GlobalAtpCenterAtp[];

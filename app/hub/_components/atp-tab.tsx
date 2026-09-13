@@ -104,7 +104,7 @@ function AtpRowBar({ row }: { row: GlobalAtpRow }) {
     <div className={`${w98.raised} p-1.5`}>
       <div className="mb-1 flex items-center justify-between text-[13px]">
         <span>
-          {row.productName} <span className={w98.mono}>({row.gtin})</span>
+          {row.name} <span className={w98.mono}>({row.gtin})</span>
         </span>
         <span className={`${w98.mono} font-bold`}>
           합계 {row.total.toLocaleString()}
