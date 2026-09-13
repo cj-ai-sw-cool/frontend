@@ -18,11 +18,16 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useCenter } from "@/lib/center";
+import { useControlMode } from "../_data/use-control-mode";
 import { useZonesSummary } from "../_data/use-inventory";
 import { useBayBins, useLayout } from "../_data/use-layout";
 import { BayDetailPanel } from "./layout/bay-detail";
+import type { ControlOverlay } from "./layout/control-overlay";
 import { bayDisplayCode, buildLayoutIndex } from "./layout/layout-geometry";
 import { LayoutScene, type LayoutSceneApi } from "./layout/layout-scene";
+import { ControlToolbar } from "./control-toolbar";
+import { KpiPanel } from "./kpi-panel";
+import { ReplayScrubber } from "./replay-scrubber";
 import type { Bay } from "@/lib/types";
 
 export interface WarehouseApi {
@@ -45,7 +50,11 @@ export default function WarehouseSlot3D({
   const [hoveredBay, setHoveredBay] = useState<Bay | null>(null);
   const [selectedBay, setSelectedBay] = useState<Bay | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(initialHighlight);
+  const [controlMode, setControlMode] = useState(false);
   const apiRef = useRef<LayoutSceneApi | null>(null);
+
+  const control = useControlMode(center);
+  const handleControlReady = (overlay: ControlOverlay | null) => control.setControlOverlay(overlay);
 
   const { data: bins, isLoading: binsLoading } = useBayBins(selectedBay?.id ?? null);
   const index = useMemo(() => (layout ? buildLayoutIndex(layout) : null), [layout]);
@@ -99,33 +108,66 @@ export default function WarehouseSlot3D({
           onSelectBay={setSelectedBay}
           onReady={handleReady}
           initialHighlight={initialHighlight}
+          controlMode={controlMode}
+          onControlReady={handleControlReady}
         />
 
-        {/* 좌상단 — 점유율 대시보드(GET /zones/summary 합계) */}
-        <div className="absolute top-4 left-4 w-64 rounded-md border border-[rgba(160,190,220,.3)] bg-[rgba(11,16,23,.72)] p-3 backdrop-blur">
-          <div className="font-mono text-[10px] font-bold tracking-wider text-[#9DB0C4]">SLOT WAREHOUSE · STAGE 11</div>
-          <div className="mt-1 text-sm font-bold">창고 슬롯 대시보드</div>
-          <div className="mt-2 font-mono text-3xl font-bold text-[#FFC978]">
-            {totals.ratio.toFixed(1)}
-            <span className="ml-1 text-sm">%</span>
+        <ControlToolbar
+          controlMode={controlMode}
+          onToggleControlMode={() => setControlMode((v) => !v)}
+          source={control.source}
+          onStartReplay={control.startReplay}
+          onStopReplay={control.stopReplay}
+          speed={control.speed}
+          onSpeedChange={control.setSpeed}
+          paused={control.paused}
+          onTogglePause={() => control.setPaused((v) => !v)}
+          connected={control.stream.connected}
+          usingMock={control.stream.usingMock}
+          lagMs={control.stream.lagMs}
+        />
+
+        {/* 좌상단 — 관제 모드면 이벤트 KPI, 아니면 점유율 대시보드(GET /zones/summary 합계) */}
+        {controlMode ? (
+          <KpiPanel center={center} recentEvents={control.stream.recent} />
+        ) : (
+          <div className="absolute top-4 left-4 w-64 rounded-md border border-[rgba(160,190,220,.3)] bg-[rgba(11,16,23,.72)] p-3 backdrop-blur">
+            <div className="font-mono text-[10px] font-bold tracking-wider text-[#9DB0C4]">SLOT WAREHOUSE · STAGE 11</div>
+            <div className="mt-1 text-sm font-bold">창고 슬롯 대시보드</div>
+            <div className="mt-2 font-mono text-3xl font-bold text-[#FFC978]">
+              {totals.ratio.toFixed(1)}
+              <span className="ml-1 text-sm">%</span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-1.5">
+              <Stat label="채움 칸" value={totals.occupiedBins.toLocaleString()} />
+              <Stat label="전체 칸" value={totals.binCount.toLocaleString()} />
+              <Stat label="베이 수" value={layout.bays.length.toLocaleString()} />
+              <Stat label="방 수" value={layout.areas.length.toLocaleString()} />
+            </div>
+            {usingMock ? (
+              <p className="mt-2 rounded border border-[rgba(255,193,120,.4)] bg-[rgba(255,193,120,.12)] p-1.5 text-[10px] text-[#FFC978]">
+                백엔드 /layout 미구현 — 표본(lib/mocks/layout.ts) 표시 중
+              </p>
+            ) : null}
+            {hoveredBay ? (
+              <p className="mt-2 font-mono text-[11px] text-[#DCE5EF]">
+                {bayDisplayCode(hoveredBay)} · {hoveredBay.binType} · {hoveredBay.occupiedBins}/{hoveredBay.totalBins}
+              </p>
+            ) : null}
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <Stat label="채움 칸" value={totals.occupiedBins.toLocaleString()} />
-            <Stat label="전체 칸" value={totals.binCount.toLocaleString()} />
-            <Stat label="베이 수" value={layout.bays.length.toLocaleString()} />
-            <Stat label="방 수" value={layout.areas.length.toLocaleString()} />
-          </div>
-          {usingMock ? (
-            <p className="mt-2 rounded border border-[rgba(255,193,120,.4)] bg-[rgba(255,193,120,.12)] p-1.5 text-[10px] text-[#FFC978]">
-              백엔드 /layout 미구현 — 표본(lib/mocks/layout.ts) 표시 중
-            </p>
-          ) : null}
-          {hoveredBay ? (
-            <p className="mt-2 font-mono text-[11px] text-[#DCE5EF]">
-              {bayDisplayCode(hoveredBay)} · {hoveredBay.binType} · {hoveredBay.occupiedBins}/{hoveredBay.totalBins}
-            </p>
-          ) : null}
-        </div>
+        )}
+
+        {controlMode && control.source === "replay" ? (
+          <ReplayScrubber
+            rangeMin={control.replayRangeMin}
+            onRangeChange={control.setReplayRangeMin}
+            index={control.replayIndex}
+            total={control.replayTotal}
+            onSeek={control.seekReplay}
+            currentAt={control.replayCurrentAt}
+            loading={control.replayLoading}
+          />
+        ) : null}
 
         {/* 우측 — 존 범례(선택하면 그 존으로 flyTo + 강조) */}
         <div className="absolute top-4 right-4 w-56 rounded-md border border-[rgba(160,190,220,.3)] bg-[rgba(11,16,23,.72)] p-3 backdrop-blur">

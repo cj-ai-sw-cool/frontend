@@ -17,6 +17,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Bay, Bin, LayoutResponse } from "@/lib/types";
 import { buildAreaLabels, buildStaticGroup } from "./area-mesh";
 import { applyZoneHighlight, type BayInstanceMesh, buildBayInstances, buildExpandedBins } from "./bay-mesh";
+import { buildControlOverlay, type ControlOverlay } from "./control-overlay";
 import { bayDisplayCode, buildLayoutIndex, layoutBounds } from "./layout-geometry";
 
 export interface LayoutSceneApi {
@@ -33,6 +34,9 @@ interface LayoutSceneProps {
   onSelectBay: (bay: Bay | null) => void;
   onReady?: (api: LayoutSceneApi) => void;
   initialHighlight?: string | null;
+  /** 관제 모드(브리프 §2, S11A.4) — 켜면 베이 점등·작업자 마커 오버레이를 씬에 얹는다 */
+  controlMode?: boolean;
+  onControlReady?: (api: ControlOverlay | null) => void;
 }
 
 export function LayoutScene({
@@ -43,6 +47,8 @@ export function LayoutScene({
   onSelectBay,
   onReady,
   initialHighlight = null,
+  controlMode = false,
+  onControlReady,
 }: LayoutSceneProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -50,6 +56,7 @@ export function LayoutScene({
   const expandedGroupRef = useRef<THREE.Group | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const bimRef = useRef<BayInstanceMesh | null>(null);
+  const controlRef = useRef<ControlOverlay | null>(null);
 
   /* ── 씬 구성 — layout 이 바뀌지 않는 한(사실상 마운트 1회) ── */
   useEffect(() => {
@@ -195,6 +202,7 @@ export function LayoutScene({
     let raf = 0;
     const tick = () => {
       controls.update();
+      controlRef.current?.tick(performance.now());
       renderer.render(scene, camera);
       labels?.update(camera, renderer.domElement.clientWidth, renderer.domElement.clientHeight);
       raf = requestAnimationFrame(tick);
@@ -210,11 +218,33 @@ export function LayoutScene({
       renderer.dispose();
       wrap.removeChild(renderer.domElement);
       labels?.dispose();
+      if (controlRef.current) {
+        controlRef.current.dispose();
+        controlRef.current = null;
+      }
       sceneRef.current = null;
       bimRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout]);
+
+  /* ── 관제 모드 토글 — 씬을 다시 짓지 않고 오버레이 그룹만 얹거나 뗀다 ── */
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (controlMode && !controlRef.current) {
+      const overlay = buildControlOverlay(layout);
+      scene.add(overlay.group);
+      controlRef.current = overlay;
+      onControlReady?.(overlay);
+    } else if (!controlMode && controlRef.current) {
+      scene.remove(controlRef.current.group);
+      controlRef.current.dispose();
+      controlRef.current = null;
+      onControlReady?.(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlMode, layout]);
 
   /* ── 선택된 베이의 칸 펼침 — 씬 재구성 없이 그룹만 교체 ── */
   useEffect(() => {

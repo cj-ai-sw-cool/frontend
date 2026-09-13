@@ -9,7 +9,7 @@
  * (`app/analytics/_data/use-control-mode.ts`)가 `subscribe`로 이어받아 처리한다.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { events, queryKeys } from "./endpoints";
 import { openEventStream } from "./events-stream";
@@ -35,16 +35,27 @@ export interface EventStreamState {
  * `lib/mocks/events.ts` 가짜 스트림으로 넘어간다(`use-layout.ts`의 `usingMock` 관례와
  * 같은 방어적 fallback). `subscribe`로 원본 이벤트를 그대로 받아 화면별로 반응한다.
  */
+const INITIAL_STATE: EventStreamState = {
+  status: "connecting",
+  connected: false,
+  usingMock: false,
+  lastSeq: null,
+  lagMs: null,
+  recent: [],
+};
+
 export function useEventStream(center: string): EventStreamState & { subscribe: (cb: (event: WmsEvent) => void) => () => void } {
-  const [state, setState] = useState<EventStreamState>({
-    status: "connecting",
-    connected: false,
-    usingMock: false,
-    lastSeq: null,
-    lagMs: null,
-    recent: [],
-  });
+  const [state, setState] = useState<EventStreamState>(INITIAL_STATE);
   const listenersRef = useRef(new Set<(event: WmsEvent) => void>());
+
+  // 센터가 바뀌면 이전 센터의 버퍼를 들고 있지 않도록 렌더 중에 바로 되돌린다(React의
+  // "prop 이 바뀔 때 state 조정" 패턴 — 이펙트 안에서 setState 하면 렌더가 한 번 더
+  // 돈다, react-hooks/set-state-in-effect).
+  const [renderedCenter, setRenderedCenter] = useState(center);
+  if (center !== renderedCenter) {
+    setRenderedCenter(center);
+    setState(INITIAL_STATE);
+  }
 
   const handleEvent = useCallback((event: WmsEvent) => {
     setState((prev) => ({
@@ -59,7 +70,6 @@ export function useEventStream(center: string): EventStreamState & { subscribe: 
   useEffect(() => {
     let closed = false;
     let mockHandle: { close: () => void } | null = null;
-    setState((prev) => ({ ...prev, recent: [], lastSeq: null, lagMs: null, usingMock: false }));
 
     const startMock = () => {
       if (closed || mockHandle) return;
@@ -93,14 +103,33 @@ export function useEventStream(center: string): EventStreamState & { subscribe: 
 }
 
 /** 리플레이 스크러버 — `GET /events` 범위(정본 §13.3). `enabled`가 false 면(라이브 모드)
- * 조회하지 않는다 */
+ * 조회하지 않는다. 실패하면(백엔드 미구현) `lib/mocks/events.ts` 표본을 범위로 잘라
+ * 대신 쓴다 — `use-layout.ts`의 `usingMock` 관례와 같다. */
 export function useEventsRange(query: EventsQuery, enabled: boolean) {
-  return useQuery({
+  const result = useQuery({
     queryKey: queryKeys.eventsRange(query),
     queryFn: () => events.list(query),
     enabled,
+    retry: false,
     staleTime: 60_000,
   });
+  const usingMock = enabled && result.isError;
+  // `mockEventsForRange`가 매 렌더 새 배열을 만들면 그 참조를 deps 로 쓰는 리플레이
+  // 재생 루프(`use-control-mode.ts`)가 매번 다시 걸린다 — 쿼리 조건이 같으면 같은
+  // 배열을 돌려주도록 메모이즈한다.
+  const mockData = useMemo(
+    () => (usingMock ? mockEventsForRange(query) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- query 는 매 렌더 새 객체라 필드별로 비교한다
+    [usingMock, query.center, query.occurredFrom, query.occurredTo, query.from, query.to, query.types, query.limit],
+  );
+  return { ...result, data: result.data ?? mockData, usingMock };
+}
+
+function mockEventsForRange(query: EventsQuery): WmsEvent[] {
+  const sample = mockEventSample(query.center, 200);
+  if (!query.occurredFrom) return sample;
+  const fromMs = new Date(query.occurredFrom).getTime();
+  return sample.filter((event) => new Date(event.occurredAt).getTime() >= fromMs);
 }
 
 /** KPI 패널 — `GET /events/kpi`. 라이브 연결 중엔 스트림 이벤트로 화면이 직접 증분하므로
@@ -109,6 +138,7 @@ export function useEventsKpi(center: string, windowSize = "1h") {
   return useQuery<EventsKpiResponse>({
     queryKey: queryKeys.eventsKpi({ center, window: windowSize }),
     queryFn: () => events.kpi({ center, window: windowSize }),
+    retry: false,
     staleTime: 30_000,
   });
 }

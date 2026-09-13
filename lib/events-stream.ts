@@ -47,7 +47,7 @@ export function openEventStream(center: string, fromSeq: number | undefined, han
 
     source.onopen = () => {
       if (attempt > 0) {
-        // eslint-disable-next-line no-console -- 화면 체크 2: 재연결 후 seq 연속 확인용
+        // 화면 체크 2: 재연결 후 seq 연속 확인용
         console.info(`[events-stream] reconnected center=${center} fromSeq=${lastSeq ?? "-"}`);
       }
       attempt = 0;
