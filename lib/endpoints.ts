@@ -12,6 +12,7 @@ import type {
   AsnListItem,
   AsnQuery,
   AtpRow,
+  Bin,
   BoxOverrideResponse,
   BoxType,
   CompleteReceiptResponse,
@@ -32,6 +33,7 @@ import type {
   InvariantCheckResult,
   ItemScanRequest,
   ItemScanResponse,
+  LayoutResponse,
   LinesResponse,
   Location,
   LocationCapacity,
@@ -165,10 +167,26 @@ export const master = {
   /** 화주 등록 — code 중복은 409 CONFLICT */
   createSeller: (body: CreateSellerRequest) => api.post<Seller>("/sellers", body),
 
-  /** 존 목록 — 3D·2D 레이아웃(`lib/zone-layout.ts`)과 로케이션 탭의 존 단이 함께 읽는다 */
+  /** 존 목록 — Stage 11(11.0)부터 `Area→Zone→Aisle→Bay` 계층의 매체 구획. 3D·2D
+   * 레이아웃은 이 목록 대신 `layout()` 을 쓴다 — 이건 로케이션 탭 1단과 재고 탭 존
+   * 표시가 계속 읽는다 */
   zones: () => api.get<Zone[]>("/zones"),
 
-  /** 로케이션 목록 — zone·rack·type 전부 선택, Spring Page 로 온다 */
+  /**
+   * 3D·2D 가 그리는 전체 레이아웃(정본 §11.0 "3D·2D 계약") — `{areas, zones, aisles,
+   * bays}`. 베이 약 800~1,000행, 칸(Position)은 포함하지 않는다. 백엔드가 Stage 11을
+   * 같은 시각에 만드는 중이라(브리프 머리말) 2026-09-13 시점엔 엔드포인트가 없을 수
+   * 있다 — 호출부(`app/analytics/_data/use-layout.ts`)가 실패하면 `lib/mocks/layout.ts`
+   * 표본으로 대신 그린다. 라이브 검증 대기.
+   */
+  layout: () => api.get<LayoutResponse>("/layout"),
+
+  /** 베이 하나의 칸 — 베이 클릭 시에만(≤ 20개). 위 `layout()` 과 같은 계약, 같은 대기 */
+  bayBins: (bayId: number) => api.get<Bin[]>(`/bays/${bayId}/bins`),
+
+  /** 로케이션 목록 — zone·type 전부 선택, Spring Page 로 온다. `aisleId`·`bayId` 는
+   * Stage 11(브리프 §3 S11.4)이 백엔드에 요청한 필터라 아직 없을 수 있다 — 로케이션
+   * 탭은 이 값에 기대지 않고 응답을 코드 접두로 한 번 더 거른다(노트 참고) */
   locations: (params?: LocationsQuery) =>
     api.get<Page<Location>>(`/locations${toQueryString(params)}`),
 
@@ -180,7 +198,8 @@ function toQueryString(params?: LocationsQuery): string {
   if (!params) return "";
   const qs = new URLSearchParams();
   if (params.zone !== undefined) qs.set("zone", params.zone);
-  if (params.rack !== undefined) qs.set("rack", String(params.rack));
+  if (params.aisleId !== undefined) qs.set("aisleId", String(params.aisleId));
+  if (params.bayId !== undefined) qs.set("bayId", String(params.bayId));
   if (params.type !== undefined) qs.set("type", params.type);
   if (params.page !== undefined) qs.set("page", String(params.page));
   if (params.size !== undefined) qs.set("size", String(params.size));
@@ -509,6 +528,8 @@ export const queryKeys = {
   shipment: (id: number) => ["shipments", id] as const,
   sellers: ["sellers"] as const,
   zones: ["zones"] as const,
+  layout: ["layout"] as const,
+  bayBins: (bayId: number) => ["bays", bayId, "bins"] as const,
   locations: (params?: LocationsQuery) => ["locations", params ?? {}] as const,
   stock: (params?: StockQuery) => ["stock", params ?? {}] as const,
   stockLedger: (stockId: number, params?: { page?: number; size?: number }) =>
