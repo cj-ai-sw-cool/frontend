@@ -25,6 +25,7 @@ import { ApiError } from "@/lib/api";
 import type { Zone } from "@/lib/types";
 import { useCreateSeller, useLocations, useSellers, useZones } from "../_data/use-master";
 import { AtpTab } from "./atp-tab";
+import { IcqaTab } from "./icqa-tab";
 import { Btn, Etched, Field, Sunken, w98 } from "./win98-ui";
 
 /** `warehouse-slot-3d.jsx` 가 `onReady` 로 넘기는 api 핸들. 이 파일은 모양만 안다 */
@@ -34,7 +35,7 @@ export interface WarehouseApi {
   resetView: () => void;
 }
 
-const TABS = ["화주", "로케이션", "가용재고"] as const;
+const TABS = ["화주", "로케이션", "가용재고", "실사"] as const;
 type Tab = (typeof TABS)[number];
 
 const TEMP_ZONE_LABEL: Record<string, string> = {
@@ -85,8 +86,10 @@ export function MasterWindow({
             <SellerTab />
           ) : tab === "로케이션" ? (
             <LocationTab onLocateZone={onLocateZone} />
-          ) : (
+          ) : tab === "가용재고" ? (
             <AtpTab />
+          ) : (
+            <IcqaTab />
           )}
         </div>
       </div>

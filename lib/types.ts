@@ -1505,3 +1505,163 @@ export interface PackingQueueItem {
   shipmentSeq: number;
 }
 
+
+
+/* ── 10. ICQA — 순환 실사·조정 (Stage 10) ────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §10.2·§10.3, docs/tasks/
+   2026-09-13-stage10-icqa-handoff.md §3. 라이브 대조(2026-09-13)로 실제 응답에 맞췄다 —
+   정본 문안의 목록 필드 나열(§10.3 "목록 {countTaskId, locationCode, zoneCode, reason,
+   status, worker, createdAt}")보다 실제 응답이 더 넓다(`outcome`·`movedDuringCount`·
+   `sourceTaskId`·`recountTaskId`·`startedAt`·`completedAt`·`lines` 도 함께 옴) — 목록·시작·
+   상세가 같은 레코드 모양을 공유하고 `lines`만 상황에 따라 `null`/블라인드(수량 `null`)/
+   공개로 달라진다. */
+
+export type CountTaskReason = "CYCLE_ROTATION" | "CYCLE_RECENT_ADJUST" | "PICK_DISCREPANCY" | "RECOUNT";
+export type CountTaskStatus = "OPEN" | "COUNTING" | "DONE" | "RECOUNT_NEEDED" | "CANCELLED";
+export type CountTaskOutcome = "ADJUSTED" | "CONFIRMED" | "RECOUNT_NEEDED";
+
+/** 태스크 한 줄 — 목록·시작·상세가 공유하는 모양(라이브 대조로 확인). COUNTING 중 시작
+ * 응답은 수량 넷(`expectedQty`~`adjustTxId`)이 `null`이다(블라인드, 정본 §10.1) */
+export interface CountTaskLine {
+  lineId: number;
+  sellerCode: string;
+  gtin: string;
+  productName: string;
+  lotNo: string;
+  status: StockStatus;
+  expectedQty: number | null;
+  deltaQty: number | null;
+  countedQty: number | null;
+  diff: number | null;
+  adjustTxId: number | null;
+}
+
+/**
+ * 태스크 레코드 — `GET /count-tasks` 목록 행·`GET /count-tasks/{id}` 상세·
+ * `POST .../start` 응답이 모두 같은 모양이다(라이브 대조로 확인, 정본 §10.3 문안보다 필드가
+ * 많다). 목록 조회에서는 `lines`가 보통 `null`(정본 §10.3 목록 문안대로 가볍게), 시작
+ * 직후엔 블라인드 라인 배열, 완료 후 상세 조회엔 공개된 라인 배열이다.
+ */
+export interface CountTaskRecord {
+  countTaskId: number;
+  locationCode: string;
+  zoneCode: string;
+  reason: CountTaskReason;
+  status: CountTaskStatus;
+  outcome: CountTaskOutcome | null;
+  worker: string | null;
+  movedDuringCount: boolean;
+  sourceTaskId: number | null;
+  recountTaskId: number | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  lines: CountTaskLine[] | null;
+}
+
+/** `GET /count-tasks` 목록 행 — `CountTaskRecord`와 같은 모양(라이브 대조) */
+export type CountTaskListItem = CountTaskRecord;
+
+/** `GET /count-tasks/{id}` 상세 — `CountTaskRecord`와 같은 모양(라이브 대조) */
+export type CountTaskDetail = CountTaskRecord;
+
+export interface CountTasksQuery {
+  status?: CountTaskStatus;
+  page?: number;
+  size?: number;
+}
+
+export interface GenerateCountTasksRequest {
+  days: number;
+  topN: number;
+}
+
+/** `generate` 응답의 `created[]` — 라이브 대조로 확인(`zoneCode` 포함, 정본 §10.3 문안엔 없었다) */
+export interface GenerateCountTaskCreated {
+  countTaskId: number;
+  locationCode: string;
+  zoneCode: string;
+  reason: CountTaskReason;
+}
+
+/** `generate` 응답의 `skipped[]` — 라이브 대조로 확인. 정본 §10.3 문안의 `skipped:[…]`와
+ * 달리 `created`와 다른 모양이다 — 열린 태스크를 가리키는 `openCountTaskId`/`openStatus`를
+ * 준다(태스크를 새로 안 만들었으니 자기 `countTaskId`는 없다) */
+export interface GenerateCountTaskSkipped {
+  locationCode: string;
+  reason: CountTaskReason;
+  openCountTaskId: number;
+  openStatus: CountTaskStatus;
+}
+
+/** `generate` 응답 — `days`/`topN`을 그대로 돌려준다(라이브 대조로 확인, 정본 문안엔 없었다) */
+export interface GenerateCountTasksResponse {
+  days: number;
+  topN: number;
+  created: GenerateCountTaskCreated[];
+  skipped: GenerateCountTaskSkipped[];
+}
+
+export interface StartCountTaskRequest {
+  worker: string;
+}
+
+/** `POST .../start` 응답 — `CountTaskRecord`와 같은 모양, `lines`는 블라인드(수량 `null`) */
+export type StartCountTaskResponse = CountTaskRecord;
+
+export interface SubmitCountTaskLine {
+  sellerCode: string;
+  gtin: string;
+  lotNo: string;
+  status: StockStatus;
+  countedQty: number;
+}
+
+export interface SubmitCountTaskRequest {
+  lines: SubmitCountTaskLine[];
+}
+
+/** 제출 결과 한 줄 — `CountTaskLine`과 달리 수량이 항상 채워진다(라이브 대조로 확인) */
+export interface SubmitCountTaskResultLine {
+  lineId: number;
+  sellerCode: string;
+  gtin: string;
+  productName: string;
+  lotNo: string;
+  status: StockStatus;
+  expectedQty: number;
+  deltaQty: number;
+  countedQty: number;
+  diff: number;
+  adjustTxId: number | null;
+}
+
+/**
+ * 제출 응답 — 라이브 대조(2026-09-13)로 확인. `countTaskId`/`locationCode`가 함께 오고
+ * 목록·시작 레코드와 달리 `zoneCode`/`reason`/`status`/`worker`는 없는 더 좁은 모양이다.
+ * `reallocated`/`cancelledOrders`는 이번 대조에서 항상 빈 배열이었다(재할당이 걸리는
+ * 시나리오는 사용자 체크용 로케이션 몫이라 범위 밖) — 원소 모양은 Stage 7 재할당
+ * (`ReallocationNewTask`)·취소(`ReallocationCancelledOrder`) 타입과 같다고 가정한 채로 둔다.
+ */
+export interface SubmitCountTaskResponse {
+  countTaskId: number;
+  locationCode: string;
+  outcome: CountTaskOutcome;
+  moved: boolean;
+  lines: SubmitCountTaskResultLine[];
+  recountTaskId: number | null;
+  reallocated: ReallocationNewTask[];
+  cancelledOrders: ReallocationCancelledOrder[];
+}
+
+export interface SimulateCountTaskOverride {
+  gtin: string;
+  lotNo: string;
+  status: StockStatus;
+  countedQty: number;
+}
+
+export interface SimulateCountTaskRequest {
+  worker: string;
+  overrides?: SimulateCountTaskOverride[];
+}
