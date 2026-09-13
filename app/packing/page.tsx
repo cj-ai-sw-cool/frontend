@@ -344,7 +344,12 @@ export default function PackingV2Page() {
         { cutoffAt },
         {
           onSuccess: (data) => {
-            toast.success(`웨이브 ${data.waveNo} 생성 완료`, w98Toast.success);
+            /* Stage 11(11.4) "빈 웨이브 금지" — 대상 주문 0건이면 waveNo 도 null(정본
+             * §11.4). 대화 상자 안 결과 뷰가 "대상 주문 없음"을 보여주므로(위 handoff
+             * 주석 참고) 토스트는 만들어졌을 때만 띄운다. */
+            if (data.waveId !== null) {
+              toast.success(`웨이브 ${data.waveNo} 생성 완료`, w98Toast.success);
+            }
           },
           onError: (error) => {
             toast.error("웨이브 생성에 실패했습니다", { ...w98Toast.notice, description: error.message });
