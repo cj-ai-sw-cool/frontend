@@ -168,7 +168,8 @@ function RoutingDetail({
   return (
     <>
       <div className="flex items-center justify-between">
-        <span className={`${w98.titleText}`}>주문 #{decision.orderId}</span>
+        {/* Stage 11A(정본 §13.7) — 백엔드가 receiptNo 를 주면 그걸로, 아직이면 orderId 로 */}
+        <span className={`${w98.titleText}`}>{decision.receiptNo ? `접수 ${decision.receiptNo}` : `주문 #${decision.orderId}`}</span>
         <span className="bg-[color:var(--status-success)] px-1.5 py-0.5 text-[11px] font-bold text-white">
           {decision.center} 선택 · {RULE_LABEL[decision.rule]}
         </span>

@@ -1937,8 +1937,15 @@ export interface RoutingCandidate {
  * `orders.id` 자체가 안 생기므로(정본 §12.3 "3. 남은 센터가 없으면 주문 거부") 이
  * 화면에서 "거부" 배지를 만들 데이터가 없다. 화면은 `center`(선택된 센터)만 강조한다.
  */
+/**
+ * ⚠️ `receiptNo` 는 라이브 검증 대기(정본 §13.7 미결 "라우팅 상세 패널 제목(접수번호
+ * 없음 → `GET /hub/orders/{id}/routing`에 `receiptNo` 추가) — 11A 프론트에 묶음") —
+ * 백엔드가 아직 안 주면 화면은 `orderId`로 제목을 대신한다(`orders-tab.tsx`
+ * `RoutingDetail`).
+ */
 export interface RoutingDecision {
   orderId: number;
+  receiptNo?: string;
   center: CenterCode;
   rule: RoutingRule;
   candidates: RoutingCandidate[];
