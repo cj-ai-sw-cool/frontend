@@ -401,9 +401,22 @@ export type AisleDirection = "FORWARD" | "REVERSE";
 export type BaySide = "LEFT" | "RIGHT";
 export type BinRole = "PICK_FACE" | "RESERVE";
 
-/** `GET /layout` 의 `areas[]` — 방(기능 구역) 하나. 냉장·냉동은 벽으로 닫힌 방이다
- * (`kind = STORAGE`, `tempZone = CHILLED`/`FROZEN`). 좌표는 건물 평면 기준(m) */
+/**
+ * `GET /layout` 의 `areas[]` — 방(기능 구역) 하나. 냉장·냉동은 벽으로 닫힌 방이다
+ * (`kind = STORAGE`, `tempZone = CHILLED`/`FROZEN`).
+ *
+ * ⚠️ 좌표는 **건물 하나의 전역 좌표**다(2026-09-13 라이브 검증 — `id` 필드도 같이
+ * 있었다). 브리프 원문 "area 원점 기준"을 처음엔 "zone/aisle/bay 가 자기 area 원점에서
+ * 상대"로 읽었으나, 실제 응답은 `zone.xM === area.xM`(존이 area 왼쪽 끝에서 시작)처럼
+ * **모두 같은 전역 평면 좌표**였다 — area 오프셋을 더하면 안 된다(더하면 위치가 두 배로
+ * 밀린다). `layout-geometry.ts` 의 `zoneWorldRect`/`bayBox` 가 이 해석으로 되어 있다.
+ * ⚠️ 존(zone)의 `dM`(69.6m)이 자기 area 의 `dM`(48m)보다 **클 수 있다** — 존은 통로를
+ * 한 방향으로 쌓은 개략도라 area 의 물리적 방 사각형과 정확히 맞물리지 않는다(라이브
+ * 확인, 노트 "계약과 다르게 한 것"). 그래서 이 파일은 area 를 zone/aisle/bay 를 담는
+ * 그릇이 아니라 **바닥판 배경**으로만 그린다.
+ */
 export interface Area {
+  id: number;
   code: string;
   name: string;
   kind: AreaKind;
@@ -417,23 +430,26 @@ export interface Area {
 /**
  * `GET /zones` 항목이자 `GET /layout` 의 `zones[]` — 존 7개 등급 배치(gradeCapCm·
  * rackPairs·cols·levels·rowNo·orderInRow)가 전부 사라졌다(11.0 표 "삭제"). 존은
- * 이제 방(`areaCode`) 안의 매체(`medium`) 구획이다. 좌표는 **area 원점 기준**(m) —
- * 세계 좌표는 그 존이 속한 `Area.xM/yM` 에 이 값을 더해 구한다
- * (`app/analytics/_components/layout/layout-geometry.ts` `zoneOrigin`).
+ * 이제 방(`areaCode`) 안의 매체(`medium`) 구획이다.
+ *
+ * ⚠️ `binCount` 는 **`GET /zones` 단독 호출에만** 있다(2026-09-13 라이브 검증) —
+ * `GET /layout` 의 `zones[]` 에는 없다(선택 필드로 둔 이유). 3D·2D 는 베이 합계로
+ * 직접 구한다(`layout-geometry.ts` `zoneBinCount`).
  */
 export interface Zone {
+  id: number;
   code: string;
   name: string;
   areaCode: string;
   medium: Medium;
-  binCount: number;
+  binCount?: number;
   xM: number;
   yM: number;
   wM: number;
   dM: number;
 }
 
-/** `GET /layout` 의 `aisles[]` — 존 안의 통로 하나. 좌표는 area 원점 기준(m) */
+/** `GET /layout` 의 `aisles[]` — 존 안의 통로 하나. 좌표는 Area 와 같은 전역 평면(m) */
 export interface Aisle {
   id: number;
   zoneCode: string;
@@ -446,12 +462,20 @@ export interface Aisle {
 
 /**
  * `GET /layout` 의 `bays[]` — 통로 한쪽의 랙 한 대. 칸(Position) 메시는 그리지 않고
- * 이 블록 하나로 점유율(occupiedBins/totalBins)을 5단계 색으로 보여준다. 좌표는
- * area 원점 기준(m). 베이를 클릭했을 때만 `GET /bays/{id}/bins` 로 칸을 편다.
+ * 이 블록 하나로 점유율(occupiedBins/totalBins)을 5단계 색으로 보여준다. 베이를
+ * 클릭했을 때만 `GET /bays/{id}/bins` 로 칸을 편다.
+ *
+ * ⚠️ `aisleId` 가 아니라 **`zoneCode` + `aisleNo`**로 통로를 가리킨다(2026-09-13 라이브
+ * 검증 — 브리프 §1 표는 `aisleId` 라고 적었으나 실제 응답 필드는 이거였다). 통로
+ * `Aisle.id` 가 필요하면(로케이션 탭 Select 값 등) `zoneCode`+`aisleNo` 로 역매칭한다
+ * (`layout-geometry.ts` `buildLayoutIndex`).
+ * ⚠️ `xM/yM` 은 그 베이 footprint 의 **통로 쪽 모서리**(중심이 아니다) — 통로가 뻗는
+ * 축(대개 X)으로 갈수록 `no` 가 커지며 `xM` 이 `BAY_LENGTH_M` 만큼 늘어난다.
  */
 export interface Bay {
   id: number;
-  aisleId: number;
+  zoneCode: string;
+  aisleNo: number;
   no: number;
   side: BaySide;
   binType: string;
@@ -473,17 +497,46 @@ export interface LayoutResponse {
   bays: Bay[];
 }
 
-/** `GET /bays/{id}/bins` 항목 — 베이 클릭 시에만 온다(≤ 20개). 비어 있으면
- * `sellerCode`/`productName` 이 null */
+/**
+ * `GET /bays/{id}/bins` 응답의 `bins[]` 항목 하나(≤ 20개, 베이 클릭 시에만).
+ *
+ * ⚠️ 2026-09-13 라이브 검증 — 브리프 §1 이 적은 `Bin{…, productName, qty}`(칸 하나 =
+ * 상품 하나)와 달리, 실제 칸은 **로트별로 여러 품목을 담을 수 있어** `items[]` 로
+ * 온다(`pickSequence` 도 함께 온다, 정본 §11.0 "pick_sequence"). `qty` 는 그 칸의
+ * 합계, `items[].qty` 는 로트별 수량이다. 비어 있으면 `sellerCode` 가 null 이고
+ * `items` 가 빈 배열이다.
+ */
+export interface BinItem {
+  gtin: string;
+  productName: string;
+  lotNo: string;
+  qty: number;
+}
+
 export interface Bin {
   locationId: number;
   code: string;
   levelNo: number;
   positionNo: number;
   role: BinRole;
+  pickSequence: number;
   sellerCode: string | null;
-  productName: string | null;
   qty: number;
+  items: BinItem[];
+}
+
+/** `GET /bays/{id}/bins` 응답 — 브리프 §1 은 이걸 `Bin[]` 이라고 적었으나 실제로는 베이
+ * 메타(존·통로·베이 번호·binType·levels·positions)를 두른 객체다(라이브 검증). 칸
+ * 배열은 `bins` 필드에 있다 — `use-layout.ts` `useBayBins` 가 이 필드만 꺼내 쓴다. */
+export interface BayBinsResponse {
+  bayId: number;
+  zoneCode: string;
+  aisleNo: number;
+  bayNo: number;
+  binType: string;
+  levels: number;
+  positions: number;
+  bins: Bin[];
 }
 
 export type LocationType =
@@ -512,11 +565,16 @@ export interface Location {
   id: number;
   code: string;
   type: LocationType;
+  areaCode: string | null;
   zoneCode: string | null;
+  aisleNo: number | null;
   bayId: number | null;
+  bayNo: number | null;
   levelNo: number | null;
   positionNo: number | null;
+  binTypeCode: string | null;
   role: BinRole | null;
+  pickSequence: number | null;
   widthCm: number | null;
   lengthCm: number | null;
   heightCm: number | null;
@@ -526,9 +584,12 @@ export interface Location {
 
 /**
  * `GET /locations` 쿼리 — 전부 선택(§2 S1.2). `aisleId`·`bayId` 는 브리프 §3 S11.4가
- * 백엔드에 요청한 필터다 — 2026-09-13 시점엔 아직 없다(노트 "백엔드에 요청한 파라미터").
- * 백엔드가 무시해도 안전하도록 `zone` 을 항상 같이 보내고, 화면 쪽은 이 파라미터에
- * 기대지 않고 `code` 접두 검색으로 걸러낸다(`use-layout.ts` `filterLocationsByPrefix`).
+ * 백엔드에 요청한 필터다 — 2026-09-13 라이브 검증(같은 날 배포)으로 **아직 안 먹힌다**
+ * 확인했다(백엔드가 파라미터를 조용히 무시하고 같은 순서의 페이지를 돌려준다). `zone`
+ * 은 실제로 걸러준다. 화면 쪽은 이 파라미터에 기대지 않고 `code` 접두 검색으로 한 번
+ * 더 거른다(`use-layout.ts` `filterLocationsByPrefix`) — 다만 백엔드 페이지 크기 상한이
+ * 2,000(요청한 `size` 와 무관)이라 존이 그보다 크면(예 AMBS 9,355) 뒤쪽 통로·베이는
+ * 첫 페이지에 없어 목록이 비어 보인다(노트 "계약과 다르게 한 것").
  */
 export interface LocationsQuery {
   zone?: string;

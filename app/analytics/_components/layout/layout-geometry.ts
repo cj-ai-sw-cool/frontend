@@ -1,12 +1,24 @@
 /**
- * `GET /layout` 좌표 변환 — 3D(`layout-scene.tsx`)와 2D(`warehouse-map.jsx`)가 이 파일
+ * `GET /layout` 좌표 변환 — 3D(`layout-scene.tsx`)와 2D(`warehouse-map.tsx`)가 이 파일
  * 하나만 본다(옛 `lib/zone-layout.ts`의 후계, Stage 11 정본 §11.0 "3D·2D 계약").
  *
- * 계약은 "좌표는 m, area 원점 기준"이라고만 말한다 — 라이브 예시가 아직 없어(브리프
- * 머리말), 이 파일은 **모든 엔티티(zone·aisle·bay)의 xM/yM 이 그 엔티티가 속한
- * `Area`의 원점 기준**이라고 해석한다(가장 단순하고, `Zone` 주석이 명시한 해석과도
- * 일치). 세계 좌표 = `area.xM/yM + entity.xM/yM`. 라이브 검증 대기 — 다르면 이 파일만
- * 고치면 된다(3D·2D 둘 다 여기만 본다).
+ * ⚠️ 2026-09-13 라이브 검증(백엔드가 이 화면과 같은 시각에 배포한 `/layout`)으로 계약
+ * 문구 "area 원점 기준"의 뜻이 처음 생각과 달랐다 — area·zone·aisle·bay 좌표는 **모두
+ * 같은 건물 전역 평면**이다(예: `zone.xM === area.xM`, 존이 area 왼쪽 끝에서 시작).
+ * area 오프셋을 더하면 위치가 두 배로 밀린다 — 그래서 아래 함수들은 엔티티의 xM/yM 을
+ * **그대로** 세계 좌표로 쓴다. 자세한 것은 `lib/types.ts` `Area`/`Bay` 주석.
+ *
+ * ⚠️ 존의 `dM`이 자기 area 의 `dM`보다 클 수 있다(라이브: AMBS 존 69.6m vs AMB area
+ * 48m) — 존은 통로를 한 줄로 쌓은 개략도라 area 사각형과 정확히 맞물리지 않는다. 그래서
+ * area 는 "바닥판 배경"으로만 그리고, 레이아웃 전체 바운딩 박스(`layoutBounds`)는
+ * area·zone·bay 를 모두 훑어 잡는다 — area 만 보면 존·베이가 잘린다.
+ *
+ * ⚠️ 베이가 통로를 참조하는 필드는 `aisleId` 가 아니라 `zoneCode`+`aisleNo`(라이브
+ * 검증, `Bay` 타입 주석). `Aisle.id` 가 필요하면(로케이션 탭 Select 값) 이 파일이
+ * `zoneCode`+`aisleNo` 로 역매칭해 둔다(`buildLayoutIndex` 의 `aisleByZoneAndNo`).
+ * ⚠️ 통로가 뻗는 축은 X — `bay.no` 가 커질수록 `xM` 이 `BAY_LENGTH_M` 만큼 늘고,
+ * `side`(LEFT/RIGHT)는 Y 로 갈린다(라이브 데이터로 확인, 브리프엔 축 표기가 없었다).
+ * `bay.xM/yM` 은 그 footprint 의 **통로 쪽 모서리**다(중심이 아니다).
  *
  * 평면축은 건물 도면 그대로 X(가로)·Y(깊이)를 쓰고, 3D 장면에서만 Y → three.js Z 로
  * 옮긴다(`layout-scene.tsx`). 2D 캔버스는 X/Y 를 그대로 화면 가로/세로로 쓴다.
@@ -14,14 +26,14 @@
 
 import type { Area, Aisle, Bay, LayoutResponse, Medium, Zone } from "@/lib/types";
 
-/** 통로 방향의 베이 폭(m) — 정본 §11.0 표 "선반 베이 폭 1.2m·5단, 파렛트 랙 베이 2.7m" */
+/** 통로 방향의 베이 길이(m) — 정본 §11.0 표 "선반 베이 폭 1.2m·5단, 파렛트 랙 베이 2.7m" */
 export const BAY_LENGTH_M: Record<Medium, number> = {
   SHELF: 1.2,
   PALLET_RACK: 2.7,
   PALLET_FLOOR: 2.7,
 };
 /** 통로에서 베이가 뻗어나가는 깊이(m) — bin_type 최대 폭(선반 XL 60cm)과 파렛트(110cm)에
- * 여유를 더한 근사치. 라이브 값이 오면 여기만 바꾼다 */
+ * 여유를 더한 근사치. 라이브 응답엔 이 값이 없다(베이 자체 치수 필드가 없음) */
 export const BAY_DEPTH_M: Record<Medium, number> = {
   SHELF: 0.55,
   PALLET_RACK: 1.3,
@@ -33,8 +45,6 @@ export const LEVEL_HEIGHT_M: Record<Medium, number> = {
   PALLET_RACK: 1.5,
   PALLET_FLOOR: 1.5,
 };
-/** 통로 폭(m) — 차선 하나(베이 앞 작업 공간) */
-export const AISLE_WIDTH_M = 1.7;
 
 export interface WorldRect {
   x0: number;
@@ -43,8 +53,10 @@ export interface WorldRect {
   y1: number;
 }
 
-/** `layout` 을 한 번 훑어 존→area·통로→존·베이→통로 역참조를 만든다 — 매 프레임 find()
- * 하지 않도록 3D·2D 가 마운트 시 한 번만 만든다 */
+/** `layout` 을 한 번 훑어 역참조를 만든다 — 매 프레임 find() 하지 않도록 3D·2D 가 마운트
+ * 시 한 번만 만든다. `baysByAisle`/`aisleById` 는 로케이션 탭의 통로 Select(값 = 진짜
+ * `Aisle.id`)가 쓴다 — 베이 자신은 `aisleId` 를 안 주므로 `zoneCode`+`aisleNo` 로
+ * 역매칭해 채운다. */
 export interface LayoutIndex {
   layout: LayoutResponse;
   areaByCode: Map<string, Area>;
@@ -62,17 +74,21 @@ export function buildLayoutIndex(layout: LayoutResponse): LayoutIndex {
   const bayById = new Map(layout.bays.map((b) => [b.id, b]));
 
   const aislesByZone = new Map<string, Aisle[]>();
+  const aisleByZoneAndNo = new Map<string, Aisle>();
   for (const aisle of layout.aisles) {
     const list = aislesByZone.get(aisle.zoneCode) ?? [];
     list.push(aisle);
     aislesByZone.set(aisle.zoneCode, list);
+    aisleByZoneAndNo.set(`${aisle.zoneCode}:${aisle.no}`, aisle);
   }
 
   const baysByAisle = new Map<number, Bay[]>();
   for (const bay of layout.bays) {
-    const list = baysByAisle.get(bay.aisleId) ?? [];
+    const aisle = aisleByZoneAndNo.get(`${bay.zoneCode}:${bay.aisleNo}`);
+    if (!aisle) continue;
+    const list = baysByAisle.get(aisle.id) ?? [];
     list.push(bay);
-    baysByAisle.set(bay.aisleId, list);
+    baysByAisle.set(aisle.id, list);
   }
 
   return { layout, areaByCode, zoneByCode, aisleById, bayById, aislesByZone, baysByAisle };
@@ -82,36 +98,20 @@ export function areaWorldRect(area: Area): WorldRect {
   return { x0: area.xM, y0: area.yM, x1: area.xM + area.wM, y1: area.yM + area.dM };
 }
 
-export function zoneWorldRect(zone: Zone, index: LayoutIndex): WorldRect | null {
-  const area = index.areaByCode.get(zone.areaCode);
-  if (!area) return null;
-  return {
-    x0: area.xM + zone.xM,
-    y0: area.yM + zone.yM,
-    x1: area.xM + zone.xM + zone.wM,
-    y1: area.yM + zone.yM + zone.dM,
-  };
+export function zoneWorldRect(zone: Zone): WorldRect {
+  return { x0: zone.xM, y0: zone.yM, x1: zone.xM + zone.wM, y1: zone.yM + zone.dM };
 }
 
-/** 통로가 속한 존을 거쳐 area 를 찾는다(통로엔 areaCode 가 없다, `zoneCode` 만) */
-export function areaForAisle(aisle: Aisle, index: LayoutIndex): Area | null {
-  const zone = index.zoneByCode.get(aisle.zoneCode);
-  if (!zone) return null;
-  return index.areaByCode.get(zone.areaCode) ?? null;
+export function aisleWorldOrigin(aisle: Aisle): { x: number; y: number } {
+  return { x: aisle.xM, y: aisle.yM };
 }
 
-export function aisleWorldOrigin(aisle: Aisle, index: LayoutIndex): { x: number; y: number } | null {
-  const area = areaForAisle(aisle, index);
-  if (!area) return null;
-  return { x: area.xM + aisle.xM, y: area.yM + aisle.yM };
-}
-
-/** 베이가 속한 존의 매체(medium) — 베이 자체엔 매체가 없어 통로→존을 거친다.
- * `binType`(XS~XL·PLT)이 아니라 이 값으로 박스 치수를 결정한다(브리프 §2) */
-export function mediumForBay(bay: Bay, index: LayoutIndex): Medium | null {
-  const aisle = index.aisleById.get(bay.aisleId);
-  if (!aisle) return null;
-  return index.zoneByCode.get(aisle.zoneCode)?.medium ?? null;
+/** 존 하나의 보관칸 합계 — `Zone.binCount` 는 `GET /layout` 응답엔 없다(타입 주석
+ * 참고), 베이 `totalBins` 를 더해 직접 구한다 */
+export function zoneBinCount(zoneCode: string, index: LayoutIndex): number {
+  let sum = 0;
+  for (const bay of index.layout.bays) if (bay.zoneCode === zoneCode) sum += bay.totalBins;
+  return sum;
 }
 
 export interface BayBox {
@@ -120,28 +120,27 @@ export interface BayBox {
   /** 베이 박스 중심 세계 좌표(m) */
   cx: number;
   cy: number;
-  width: number; // 통로 방향(m)
-  depth: number; // 통로에서 뻗어나가는 방향(m)
+  width: number; // 통로 방향(m, X)
+  depth: number; // 통로에서 뻗어나가는 방향(m, Y)
   height: number; // levels × LEVEL_HEIGHT_M(m)
   occupancyRatio: number; // 0~1
 }
 
-/** 베이 하나의 세계 좌표 박스 — `bay.xM/yM` 은 **그 베이가 속한 area 원점 기준 footprint
- * 중심**이라고 해석한다(위 파일 머리말). InstancedMesh 배치(3D)·사각형(2D)가 함께 쓴다 */
+/** 베이 하나의 세계 좌표 박스 — `bay.xM/yM` 은 footprint 의 통로 쪽 모서리라 가운데로
+ * 반 칸 옮긴다(위 파일 머리말). InstancedMesh 배치(3D)·사각형(2D)가 함께 쓴다 */
 export function bayBox(bay: Bay, index: LayoutIndex): BayBox | null {
-  const aisle = index.aisleById.get(bay.aisleId);
-  if (!aisle) return null;
-  const area = areaForAisle(aisle, index);
-  const medium = mediumForBay(bay, index);
-  if (!area || !medium) return null;
+  const medium = index.zoneByCode.get(bay.zoneCode)?.medium;
+  if (!medium) return null;
 
+  const width = BAY_LENGTH_M[medium];
+  const depth = BAY_DEPTH_M[medium];
   return {
     bay,
     medium,
-    cx: area.xM + bay.xM,
-    cy: area.yM + bay.yM,
-    width: BAY_LENGTH_M[medium],
-    depth: BAY_DEPTH_M[medium],
+    cx: bay.xM + width / 2,
+    cy: bay.yM + depth / 2,
+    width,
+    depth,
     height: bay.levels * LEVEL_HEIGHT_M[medium],
     occupancyRatio: bay.totalBins > 0 ? bay.occupiedBins / bay.totalBins : 0,
   };
@@ -172,21 +171,26 @@ export function hexToRgba(hex: number, alpha = 1): string {
 
 /** 베이 표시 코드 — `{존}-{통로:2}-{베이:2}`(정본 §11.0 "주소", 브리프 §2 호버 예시
  * `AMBS-04-13`). 실제 칸 코드(`Bin.code`)는 여기에 단·위치가 더 붙는다 */
-export function bayDisplayCode(bay: Bay, index: LayoutIndex): string {
-  const aisle = index.aisleById.get(bay.aisleId);
-  const zoneCode = aisle?.zoneCode ?? "?";
-  const aisleNo = aisle?.no ?? 0;
-  return `${zoneCode}-${String(aisleNo).padStart(2, "0")}-${String(bay.no).padStart(2, "0")}`;
+export function bayDisplayCode(bay: Bay): string {
+  return `${bay.zoneCode}-${String(bay.aisleNo).padStart(2, "0")}-${String(bay.no).padStart(2, "0")}`;
 }
 
-/** 레이아웃 전체를 담는 세계 좌표 바운딩 박스 — 카메라 초기 프레이밍(3D)·캔버스 fit(2D) */
+/** 레이아웃 전체를 담는 세계 좌표 바운딩 박스 — 카메라 초기 프레이밍(3D)·캔버스 fit(2D).
+ * area 만 훑으면 area 보다 깊게 뻗는 존·베이가 잘린다(위 파일 머리말) — zone·bay 박스도
+ * 함께 본다. */
 export function layoutBounds(layout: LayoutResponse): WorldRect {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const area of layout.areas) {
-    x0 = Math.min(x0, area.xM);
-    y0 = Math.min(y0, area.yM);
-    x1 = Math.max(x1, area.xM + area.wM);
-    y1 = Math.max(y1, area.yM + area.dM);
+  const grow = (gx0: number, gy0: number, gx1: number, gy1: number) => {
+    x0 = Math.min(x0, gx0); y0 = Math.min(y0, gy0);
+    x1 = Math.max(x1, gx1); y1 = Math.max(y1, gy1);
+  };
+  for (const area of layout.areas) grow(area.xM, area.yM, area.xM + area.wM, area.yM + area.dM);
+  for (const zone of layout.zones) grow(zone.xM, zone.yM, zone.xM + zone.wM, zone.yM + zone.dM);
+  for (const bay of layout.bays) {
+    const medium = layout.zones.find((z) => z.code === bay.zoneCode)?.medium;
+    const w = medium ? BAY_LENGTH_M[medium] : 1;
+    const d = medium ? BAY_DEPTH_M[medium] : 1;
+    grow(bay.xM, bay.yM, bay.xM + w, bay.yM + d);
   }
   if (!Number.isFinite(x0)) return { x0: 0, y0: 0, x1: 1, y1: 1 };
   return { x0, y0, x1, y1 };

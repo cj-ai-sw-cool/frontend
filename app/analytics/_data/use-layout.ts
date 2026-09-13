@@ -13,7 +13,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { master, queryKeys } from "@/lib/endpoints";
 import { mockBinsForBay, mockLayout } from "@/lib/mocks/layout";
-import type { Bin, LayoutResponse, Location, LocationsQuery } from "@/lib/types";
+import type { BayBinsResponse, Bin, LayoutResponse, Location, LocationsQuery } from "@/lib/types";
 
 export function useLayout() {
   const query = useQuery<LayoutResponse>({
@@ -31,9 +31,11 @@ export function useLayout() {
   };
 }
 
-/** 베이 클릭 시에만 켠다(`enabled`) — 우측 패널·3D 칸 펼침이 같이 쓴다 */
+/** 베이 클릭 시에만 켠다(`enabled`) — 우측 패널·3D 칸 펼침이 같이 쓴다. `GET
+ * /bays/{id}/bins` 는 베이 메타를 두른 객체를 돌려준다 — 칸 배열은 `.bins` 에 있다
+ * (2026-09-13 라이브 검증, `BayBinsResponse` 주석). 이 훅은 그 배열만 꺼내 준다. */
 export function useBayBins(bayId: number | null) {
-  const query = useQuery<Bin[]>({
+  const query = useQuery<BayBinsResponse>({
     queryKey: queryKeys.bayBins(bayId ?? -1),
     queryFn: () => master.bayBins(bayId as number),
     enabled: bayId !== null,
@@ -41,8 +43,9 @@ export function useBayBins(bayId: number | null) {
   });
 
   const usingMock = bayId !== null && query.isError;
+  const bins: Bin[] | undefined = query.data?.bins ?? (usingMock ? mockBinsForBay(bayId as number) : undefined);
   return {
-    data: query.data ?? (usingMock ? mockBinsForBay(bayId as number) : undefined),
+    data: bins,
     isLoading: query.isLoading && !usingMock,
     usingMock,
   };

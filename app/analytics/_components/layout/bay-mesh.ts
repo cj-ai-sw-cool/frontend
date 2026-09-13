@@ -25,9 +25,13 @@ export function buildBayInstances(bays: Bay[], index: LayoutIndex): BayInstanceM
   if (boxes.length === 0) return null;
 
   const geometry = new THREE.BoxGeometry(1, 1, 1);
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05 });
+  /* ⚠️ `vertexColors: true` 를 주면 안 된다 — 이 지오메트리엔 정점 `color` 속성이 없다.
+     `InstancedMesh.setColorAt()` 가 만드는 인스턴스 색은 `material.vertexColors` 와
+     무관하게 셰이더에 잡힌다(three.js `USE_INSTANCING_COLOR` 분기). 켜 두면 정점 색
+     경로가 같이 활성화되면서 `vColor` 가 어긋나 인스턴스가 전부 검게 나왔다(확인:
+     `MeshBasicMaterial` + `vertexColors:true` 로도 검게 나왔고, 빼자 바로 색이 돌아왔다). */
+  const material = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.05 });
   const mesh = new THREE.InstancedMesh(geometry, material, boxes.length);
-  mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(boxes.length * 3), 3);
   mesh.name = "bay-instances";
 
   const m = new THREE.Matrix4();
@@ -57,8 +61,7 @@ export function applyZoneHighlight(bim: BayInstanceMesh, index: LayoutIndex, zon
     const box = bayBox(bay, index);
     if (!box) return;
     const base = OCCUPANCY_COLORS[occupancyTier(box.occupancyRatio)];
-    const aisle = index.aisleById.get(bay.aisleId);
-    const belongs = zoneCode === null || aisle?.zoneCode === zoneCode;
+    const belongs = zoneCode === null || bay.zoneCode === zoneCode;
     color.setHex(base);
     if (!belongs) color.multiplyScalar(DIM_OPACITY);
     else if (zoneCode !== null) color.lerp(new THREE.Color(HIGHLIGHT_TINT), 0.35);

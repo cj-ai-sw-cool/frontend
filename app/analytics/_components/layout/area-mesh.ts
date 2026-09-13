@@ -9,7 +9,7 @@
 
 import * as THREE from "three";
 import type { Area, LayoutResponse } from "@/lib/types";
-import { type LayoutIndex, zoneWorldRect } from "./layout-geometry";
+import { zoneWorldRect } from "./layout-geometry";
 
 const AREA_COLOR: Record<Area["kind"], number> = {
   STORAGE: 0x3a4656,
@@ -94,8 +94,10 @@ function buildZoneOutline(rect: { x0: number; y0: number; x1: number; y1: number
 }
 
 /** 통로 중심선 — 서펜타인 방향을 화살표 색(FORWARD/REVERSE)으로 구분한다 */
+/* ⚠️ 통로는 X축을 따라 뻗는다(라이브 데이터로 확인 — `bay.no` 가 커질수록 `xM` 이
+ * 늘어난다, layout-geometry.ts 머리말). 예전엔 Y축이라고 가정해 세로선을 그었다. */
 function buildAisleLine(x0: number, y0: number, lengthM: number, forward: boolean): THREE.Line {
-  const points = [new THREE.Vector3(x0, 0.03, y0), new THREE.Vector3(x0, 0.03, y0 + lengthM)];
+  const points = [new THREE.Vector3(x0, 0.03, y0), new THREE.Vector3(x0 + lengthM, 0.03, y0)];
   const line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(points),
     new THREE.LineBasicMaterial({ color: forward ? 0xff8a2a : 0xffd166, transparent: true, opacity: 0.85 }),
@@ -103,23 +105,20 @@ function buildAisleLine(x0: number, y0: number, lengthM: number, forward: boolea
   return line;
 }
 
-export function buildStaticGroup(layout: LayoutResponse, index: LayoutIndex): THREE.Group {
+/* area·존·통로가 이제 전역 좌표라(layout-geometry.ts 머리말) `LayoutIndex` 역참조가
+ * 필요 없다 — 베이만 존을 거쳐 매체를 찾는다(bay-mesh.ts). */
+export function buildStaticGroup(layout: LayoutResponse): THREE.Group {
   const root = new THREE.Group();
   root.name = "layout-static";
 
   for (const area of layout.areas) root.add(buildAreaGroup(area));
 
   for (const zone of layout.zones) {
-    const rect = zoneWorldRect(zone, index);
-    if (rect) root.add(buildZoneOutline(rect));
+    root.add(buildZoneOutline(zoneWorldRect(zone)));
   }
 
   for (const aisle of layout.aisles) {
-    const area = index.areaByCode.get(index.zoneByCode.get(aisle.zoneCode)?.areaCode ?? "");
-    if (!area) continue;
-    root.add(
-      buildAisleLine(area.xM + aisle.xM, area.yM + aisle.yM, aisle.lengthM, aisle.direction === "FORWARD"),
-    );
+    root.add(buildAisleLine(aisle.xM, aisle.yM, aisle.lengthM, aisle.direction === "FORWARD"));
   }
 
   return root;

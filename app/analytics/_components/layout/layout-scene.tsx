@@ -63,10 +63,12 @@ export function LayoutScene({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x10151c);
-    scene.fog = new THREE.Fog(0x10151c, spanM * 0.9, spanM * 2.6);
+    /* 안개(Fog)는 넣지 않는다 — 화면 체크에 필요 없는 장식이고, 오버뷰 카메라 거리와
+       근접 거리가 겹치기 쉬워 튜닝 없이 넣으면 베이 블록이 배경색에 묻힌다
+       (베이가 검게 나오던 실제 원인은 따로 있었다 — `bay-mesh.ts` 머리말 참고). */
     sceneRef.current = scene;
 
-    scene.add(buildStaticGroup(layout, index));
+    scene.add(buildStaticGroup(layout));
     const bim = buildBayInstances(layout.bays, index);
     if (bim) {
       scene.add(bim.mesh);
@@ -137,7 +139,7 @@ export function LayoutScene({
           tip.hidden = false;
           tip.style.left = `${e.clientX - rect0(wrap).left + 14}px`;
           tip.style.top = `${e.clientY - rect0(wrap).top + 14}px`;
-          tip.textContent = `${bayDisplayCode(hit.bay, index)} · ${hit.bay.binType} · ${hit.bay.occupiedBins}/${hit.bay.totalBins}`;
+          tip.textContent = `${bayDisplayCode(hit.bay)} · ${hit.bay.binType} · ${hit.bay.occupiedBins}/${hit.bay.totalBins}`;
         }
       } else if (hovered !== null) {
         hovered = null;
@@ -158,11 +160,14 @@ export function LayoutScene({
     };
     const flyTo = (zoneCode: string) => {
       const zone = index.zoneByCode.get(zoneCode);
-      const area = zone ? index.areaByCode.get(zone.areaCode) : null;
-      if (!zone || !area) return;
-      const zx = area.xM + zone.xM + zone.wM / 2;
-      const zz = area.yM + zone.yM + zone.dM / 2;
-      setTarget(zx, zz, Math.max(zone.wM, zone.dM) * 1.4, 1.2);
+      if (!zone) return;
+      /* zone.xM/yM 은 이제 전역 좌표라 area 오프셋을 더하지 않는다(layout-geometry.ts
+       * 머리말). 존이 area 보다 깊게 뻗을 수 있어(같은 머리말) 반경 상한을 span 의
+       * 80% 로 눌러 카메라가 지나치게 멀어지지 않게 한다. */
+      const zx = zone.xM + zone.wM / 2;
+      const zz = zone.yM + zone.dM / 2;
+      const radius = Math.min(Math.max(zone.wM, zone.dM) * 1.2, spanM * 0.8);
+      setTarget(zx, zz, radius, 1.2);
     };
     onReady?.({ setHighlight, flyTo, resetView: overview });
     if (initialHighlight) {

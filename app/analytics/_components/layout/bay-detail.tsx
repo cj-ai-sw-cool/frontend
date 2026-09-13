@@ -7,7 +7,7 @@
  */
 
 import type { Bay, Bin } from "@/lib/types";
-import { bayDisplayCode, type LayoutIndex } from "./layout-geometry";
+import { bayDisplayCode } from "./layout-geometry";
 
 const ROLE_LABEL: Record<Bin["role"], string> = { PICK_FACE: "피킹면", RESERVE: "예비" };
 
@@ -15,13 +15,11 @@ export function BayDetailPanel({
   bay,
   bins,
   isLoading,
-  index,
   onClose,
 }: {
   bay: Bay;
   bins: Bin[] | undefined;
   isLoading: boolean;
-  index: LayoutIndex;
   onClose: () => void;
 }) {
   const levels = [...new Set((bins ?? []).map((b) => b.levelNo))].sort((a, b) => b - a);
@@ -32,7 +30,7 @@ export function BayDetailPanel({
     <div className="flex h-full min-h-0 w-[300px] shrink-0 flex-col gap-2 border-l border-[color:var(--border)] bg-[color:var(--surface)] p-2">
       <div className="flex items-center justify-between">
         <span className="font-mono text-sm font-bold text-[color:var(--foreground)]">
-          {bayDisplayCode(bay, index)}
+          {bayDisplayCode(bay)}
         </span>
         <button
           type="button"
@@ -75,7 +73,10 @@ export function BayDetailPanel({
                       {filled ? (
                         <>
                           <span className="truncate font-bold">{bin.sellerCode}</span>
-                          <span className="truncate">{bin.productName}</span>
+                          <span className="truncate">
+                            {bin.items[0]?.productName}
+                            {bin.items.length > 1 ? ` 외 ${bin.items.length - 1}` : ""}
+                          </span>
                           <span className="font-mono">{bin.qty}</span>
                         </>
                       ) : (

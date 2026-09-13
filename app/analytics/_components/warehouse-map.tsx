@@ -122,8 +122,7 @@ export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
     // ── 존 구획선
     ctx.strokeStyle = "#5A6B7A"; ctx.setLineDash([5, 4]); ctx.lineWidth = 1;
     for (const zone of layout.zones) {
-      const rect = zoneWorldRect(zone, index);
-      if (!rect) continue;
+      const rect = zoneWorldRect(zone);
       ctx.strokeRect(px(X(rect.x0)), px(Y(rect.y0)), Math.round((rect.x1 - rect.x0) * scale), Math.round((rect.y1 - rect.y0) * scale));
     }
     ctx.setLineDash([]);
@@ -190,12 +189,12 @@ export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
         <canvas ref={canvasRef} className="absolute inset-0 cursor-pointer" />
         {hoveredBay ? (
           <div className="pointer-events-none absolute top-2 left-2 rounded border border-black/40 bg-[rgba(12,17,24,.86)] px-2 py-1 font-mono text-xs font-bold text-white">
-            {bayDisplayCode(hoveredBay, index)} · {hoveredBay.occupiedBins}/{hoveredBay.totalBins}
+            {bayDisplayCode(hoveredBay)} · {hoveredBay.occupiedBins}/{hoveredBay.totalBins}
           </div>
         ) : null}
       </div>
       {selectedBay ? (
-        <BayDetailPanel bay={selectedBay} bins={bins} isLoading={binsLoading} index={index} onClose={() => setSelectedBay(null)} />
+        <BayDetailPanel bay={selectedBay} bins={bins} isLoading={binsLoading} onClose={() => setSelectedBay(null)} />
       ) : null}
     </div>
   );

@@ -12,7 +12,7 @@ import type {
   AsnListItem,
   AsnQuery,
   AtpRow,
-  Bin,
+  BayBinsResponse,
   BoxOverrideResponse,
   BoxType,
   CompleteReceiptResponse,
@@ -182,7 +182,7 @@ export const master = {
   layout: () => api.get<LayoutResponse>("/layout"),
 
   /** 베이 하나의 칸 — 베이 클릭 시에만(≤ 20개). 위 `layout()` 과 같은 계약, 같은 대기 */
-  bayBins: (bayId: number) => api.get<Bin[]>(`/bays/${bayId}/bins`),
+  bayBins: (bayId: number) => api.get<BayBinsResponse>(`/bays/${bayId}/bins`),
 
   /** 로케이션 목록 — zone·type 전부 선택, Spring Page 로 온다. `aisleId`·`bayId` 는
    * Stage 11(브리프 §3 S11.4)이 백엔드에 요청한 필터라 아직 없을 수 있다 — 로케이션

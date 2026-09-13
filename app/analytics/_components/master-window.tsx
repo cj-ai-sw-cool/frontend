@@ -27,7 +27,7 @@ import { buildLocationsQuery, filterLocationsByPrefix, useLayout } from "../_dat
 import { useCreateSeller, useLocations, useSellers } from "../_data/use-master";
 import { AtpTab } from "./atp-tab";
 import { IcqaTab } from "./icqa-tab";
-import { buildLayoutIndex } from "./layout/layout-geometry";
+import { buildLayoutIndex, zoneBinCount } from "./layout/layout-geometry";
 import { Btn, Etched, Field, Sunken, w98 } from "./win98-ui";
 
 /** `warehouse-slot-3d.jsx` 가 `onReady` 로 넘기는 api 핸들. 이 파일은 모양만 안다 */
@@ -304,7 +304,7 @@ function LocationTab({ onLocateZone }: { onLocateZone: (zoneCode: string) => voi
                 >
                   <Td mono>{z.code}</Td>
                   <Td>{MEDIUM_LABEL[z.medium] ?? z.medium}</Td>
-                  <Td mono>{z.binCount.toLocaleString()}</Td>
+                  <Td mono>{(index ? zoneBinCount(z.code, index) : 0).toLocaleString()}</Td>
                 </tr>
               ))
             )}

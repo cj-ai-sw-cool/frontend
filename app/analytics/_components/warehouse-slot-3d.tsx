@@ -120,7 +120,7 @@ export default function WarehouseSlot3D({
           ) : null}
           {hoveredBay ? (
             <p className="mt-2 font-mono text-[11px] text-[#DCE5EF]">
-              {bayDisplayCode(hoveredBay, index)} · {hoveredBay.binType} · {hoveredBay.occupiedBins}/{hoveredBay.totalBins}
+              {bayDisplayCode(hoveredBay)} · {hoveredBay.binType} · {hoveredBay.occupiedBins}/{hoveredBay.totalBins}
             </p>
           ) : null}
         </div>
@@ -159,7 +159,7 @@ export default function WarehouseSlot3D({
       </div>
 
       {selectedBay ? (
-        <BayDetailPanel bay={selectedBay} bins={bins} isLoading={binsLoading} index={index} onClose={() => setSelectedBay(null)} />
+        <BayDetailPanel bay={selectedBay} bins={bins} isLoading={binsLoading} onClose={() => setSelectedBay(null)} />
       ) : null}
     </div>
   );
