@@ -87,7 +87,7 @@ export function PutawayRecommendPanel({
             mono
             value={otherCode}
             onChange={(event) => onOtherCodeChange(event.target.value)}
-            placeholder="A-03-02-14"
+            placeholder="AMBS-02-01-01-04"
             className="h-6 flex-1 text-[13px] uppercase"
           />
           <Btn

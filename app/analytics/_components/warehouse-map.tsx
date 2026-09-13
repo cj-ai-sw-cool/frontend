@@ -99,6 +99,11 @@ export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
     };
 
     // ── 방(Area) — 종류별 바닥판, 냉장·냉동은 점선 테두리로 "닫힌 방" 표시
+    /* ⚠️ 라벨 글자는 **여기서 그리지 않고 목록에 쌓아 두었다가 맨 마지막에** 그린다
+     * (옛 warehouse-map.jsx 와 같은 이유). 방을 그리는 이 시점에 바로 쓰면, 그 존(예
+     * AMB 안 AMBS)이 방 상단 바로 밑에서 시작할 때 뒤이어 그리는 존 구획선·베이
+     * 블록이 라벨 위를 덮어 버린다(2026-09-13 재확인 — AMB 라벨이 안 보였다) */
+    const areaLabels: { text: string; x: number; y: number; align: CanvasTextAlign }[] = [];
     ctx.font = `700 13px ${MAP_FONT}`;
     for (const area of layout.areas) {
       const x = X(area.xM), y = Y(area.yM), aw = area.wM * scale, ah = area.dM * scale;
@@ -115,17 +120,16 @@ export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
         ctx.strokeRect(px(x), px(y), Math.round(aw), Math.round(ah));
         ctx.setLineDash([]);
       }
-      /* 라벨 — 방이 좁으면(라이브 데이터의 CHL 4.2m·FRZ 2.8m 처럼) 안에 넣으면 옆 방
-       * 라벨과 겹친다. 폭이 모자라면 방 위쪽 바깥으로 빼고 이름 없이 코드만 남긴다 */
-      ctx.fillStyle = "#1A1F28";
+      /* 라벨 자리 — 방이 좁으면(라이브 CHL 4.2m·FRZ 2.8m 처럼) 안에 넣으면 옆 방
+       * 라벨과 겹친다. 폭이 모자라면 방 위쪽 바깥으로 빼고 이름 없이 코드만 남긴다.
+       * 존이 방을 거의 채우는 경우(AMB)도 안이 아니라 방 위쪽 바깥에 둔다 — 안에
+       * 자리를 비워 두는 계산은 존 배치가 바뀔 때마다 깨진다, 바깥은 늘 비어 있다. */
       const fullLabel = `${area.code} · ${area.name}`;
       if (aw < 70) {
-        ctx.textAlign = "center";
-        ctx.fillText(area.code, x + aw / 2, y - 4);
-        ctx.textAlign = "left";
+        areaLabels.push({ text: area.code, x: x + aw / 2, y: y - 4, align: "center" });
       } else {
         const label = ctx.measureText(fullLabel).width <= aw - 12 ? fullLabel : area.code;
-        ctx.fillText(label, x + 6, y + 16);
+        areaLabels.push({ text: label, x: x + aw / 2, y: y - 4, align: "center" });
       }
     }
 
@@ -153,6 +157,13 @@ export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
       rects.push({ x: bx, y: by, w: bw, h: bh, bay });
     }
     bayRectsRef.current = rects;
+
+    // ── 방 라벨 — 맨 마지막에, 항상 방 위쪽 바깥에(위 areaLabels 주석 참고)
+    ctx.font = `700 13px ${MAP_FONT}`;
+    ctx.fillStyle = "#1A1F28";
+    ctx.textAlign = "center";
+    for (const label of areaLabels) ctx.fillText(label.text, label.x, label.y);
+    ctx.textAlign = "left";
   };
 
   useEffect(() => {
