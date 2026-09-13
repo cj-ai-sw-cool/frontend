@@ -219,6 +219,8 @@ function toQueryString(params?: LocationsQuery): string {
   if (params.type !== undefined) qs.set("type", params.type);
   if (params.page !== undefined) qs.set("page", String(params.page));
   if (params.size !== undefined) qs.set("size", String(params.size));
+  // Stage 11D — center 없으면 서버 기본값 C1(코디네이터 지시, 2026-09-13)
+  if (params.center !== undefined) qs.set("center", params.center);
   const suffix = qs.toString();
   return suffix ? `?${suffix}` : "";
 }

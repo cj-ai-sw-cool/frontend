@@ -84,6 +84,7 @@ export function buildLocationsQuery(
   aisleNo: number | null,
   aisleId: number | null,
   bayId: number | null,
+  center: string,
 ): LocationsQuery | null {
   if (!zoneCode) return null;
   return {
@@ -93,5 +94,8 @@ export function buildLocationsQuery(
     bayId: bayId ?? undefined,
     type: "BIN",
     size: 2000,
+    // Stage 11D — 존 코드(AMBS 등)가 센터마다 있어 center 없이는 다른 센터 존과 섞인다
+    // (코디네이터 지시, 2026-09-13)
+    center,
   };
 }

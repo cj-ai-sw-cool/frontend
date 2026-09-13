@@ -604,6 +604,10 @@ export interface LocationsQuery {
   type?: LocationType;
   page?: number;
   size?: number;
+  /** Stage 11D — 센터 필터. 존 코드(예 AMBS)가 센터마다 있어 이게 없으면 다른 센터
+   * 존과 섞인다(코디네이터 지시, 2026-09-13). 정본 §12.6 목록엔 없지만 로케이션 탭이
+   * 센터 안에서 동작하려면 필요. 없으면 서버 기본값 C1 */
+  center?: string;
 }
 
 /* ── 5. 재고 — 로트·현재고·원장 (Stage 2) ─────────────────────────────────
