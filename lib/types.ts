@@ -2169,3 +2169,28 @@ export interface EventsKpiZoneCount {
 }
 
 export type EventStreamStatus = "connecting" | "open" | "reconnecting" | "closed";
+
+/**
+ * `GET /workers` 행(`WorkerRow.java`, 정본 §13.4) — 위치는 저장하지 않고 그 작업자의
+ * 마지막 이벤트에서 유도한다(정본 §13.1). `lastLocationCode`가 `BIN`이 아니면(토트·
+ * 입고장 등) 베이로 못 잡는다 — 관제 모드 초기 배치가 그 경우 RCV 존 안 격자로 대신
+ * 흩는다(`worker-path.ts` `bayFromLocationCode`/`receivingGridPoint`, 코디네이터
+ * 지시 2026-09-14).
+ */
+export interface WorkerRow {
+  workerId: number;
+  code: string;
+  name: string;
+  center: string;
+  role: string;
+  status: string;
+  lastLocationId: number | null;
+  lastLocationCode: string | null;
+  lastEventType: string | null;
+  lastEventAt: string | null;
+}
+
+export interface WorkersQuery {
+  center?: string;
+  role?: string;
+}

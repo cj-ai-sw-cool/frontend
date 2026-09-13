@@ -9,7 +9,7 @@
  * 쓴다. 통로가 다를 때도 그럴듯하게 잇히지만 최단경로는 아니다 — 연출이라 괜찮다.
  */
 
-import type { Bay } from "@/lib/types";
+import type { Bay, LayoutResponse } from "@/lib/types";
 import { bayBox, layoutBounds, type LayoutIndex } from "./layout-geometry";
 
 export interface PathPoint {
@@ -51,6 +51,44 @@ export function pathLength(path: PathPoint[]): number {
   let len = 0;
   for (let i = 1; i < path.length; i++) len += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
   return Math.max(len, 1);
+}
+
+/**
+ * `GET /workers`의 `lastLocationCode` → 베이(코디네이터 지시 2026-09-14). 코드는
+ * `{center}-{zone}-{통로:2}-{베이:2}-{단:2}-{위치:2}`(센터 축 붙은 라이브 형식) 또는
+ * 센터 접두가 없는 옛 형식 둘 다 온다 — 위치를 가리지 않고 연속 세 구간(zone·aisle·
+ * bay)이 실제 베이와 맞는지 앞에서부터 훑는다. `TOTE-003`·`RCV-01`·`S-001`처럼 BIN이
+ * 아닌 로케이션은 못 찾는다(그게 맞다 — 그 경우 RCV 존 격자로 대신 둔다).
+ */
+export function bayFromLocationCode(code: string | null | undefined, layout: LayoutResponse): Bay | null {
+  if (!code) return null;
+  const segments = code.split("-");
+  for (let i = 0; i + 2 < segments.length; i++) {
+    const zoneCode = segments[i];
+    const aisleNo = Number(segments[i + 1]);
+    const bayNo = Number(segments[i + 2]);
+    if (!Number.isFinite(aisleNo) || !Number.isFinite(bayNo)) continue;
+    const bay = layout.bays.find((b) => b.zoneCode === zoneCode && b.aisleNo === aisleNo && b.no === bayNo);
+    if (bay) return bay;
+  }
+  return null;
+}
+
+/**
+ * RCV(입고·검수, `Area.kind === "RECEIVING"`) 존 안 격자 좌석 — 베이를 못 찾은 작업자
+ * (토트·입고장에 마지막으로 있던 사람)를 한 점에 쌓지 않고 흩어 둔다(코디네이터 지시).
+ * 존 폭이 좁아도(라이브 RCV 폭 1m) 열을 줄여 안쪽에 들어가게 한다.
+ */
+export function receivingGridPoint(index: LayoutIndex, seatIndex: number, totalSeats: number): PathPoint | null {
+  const area = index.layout.areas.find((a) => a.kind === "RECEIVING") ?? index.areaByCode.get("RCV");
+  if (!area) return null;
+  const cols = Math.max(1, Math.min(4, Math.floor(area.wM / 0.4)));
+  const rows = Math.max(1, Math.ceil(totalSeats / cols));
+  const col = seatIndex % cols;
+  const row = Math.floor(seatIndex / cols) % rows;
+  const cellW = area.wM / (cols + 1);
+  const cellD = area.dM / (rows + 1);
+  return { x: area.xM + cellW * (col + 1), y: area.yM + cellD * (row + 1) };
 }
 
 /** 경로 위 진행률(0~1) 지점 — 세그먼트 길이 비례 보간 */

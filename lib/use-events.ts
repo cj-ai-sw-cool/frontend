@@ -138,26 +138,76 @@ function mockEventsForRange(query: EventsQuery): WmsEvent[] {
 }
 
 /**
- * KPI 패널 — `GET /events/kpi`. 라이브 연결 중엔 스트림 이벤트로 화면이 직접 증분하므로
- * (호출부 몫) 여기는 폴링 없이 최초 1회 + `staleTime` 만료 후 재조회만 한다(브리프 §3).
+ * KPI 패널 — `GET /events/kpi`. 30초마다 다시 받고(`refetchInterval`), 그 사이에는
+ * `recentEvents`로 들어온 새 이벤트를 서버 값 위에 얹어 즉시 증분한다(코디네이터 지시
+ * 2026-09-14 "지금은 staleTime 60s 만 있어 멈춰 있었다") — 다음 폴링이 오면 서버 값이
+ * 그 이벤트를 이미 포함하므로 증분은 자동으로 0 부터 다시 쌓인다.
  *
  * `recentEvents`를 주면(분석 화면 KPI 패널·허브 관제 탭 둘 다) 서버 집계가 실패했을 때
  * 그 버퍼로 대충 낸 값을 대신 쓴다 — 정확한 서버 집계가 아니므로 호출부가 `usingMock`
  * 으로 배지를 달아야 한다.
  */
-export function useEventsKpi(center: string, windowSize = "1h", recentEvents?: WmsEvent[]) {
+export function useEventsKpi(center: string, windowSize = "1h", recentEvents: WmsEvent[] = []) {
   const result = useQuery<EventsKpiResponse>({
     queryKey: queryKeys.eventsKpi({ center, window: windowSize }),
     queryFn: () => events.kpi({ center, window: windowSize }),
     retry: false,
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
-  const usingMock = result.isError && recentEvents !== undefined;
-  const estimated = useMemo(
-    () => (usingMock ? estimateKpiFromEvents(recentEvents ?? []) : undefined),
-    [usingMock, recentEvents],
-  );
-  return { ...result, data: result.data ?? estimated, usingMock };
+
+  const baselineSeq = result.data?.lastSeq ?? null;
+  const delta = useMemo(() => countKpiDelta(recentEvents, baselineSeq), [recentEvents, baselineSeq]);
+
+  const usingMock = result.isError;
+  const merged = useMemo(() => {
+    if (result.data) return applyKpiDelta(result.data, delta);
+    return usingMock ? estimateKpiFromEvents(recentEvents) : undefined;
+  }, [result.data, delta, usingMock, recentEvents]);
+
+  return { ...result, data: merged, usingMock };
+}
+
+interface KpiDelta {
+  pickingLines: number;
+  rebinCompleted: number;
+  ordersReceived: number;
+  ordersShipped: number;
+}
+
+/** 서버가 확정한 `lastSeq` 이후 스트림 버퍼에 들어온 것만 센다(코디네이터 지시 매핑:
+ * 피킹 라인 = PickTaskConfirmed, 리빈 = RebinSlotCompleted, 접수 = OrderRouted,
+ * 출고 = ShipmentShipped) */
+function countKpiDelta(recentEvents: WmsEvent[], baselineSeq: number | null): KpiDelta {
+  const delta: KpiDelta = { pickingLines: 0, rebinCompleted: 0, ordersReceived: 0, ordersShipped: 0 };
+  if (baselineSeq === null) return delta;
+  for (const event of recentEvents) {
+    if (event.seq <= baselineSeq) continue;
+    if (event.type === "PickTaskConfirmed") delta.pickingLines += 1;
+    else if (event.type === "RebinSlotCompleted") delta.rebinCompleted += 1;
+    else if (event.type === "OrderRouted") delta.ordersReceived += 1;
+    else if (event.type === "ShipmentShipped") delta.ordersShipped += 1;
+  }
+  return delta;
+}
+
+function applyKpiDelta(base: EventsKpiResponse, delta: KpiDelta): EventsKpiResponse {
+  if (delta.pickingLines === 0 && delta.rebinCompleted === 0 && delta.ordersReceived === 0 && delta.ordersShipped === 0) {
+    return base;
+  }
+  const pickingLines = base.pickingLines + delta.pickingLines;
+  const rebinCompleted = base.rebinCompleted + delta.rebinCompleted;
+  const perHour = (count: number) => (base.windowSeconds > 0 ? (count / base.windowSeconds) * 3600 : count);
+  return {
+    ...base,
+    pickingLines,
+    pickingLinesPerHour: perHour(pickingLines),
+    rebinCompleted,
+    rebinCompletedPerHour: perHour(rebinCompleted),
+    ordersReceived: base.ordersReceived + delta.ordersReceived,
+    ordersShipped: base.ordersShipped + delta.ordersShipped,
+    totalEvents: base.totalEvents + delta.pickingLines + delta.rebinCompleted + delta.ordersReceived + delta.ordersShipped,
+  };
 }
 
 /**

@@ -99,6 +99,8 @@ import type {
   WaveTasksResponse,
   WavesQuery,
   WmsEvent,
+  WorkerRow,
+  WorkersQuery,
   Zone,
   ZoneSummary,
 } from "./types";
@@ -599,6 +601,7 @@ export const queryKeys = {
   // 상태라 `lib/use-events.ts`의 React 상태로만 있다) — 여기는 리플레이·KPI 조회만.
   eventsRange: (params: EventsQuery) => ["events", "range", params] as const,
   eventsKpi: (params: EventsKpiQuery) => ["events", "kpi", params] as const,
+  workers: (params: WorkersQuery) => ["workers", params] as const,
 };
 
 /* ── 다창고 — 센터 축·주문 라우팅·센터 간 이동 (Stage 11D) ──────────────────────
@@ -694,6 +697,19 @@ function toEventsKpiQueryString(params: EventsKpiQuery): string {
   const qs = new URLSearchParams();
   qs.set("center", params.center);
   qs.set("window", params.window ?? "1h");
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
+/* ── 작업자 목록 — 관제 모드 마커 초기 배치(정본 §13.4, 코디네이터 지시 2026-09-14) ── */
+export const workers = {
+  list: (params: WorkersQuery) => api.get<WorkerRow[]>(`/workers${toWorkersQueryString(params)}`),
+};
+
+function toWorkersQueryString(params: WorkersQuery): string {
+  const qs = new URLSearchParams();
+  if (params.center !== undefined) qs.set("center", params.center);
+  if (params.role !== undefined) qs.set("role", params.role);
   const suffix = qs.toString();
   return suffix ? `?${suffix}` : "";
 }
