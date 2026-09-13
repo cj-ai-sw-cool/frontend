@@ -15,6 +15,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { useCenter } from "@/lib/center";
 import type { CountTaskStatus } from "@/lib/types";
 import { useCountTasks, useGenerateCountTasks } from "../_data/use-icqa";
 import { Th, Td } from "./master-window";
@@ -37,8 +38,12 @@ const STATUS_LABEL: Record<CountTaskStatus, string> = {
 };
 
 export function IcqaTab() {
+  const center = useCenter();
   const [statusFilter, setStatusFilter] = useState<CountTaskStatus | "">("");
-  const { data: page, isLoading, error } = useCountTasks(statusFilter ? { status: statusFilter } : undefined);
+  const { data: page, isLoading, error } = useCountTasks({
+    center,
+    status: statusFilter || undefined,
+  });
   const generate = useGenerateCountTasks();
 
   const [days, setDays] = useState("7");

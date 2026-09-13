@@ -14,10 +14,14 @@ import { master, queryKeys } from "@/lib/endpoints";
 import { mockBinsForBay, mockLayout } from "@/lib/mocks/layout";
 import type { BayBinsResponse, Bin, LayoutResponse, Location, LocationsQuery } from "@/lib/types";
 
-export function useLayout() {
+/**
+ * Stage 11D(정본 §12.6·§12.8) — `center` 가 필수 인자다. 센터를 바꾸면 쿼리 키가
+ * 바뀌어 그 센터 평면을 다시 읽는다("3D는 그 센터 평면만", 브리프 §1).
+ */
+export function useLayout(center: string) {
   const query = useQuery<LayoutResponse>({
-    queryKey: queryKeys.layout,
-    queryFn: () => master.layout(),
+    queryKey: queryKeys.layout(center),
+    queryFn: () => master.layout(center),
     retry: false,
     staleTime: 5 * 60_000,
   });

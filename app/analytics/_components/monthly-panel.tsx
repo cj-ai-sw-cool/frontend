@@ -62,6 +62,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useCenter } from "@/lib/center";
 
 import type { DailyInventory } from "@/lib/types";
 import { useLayout } from "../_data/use-layout";
@@ -132,7 +133,8 @@ export function MonthlyPanel() {
      `binType` 으로 묶어 `totalBins`/`occupiedBins` 를 직접 더한다 — 칸(Position)
      단위가 아니라 베이 단위 합이라 실제 칸 수와 같다(베이의 totalBins 가 이미
      levels×positions 다, `Bay` 타입 참고). */
-  const { data: layout } = useLayout();
+  const center = useCenter();
+  const { data: layout } = useLayout(center);
   const binTypeStats = useMemo(() => {
     const acc = new Map<string, { binCount: number; occupiedBins: number }>();
     for (const bay of layout?.bays ?? []) {

@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { w98Toast } from "@/lib/win98-toast";
 import { ApiError } from "@/lib/api";
+import { useCenter } from "@/lib/center";
 import type { OrderStatus } from "@/lib/types";
 import {
   useCancelOrder,
@@ -27,6 +28,7 @@ const PAGE_SIZE = 20;
  * 테스트 접수 폼(340) — 진열 탭의 3열 배치를 그대로 잇는다.
  */
 export function OrdersTab() {
+  const center = useCenter();
   const [sellerFilter, setSellerFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "ALL">("ALL");
   const [page, setPage] = useState(0);
@@ -34,6 +36,7 @@ export function OrdersTab() {
 
   const sellersQuery = useSellers();
   const ordersQuery = useOrdersList({
+    center,
     seller: sellerFilter === "" ? undefined : sellerFilter,
     status: statusFilter === "ALL" ? undefined : statusFilter,
     page,

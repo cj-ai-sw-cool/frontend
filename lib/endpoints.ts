@@ -15,6 +15,7 @@ import type {
   BayBinsResponse,
   BoxOverrideResponse,
   BoxType,
+  CenterSummary,
   CompleteReceiptResponse,
   CompleteResponse,
   ConfirmRequest,
@@ -24,12 +25,18 @@ import type {
   CountTasksQuery,
   CreateAsnRequest,
   CreateSellerRequest,
+  CreateTransferRequest,
   DailyInventory,
   DamageReportRequest,
   DamageReportResponse,
   DashboardSummary,
+  DispatchTransferResponse,
   GenerateCountTasksRequest,
   GenerateCountTasksResponse,
+  GlobalAtpQuery,
+  GlobalAtpRow,
+  HubOrderListItem,
+  HubOrdersQuery,
   InvariantCheckResult,
   ItemScanRequest,
   ItemScanResponse,
@@ -63,6 +70,7 @@ import type {
   RebinSessionDetail,
   RebinSimulateRequest,
   RebinSimulateResponse,
+  RoutingDecision,
   ScanResponse,
   Seller,
   ShipmentDetail,
@@ -79,6 +87,9 @@ import type {
   StockQuery,
   SubmitCountTaskRequest,
   SubmitCountTaskResponse,
+  TransferOrderDetail,
+  TransferOrderListItem,
+  TransfersQuery,
   UpdateSellerRequest,
   WaveCreateRequest,
   WaveCreateResponse,
@@ -169,8 +180,10 @@ export const master = {
 
   /** 존 목록 — Stage 11(11.0)부터 `Area→Zone→Aisle→Bay` 계층의 매체 구획. 3D·2D
    * 레이아웃은 이 목록 대신 `layout()` 을 쓴다 — 이건 로케이션 탭 1단과 재고 탭 존
-   * 표시가 계속 읽는다 */
-  zones: () => api.get<Zone[]>("/zones"),
+   * 표시가 계속 읽는다.
+   * Stage 11D — `center` 를 붙이면 그 센터 존만 온다(정본 §12.6 `GET /zones?center=`).
+   * 없으면 서버 기본값 `C1`(전환기 규칙, 정본 §12.6 "센터 축 조회 API 전부"). */
+  zones: (center?: string) => api.get<Zone[]>(`/zones${center ? `?center=${center}` : ""}`),
 
   /**
    * 3D·2D 가 그리는 전체 레이아웃(정본 §11.0 "3D·2D 계약") — `{areas, zones, aisles,
@@ -178,8 +191,10 @@ export const master = {
    * 같은 시각에 만드는 중이라(브리프 머리말) 2026-09-13 시점엔 엔드포인트가 없을 수
    * 있다 — 호출부(`app/analytics/_data/use-layout.ts`)가 실패하면 `lib/mocks/layout.ts`
    * 표본으로 대신 그린다. 라이브 검증 대기.
-   */
-  layout: () => api.get<LayoutResponse>("/layout"),
+   *
+   * Stage 11D — `center` 를 붙이면 그 센터 평면만 온다(정본 §12.6 `GET /layout?center=`,
+   * §12.8 "3D는 그 센터 평면만"). 없으면 서버 기본값 `C1`. */
+  layout: (center?: string) => api.get<LayoutResponse>(`/layout${center ? `?center=${center}` : ""}`),
 
   /** 베이 하나의 칸 — 베이 클릭 시에만(≤ 20개). 위 `layout()` 과 같은 계약, 같은 대기 */
   bayBins: (bayId: number) => api.get<BayBinsResponse>(`/bays/${bayId}/bins`),
@@ -229,8 +244,11 @@ export const inventory = {
   daily: (from: string, to: string) =>
     api.get<DailyInventory[]>(`/inventory/daily?from=${from}&to=${to}`),
 
-  /** 불변식 검사 — 두 불변식을 객체로 받는다(Stage 8, §7.9 결정). 둘 다 빈 배열이 정상 */
-  invariant: () => api.get<InvariantCheckResult>("/admin/inventory/invariant"),
+  /** 불변식 검사 — 두 불변식을 객체로 받는다(Stage 8, §7.9 결정). 둘 다 빈 배열이 정상.
+   * Stage 11D — `center` 없으면 전체 + 센터별 내역(정본 §12.6 `GET /admin/inventory/
+   * invariant?center=`). 이 화면에서는 아직 호출부가 없다(래퍼만 둔다). */
+  invariant: (center?: string) =>
+    api.get<InvariantCheckResult>(`/admin/inventory/invariant${center ? `?center=${center}` : ""}`),
 
   /** 재고 조정 — 화면 체크·ICQA 전 임시 창구 */
   adjust: (body: AdjustInventoryRequest) =>
@@ -429,6 +447,8 @@ function toCountTasksQueryString(params?: CountTasksQuery): string {
   if (params.status !== undefined) qs.set("status", params.status);
   if (params.page !== undefined) qs.set("page", String(params.page));
   if (params.size !== undefined) qs.set("size", String(params.size));
+  // Stage 11D — 정본 §12.6 `GET /count-tasks?center=`. 없으면 서버 기본값 `C1`
+  if (params.center !== undefined) qs.set("center", params.center);
   const suffix = qs.toString();
   return suffix ? `?${suffix}` : "";
 }
@@ -439,6 +459,8 @@ function toWavesQueryString(params?: WavesQuery): string {
   if (params.status !== undefined) qs.set("status", params.status);
   if (params.page !== undefined) qs.set("page", String(params.page));
   if (params.size !== undefined) qs.set("size", String(params.size));
+  // Stage 11D — 정본 §12.6 `GET /waves?center=`. 없으면 서버 기본값 `C1`
+  if (params.center !== undefined) qs.set("center", params.center);
   const suffix = qs.toString();
   return suffix ? `?${suffix}` : "";
 }
@@ -461,6 +483,8 @@ function toOrdersQueryString(params?: OrdersQuery): string {
   if (params.status !== undefined) qs.set("status", params.status);
   if (params.page !== undefined) qs.set("page", String(params.page));
   if (params.size !== undefined) qs.set("size", String(params.size));
+  // Stage 11D — 정본 §12.6 `GET /orders?center=`. 없으면 서버 기본값 `C1`
+  if (params.center !== undefined) qs.set("center", params.center);
   const suffix = qs.toString();
   return suffix ? `?${suffix}` : "";
 }
@@ -505,6 +529,8 @@ function toStockQueryString(params?: StockQuery): string {
   if (params.status !== undefined) qs.set("status", params.status);
   if (params.page !== undefined) qs.set("page", String(params.page));
   if (params.size !== undefined) qs.set("size", String(params.size));
+  // Stage 11D — 정본 §12.6 `GET /stock…?center=`. 없으면 서버 기본값 `C1`
+  if (params.center !== undefined) qs.set("center", params.center);
   const suffix = qs.toString();
   return suffix ? `?${suffix}` : "";
 }
@@ -528,8 +554,10 @@ export const queryKeys = {
     ["lines", lineId, "shipments", status ?? "ALL"] as const,
   shipment: (id: number) => ["shipments", id] as const,
   sellers: ["sellers"] as const,
-  zones: ["zones"] as const,
-  layout: ["layout"] as const,
+  // Stage 11D — `center` 가 키에 들어간다(정본 §12.8 "모든 훅·쿼리 키에 center 포함").
+  // 센터를 바꾸면 다른 캐시 항목이 되어 자동으로 다시 조회된다.
+  zones: (center: string) => ["zones", center] as const,
+  layout: (center: string) => ["layout", center] as const,
   bayBins: (bayId: number) => ["bays", bayId, "bins"] as const,
   locations: (params?: LocationsQuery) => ["locations", params ?? {}] as const,
   stock: (params?: StockQuery) => ["stock", params ?? {}] as const,
@@ -556,4 +584,74 @@ export const queryKeys = {
   packingQueue: (lineId: number) => ["packing", "queue", lineId] as const,
   countTasks: (params?: CountTasksQuery) => ["count-tasks", params ?? {}] as const,
   countTask: (id: number) => ["count-tasks", id] as const,
+  // Stage 11D — 허브 창(정본 §12.6·§12.8)
+  hubCenters: ["hub", "centers"] as const,
+  hubOrders: (params?: HubOrdersQuery) => ["hub", "orders", params ?? {}] as const,
+  hubOrderRouting: (orderId: number) => ["hub", "orders", orderId, "routing"] as const,
+  hubTransfers: (params?: TransfersQuery) => ["hub", "transfers", params ?? {}] as const,
+  hubTransfer: (id: number) => ["hub", "transfers", id] as const,
+  hubAtp: (params: GlobalAtpQuery) => ["hub", "atp", params] as const,
 };
+
+/* ── 다창고 — 센터 축·주문 라우팅·센터 간 이동 (Stage 11D) ──────────────────────
+   정본: backend/docs/02-system/02-data-model.md §12.6. 백엔드는 `feat/stage11d-
+   multicenter`에서 같은 시각 작업 중이라(브리프 머리말) 2026-09-13 시점엔 이 5개
+   엔드포인트가 없을 수 있다 — 호출부(`app/hub/_data/use-hub.ts`)가 실패하면
+   `lib/mocks/hub.ts` 표본으로 대신 그린다. 라이브 검증 대기. */
+export const hub = {
+  /** 센터 3곳 + 센터별 칸·현재고·OPEN 주문 수 — 셸 상단 센터 선택도 이 목록을 쓴다 */
+  centers: () => api.get<CenterSummary[]>("/hub/centers"),
+
+  /** 주문 목록 — 센터·라우팅 규칙 열 */
+  orders: (params?: HubOrdersQuery) =>
+    api.get<Page<HubOrderListItem>>(`/hub/orders${toHubOrdersQueryString(params)}`),
+
+  /** 라우팅 상세 — `routing_decision` + 후보 센터별 라인 ATP. 행 클릭 시 조회 */
+  orderRouting: (orderId: number) => api.get<RoutingDecision>(`/hub/orders/${orderId}/routing`),
+
+  /** 이동 오더 목록 */
+  transfers: (params?: TransfersQuery) =>
+    api.get<Page<TransferOrderListItem>>(`/hub/transfers${toTransfersQueryString(params)}`),
+
+  /** 이동 오더 상세 — shipped/received 진행 */
+  transfer: (id: number) => api.get<TransferOrderDetail>(`/hub/transfers/${id}`),
+
+  /** 이동 생성 — 출발 센터 ATP 부족이면 409 `INSUFFICIENT_ATP`(정본 §12.5 ①) */
+  createTransfer: (body: CreateTransferRequest) => api.post<TransferOrderDetail>("/hub/transfers", body),
+
+  /** 출발 — FEFO 확정, 도착 센터 ASN 자동 생성(정본 §12.5 ②). 409 `INSUFFICIENT_ATP` */
+  dispatchTransfer: (id: number) =>
+    api.post<DispatchTransferResponse>(`/hub/transfers/${id}/dispatch`),
+
+  /** 글로벌 ATP 표 — 화주 선택 필수, gtin 은 검색 보조 */
+  atp: (params: GlobalAtpQuery) => api.get<GlobalAtpRow[]>(`/hub/atp${toGlobalAtpQueryString(params)}`),
+};
+
+function toHubOrdersQueryString(params?: HubOrdersQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.center !== undefined) qs.set("center", params.center);
+  if (params.status !== undefined) qs.set("status", params.status);
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.size !== undefined) qs.set("size", String(params.size));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
+function toTransfersQueryString(params?: TransfersQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.status !== undefined) qs.set("status", params.status);
+  if (params.page !== undefined) qs.set("page", String(params.page));
+  if (params.size !== undefined) qs.set("size", String(params.size));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
+function toGlobalAtpQueryString(params: GlobalAtpQuery): string {
+  const qs = new URLSearchParams();
+  qs.set("seller", params.seller);
+  if (params.gtin !== undefined && params.gtin !== "") qs.set("gtin", params.gtin);
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}

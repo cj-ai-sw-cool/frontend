@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useCenter } from "@/lib/center";
 import type { WaveStatus } from "@/lib/types";
 import { usePickBatchDetail, useWaveDetail, useWavesList } from "../_data/use-waves";
 import { BatchDetailPanel } from "./batch-detail-panel";
@@ -19,6 +20,7 @@ const PAGE_SIZE = 20;
  * 클릭 시 채워짐) — 웨이브 상세의 배치 표를 클릭하면 오른쪽 열이 그 배치의 태스크로 바뀐다.
  */
 export function WavesTab() {
+  const center = useCenter();
   const [statusFilter, setStatusFilter] = useState<WaveStatus | "ALL">("ALL");
   const [page, setPage] = useState(0);
   const [selectedWaveId, setSelectedWaveId] = useState<number | null>(null);
@@ -33,6 +35,7 @@ export function WavesTab() {
   const [rebinBatchId, setRebinBatchId] = useState<number | null>(null);
 
   const wavesQuery = useWavesList({
+    center,
     status: statusFilter === "ALL" ? undefined : statusFilter,
     page,
     size: PAGE_SIZE,

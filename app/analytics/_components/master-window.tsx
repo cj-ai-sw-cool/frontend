@@ -22,6 +22,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { ApiError } from "@/lib/api";
+import { useCenter } from "@/lib/center";
 import type { Medium } from "@/lib/types";
 import { buildLocationsQuery, filterLocationsByPrefix, useLayout } from "../_data/use-layout";
 import { useCreateSeller, useLocations, useSellers } from "../_data/use-master";
@@ -233,7 +234,8 @@ function describeSellerFailure(error: Error): string {
    있으므로 세 단 다 같은 응답 하나로 채운다(요청 한 번). */
 
 function LocationTab({ onLocateZone }: { onLocateZone: (zoneCode: string) => void }) {
-  const { data: layout, isLoading: layoutLoading, usingMock } = useLayout();
+  const center = useCenter();
+  const { data: layout, isLoading: layoutLoading, usingMock } = useLayout(center);
   const index = useMemo(() => (layout ? buildLayoutIndex(layout) : null), [layout]);
 
   const [zoneCode, setZoneCode] = useState<string | null>(null);

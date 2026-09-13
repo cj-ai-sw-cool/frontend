@@ -17,6 +17,7 @@
  */
 
 import { useMemo, useRef, useState } from "react";
+import { useCenter } from "@/lib/center";
 import { useZonesSummary } from "../_data/use-inventory";
 import { useBayBins, useLayout } from "../_data/use-layout";
 import { BayDetailPanel } from "./layout/bay-detail";
@@ -37,7 +38,8 @@ export default function WarehouseSlot3D({
   onReady?: (api: WarehouseApi) => void;
   initialHighlight?: string | null;
 }) {
-  const { data: layout, usingMock, isLoading } = useLayout();
+  const center = useCenter();
+  const { data: layout, usingMock, isLoading } = useLayout(center);
   const { data: zonesSummary } = useZonesSummary();
 
   const [hoveredBay, setHoveredBay] = useState<Bay | null>(null);

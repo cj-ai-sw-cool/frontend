@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCenter } from "@/lib/center";
 import type { Bay } from "@/lib/types";
 import { useBayBins, useLayout } from "../_data/use-layout";
 import { BayDetailPanel } from "./layout/bay-detail";
@@ -51,7 +52,8 @@ export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
   const bayRectsRef = useRef<BayRect[]>([]);
   const fitRef = useRef<{ scale: number; ox: number; oy: number; minX: number; minY: number } | null>(null);
 
-  const { data: layout } = useLayout();
+  const center = useCenter();
+  const { data: layout } = useLayout(center);
   const index = useMemo(() => (layout ? buildLayoutIndex(layout) : null), [layout]);
 
   const [hoveredBay, setHoveredBay] = useState<Bay | null>(null);
