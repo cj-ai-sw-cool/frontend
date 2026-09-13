@@ -22,10 +22,12 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { ApiError } from "@/lib/api";
-import type { Zone } from "@/lib/types";
-import { useCreateSeller, useLocations, useSellers, useZones } from "../_data/use-master";
+import type { Medium } from "@/lib/types";
+import { buildLocationsQuery, filterLocationsByPrefix, useLayout } from "../_data/use-layout";
+import { useCreateSeller, useLocations, useSellers } from "../_data/use-master";
 import { AtpTab } from "./atp-tab";
 import { IcqaTab } from "./icqa-tab";
+import { buildLayoutIndex } from "./layout/layout-geometry";
 import { Btn, Etched, Field, Sunken, w98 } from "./win98-ui";
 
 /** `warehouse-slot-3d.jsx` 가 `onReady` 로 넘기는 api 핸들. 이 파일은 모양만 안다 */
@@ -38,10 +40,10 @@ export interface WarehouseApi {
 const TABS = ["화주", "로케이션", "가용재고", "실사"] as const;
 type Tab = (typeof TABS)[number];
 
-const TEMP_ZONE_LABEL: Record<string, string> = {
-  AMBIENT: "상온",
-  CHILLED: "냉장",
-  FROZEN: "냉동",
+const MEDIUM_LABEL: Record<Medium, string> = {
+  SHELF: "선반",
+  PALLET_RACK: "파렛트 랙",
+  PALLET_FLOOR: "파렛트 바닥",
 };
 
 export function MasterWindow({
@@ -224,61 +226,75 @@ function describeSellerFailure(error: Error): string {
   return error.message || "화주 등록에 실패했습니다.";
 }
 
-/* ── 로케이션 탭 ─────────────────────────────────────────────────────────── */
-
-/** 존의 랙 수 — 데이터 모델 §1.2: 쌍(pair) p 는 랙 2p-1·2p, 단독은 1..singles */
-function rackCount(zone: Zone): number {
-  return zone.rackPairs > 0 ? zone.rackPairs * 2 : zone.rackSingles;
-}
+/* ── 로케이션 탭 ─────────────────────────────────────────────────────────────
+   Stage 11(11.0) 개정 — 존 7개 "랙 번호" 2단을 버리고 존 → 통로 → 베이 3단 필터로
+   바꾼다(브리프 §3 S11.4). 목록은 `GET /layout`(`use-layout.ts`)에서 채운다 — 존
+   목록은 `GET /zones` 도 같은 모양이라 쓸 수 있지만, 통로·베이가 `GET /layout` 에만
+   있으므로 세 단 다 같은 응답 하나로 채운다(요청 한 번). */
 
 function LocationTab({ onLocateZone }: { onLocateZone: (zoneCode: string) => void }) {
-  const { data: zones, isLoading: zonesLoading, error: zonesError } = useZones();
+  const { data: layout, isLoading: layoutLoading, usingMock } = useLayout();
+  const index = useMemo(() => (layout ? buildLayoutIndex(layout) : null), [layout]);
+
   const [zoneCode, setZoneCode] = useState<string | null>(null);
-  const [rack, setRack] = useState<number | null>(null);
+  const [aisleId, setAisleId] = useState<number | null>(null);
+  const [bayId, setBayId] = useState<number | null>(null);
 
-  const zone = useMemo(() => zones?.find((z) => z.code === zoneCode) ?? null, [zones, zoneCode]);
-  const racks = useMemo(() => (zone ? Array.from({ length: rackCount(zone) }, (_, i) => i + 1) : []), [zone]);
+  const aisles = useMemo(
+    () => (zoneCode ? (index?.aislesByZone.get(zoneCode) ?? []) : []),
+    [index, zoneCode],
+  );
+  const bays = useMemo(
+    () => (aisleId !== null ? (index?.baysByAisle.get(aisleId) ?? []) : []),
+    [index, aisleId],
+  );
+  const selectedAisle = aisleId !== null ? (index?.aisleById.get(aisleId) ?? null) : null;
+  const selectedBay = bayId !== null ? (index?.bayById.get(bayId) ?? null) : null;
 
-  const { data: page, isLoading: locLoading, error: locError } = useLocations({
-    zone: zoneCode ?? undefined,
-    rack: rack ?? undefined,
-    type: "BIN",
-    // 한 존 최대 칸 수(A, 2,288)보다 넉넉히 잡아 페이지 없이 한 번에 보여준다.
-    size: 3000,
-  });
+  const query = buildLocationsQuery(zoneCode, aisleId, bayId) ?? {};
+  const { data: page, isLoading: locLoading, error: locError } = useLocations(query);
+  const locations = useMemo(
+    () => filterLocationsByPrefix(page, zoneCode, selectedAisle?.no ?? null, selectedBay?.no ?? null),
+    [page, zoneCode, selectedAisle, selectedBay],
+  );
 
   const selectZone = (code: string) => {
     setZoneCode(code);
-    setRack(null);
+    setAisleId(null);
+    setBayId(null);
+  };
+  const selectAisle = (id: number) => {
+    setAisleId(id);
+    setBayId(null);
   };
 
   return (
-    <div className="flex h-full min-h-0 gap-2">
-      {/* 1단 — 존 목록 */}
-      <Sunken className={`${w98.scroll} min-h-0 w-[260px] shrink-0 overflow-y-auto`}>
+    <div className="relative flex h-full min-h-0 gap-2">
+      {usingMock ? (
+        <span className="absolute top-1 right-1 z-10 rounded bg-[color:var(--status-error)] px-1.5 py-0.5 text-[10px] font-bold text-white">
+          /layout 표본
+        </span>
+      ) : null}
+
+      {/* 1단 — 존 */}
+      <Sunken className={`${w98.scroll} min-h-0 w-[220px] shrink-0 overflow-y-auto`}>
         <table className="w-full border-collapse text-left text-[13px]">
           <thead className="sticky top-0 bg-[color:var(--surface)]">
             <tr>
               <Th>존</Th>
-              <Th>온도</Th>
+              <Th>매체</Th>
               <Th>칸 수</Th>
             </tr>
           </thead>
           <tbody>
-            {zonesLoading ? (
+            {layoutLoading ? (
               <tr>
                 <td colSpan={3} className="p-3 text-[color:var(--muted-foreground)]">
                   존 목록을 불러오는 중…
                 </td>
               </tr>
-            ) : zonesError ? (
-              <tr>
-                <td colSpan={3} className="p-3 text-[color:var(--status-error)]">
-                  존 목록을 불러오지 못했습니다.
-                </td>
-              </tr>
             ) : (
-              zones?.map((z) => (
+              layout?.zones.map((z) => (
                 <tr
                   key={z.code}
                   onClick={() => selectZone(z.code)}
@@ -286,9 +302,9 @@ function LocationTab({ onLocateZone }: { onLocateZone: (zoneCode: string) => voi
                     z.code === zoneCode ? "bg-[color:var(--surface-variant)] font-bold" : ""
                   }`}
                 >
-                  <Td mono>{z.code} · {z.name}</Td>
-                  <Td>{TEMP_ZONE_LABEL[z.tempZone] ?? z.tempZone}</Td>
-                  <Td mono>{z.locationCount.toLocaleString()}</Td>
+                  <Td mono>{z.code}</Td>
+                  <Td>{MEDIUM_LABEL[z.medium] ?? z.medium}</Td>
+                  <Td mono>{z.binCount.toLocaleString()}</Td>
                 </tr>
               ))
             )}
@@ -296,35 +312,46 @@ function LocationTab({ onLocateZone }: { onLocateZone: (zoneCode: string) => voi
         </table>
       </Sunken>
 
-      {/* 2단 — 랙 목록 */}
-      <Sunken className={`${w98.scroll} flex min-h-0 w-[140px] shrink-0 flex-col gap-1 overflow-y-auto p-1.5`}>
-        {!zone ? (
-          <span className="p-1 text-[12px] text-[color:var(--muted-foreground)]">
-            존을 먼저 고르세요
-          </span>
+      {/* 2단 — 통로 */}
+      <Sunken className={`${w98.scroll} flex min-h-0 w-[120px] shrink-0 flex-col gap-1 overflow-y-auto p-1.5`}>
+        {!zoneCode ? (
+          <span className="p-1 text-[12px] text-[color:var(--muted-foreground)]">존을 먼저 고르세요</span>
         ) : (
-          racks.map((r) => (
-            <Btn key={r} pressed={r === rack} onClick={() => setRack(r)} className="py-1 text-[12px]">
-              랙 {r}
+          aisles.map((a) => (
+            <Btn key={a.id} pressed={a.id === aisleId} onClick={() => selectAisle(a.id)} className="py-1 text-[12px]">
+              통로 {String(a.no).padStart(2, "0")}
             </Btn>
           ))
         )}
       </Sunken>
 
-      {/* 3단 — 로케이션 표 */}
+      {/* 3단 — 베이 */}
+      <Sunken className={`${w98.scroll} flex min-h-0 w-[130px] shrink-0 flex-col gap-1 overflow-y-auto p-1.5`}>
+        {aisleId === null ? (
+          <span className="p-1 text-[12px] text-[color:var(--muted-foreground)]">통로를 먼저 고르세요</span>
+        ) : (
+          bays.map((b) => (
+            <Btn key={b.id} pressed={b.id === bayId} onClick={() => setBayId(b.id)} className="py-1 text-[12px]">
+              베이 {String(b.no).padStart(2, "0")}
+            </Btn>
+          ))
+        )}
+      </Sunken>
+
+      {/* 4단 — 로케이션(칸) 표 */}
       <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto`}>
-        {!zone || rack === null ? (
+        {!zoneCode ? (
           <span className="block p-3 text-[13px] text-[color:var(--muted-foreground)]">
-            존과 랙을 고르면 로케이션 목록이 나옵니다.
+            존 · 통로 · 베이를 고르면 칸 목록이 나옵니다.
           </span>
         ) : (
           <table className="w-full border-collapse text-left text-[13px]">
             <thead className="sticky top-0 bg-[color:var(--surface)]">
               <tr>
                 <Th>단</Th>
-                <Th>열</Th>
+                <Th>위치</Th>
                 <Th>코드</Th>
-                <Th>치수(cm)</Th>
+                <Th>역할</Th>
                 <Th>상태</Th>
               </tr>
             </thead>
@@ -341,23 +368,27 @@ function LocationTab({ onLocateZone }: { onLocateZone: (zoneCode: string) => voi
                     로케이션 목록을 불러오지 못했습니다.
                   </td>
                 </tr>
+              ) : locations.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-3 text-[color:var(--muted-foreground)]">
+                    조건에 맞는 칸이 없습니다.
+                  </td>
+                </tr>
               ) : (
-                page?.content
+                locations
                   .slice()
-                  .sort((a, b) => (a.levelNo ?? 0) - (b.levelNo ?? 0) || (a.colNo ?? 0) - (b.colNo ?? 0))
+                  .sort((a, b) => (a.levelNo ?? 0) - (b.levelNo ?? 0) || (a.positionNo ?? 0) - (b.positionNo ?? 0))
                   .map((loc) => (
                     <tr
                       key={loc.id}
-                      onClick={() => onLocateZone(zone.code)}
+                      onClick={() => onLocateZone(zoneCode)}
                       title="클릭하면 3D 로 이 존을 보여줍니다"
                       className="cursor-pointer border-t border-[color:var(--border)] hover:bg-[color:var(--surface-variant)]"
                     >
                       <Td mono>{loc.levelNo}</Td>
-                      <Td mono>{loc.colNo}</Td>
+                      <Td mono>{loc.positionNo}</Td>
                       <Td mono>{loc.code}</Td>
-                      <Td mono>
-                        {loc.widthCm} × {loc.lengthCm} × {loc.heightCm}
-                      </Td>
+                      <Td>{loc.role === "PICK_FACE" ? "피킹면" : loc.role === "RESERVE" ? "예비" : "—"}</Td>
                       <Td>{loc.status === "ACTIVE" ? "사용" : "차단"}</Td>
                     </tr>
                   ))
