@@ -30,6 +30,9 @@ import type {
   DamageReportRequest,
   DamageReportResponse,
   DashboardSummary,
+  EventsKpiQuery,
+  EventsKpiResponse,
+  EventsQuery,
   GenerateCountTasksRequest,
   GenerateCountTasksResponse,
   GlobalAtpQuery,
@@ -95,6 +98,7 @@ import type {
   WaveListItem,
   WaveTasksResponse,
   WavesQuery,
+  WmsEvent,
   Zone,
   ZoneSummary,
 } from "./types";
@@ -591,6 +595,10 @@ export const queryKeys = {
   hubTransfers: (params?: TransfersQuery) => ["hub", "transfers", params ?? {}] as const,
   hubTransfer: (id: number) => ["hub", "transfers", id] as const,
   hubAtp: (params: GlobalAtpQuery) => ["hub", "atp", params] as const,
+  // Stage 11A — 실시간 관제(정본 §13.3). 스트림 자체는 캐시에 들어가지 않는다(연결
+  // 상태라 `lib/use-events.ts`의 React 상태로만 있다) — 여기는 리플레이·KPI 조회만.
+  eventsRange: (params: EventsQuery) => ["events", "range", params] as const,
+  eventsKpi: (params: EventsKpiQuery) => ["events", "kpi", params] as const,
 };
 
 /* ── 다창고 — 센터 축·주문 라우팅·센터 간 이동 (Stage 11D) ──────────────────────
@@ -651,6 +659,41 @@ function toGlobalAtpQueryString(params: GlobalAtpQuery): string {
   const qs = new URLSearchParams();
   qs.set("seller", params.seller);
   if (params.gtin !== undefined && params.gtin !== "") qs.set("gtin", params.gtin);
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
+/* ── 실시간 관제 — 이벤트 스트림·리플레이 (Stage 11A, 정본 §13.3) ────────────────
+   `GET /events/stream`(SSE)은 `EventSource`라 `lib/events-stream.ts` 하나에서만
+   연다(브리프 머리말) — 여기는 리플레이 범위 조회·KPI 집계 두 개만 감싼다. 백엔드가
+   같은 시각 `feat/stage11a-events`에서 작업 중이라 2026-09-14 시점엔 없을 수 있다 —
+   훅(`lib/use-events.ts`)이 실패하면 `lib/mocks/events.ts` 표본으로 대신한다. 라이브
+   검증 대기. */
+export const events = {
+  /** 리플레이 스크러버 범위 조회 — 순번(`from`/`to`) 또는 시각(`occurredFrom`/`occurredTo`) */
+  list: (params: EventsQuery) => api.get<WmsEvent[]>(`/events${toEventsQueryString(params)}`),
+
+  /** 서버 집계 KPI — 시간당 피킹 라인, 태스크 평균 소요, 존별 대기, 리빈 완성/시간, 접수·출고 */
+  kpi: (params: EventsKpiQuery) => api.get<EventsKpiResponse>(`/events/kpi${toEventsKpiQueryString(params)}`),
+};
+
+function toEventsQueryString(params: EventsQuery): string {
+  const qs = new URLSearchParams();
+  qs.set("center", params.center);
+  if (params.from !== undefined) qs.set("from", String(params.from));
+  if (params.to !== undefined) qs.set("to", String(params.to));
+  if (params.occurredFrom !== undefined) qs.set("occurredFrom", params.occurredFrom);
+  if (params.occurredTo !== undefined) qs.set("occurredTo", params.occurredTo);
+  if (params.types !== undefined) qs.set("types", params.types);
+  qs.set("limit", String(params.limit ?? 5000));
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
+function toEventsKpiQueryString(params: EventsKpiQuery): string {
+  const qs = new URLSearchParams();
+  qs.set("center", params.center);
+  qs.set("window", params.window ?? "1h");
   const suffix = qs.toString();
   return suffix ? `?${suffix}` : "";
 }

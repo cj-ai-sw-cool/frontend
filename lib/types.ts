@@ -2018,3 +2018,100 @@ export interface GlobalAtpQuery {
   seller: string;
   gtin?: string;
 }
+
+/* ── 실시간 관제 — outbox 이벤트 스트림·리플레이 (Stage 11A, 정본 §13.2·§13.3) ─────
+   백엔드는 같은 시각 `feat/stage11a-events`에서 작업 중이라(브리프 머리말) 이 시점엔
+   `/events/**`가 없을 수 있다 — `lib/mocks/events.ts` 표본으로 대신 그리다가 라이브가
+   뜨면 필드를 맞춘다(`lib/use-events.ts`, `lib/events-stream.ts` 머리말). */
+
+/** `outbox.event_type` 카탈로그(정본 §13.2). 화면은 `InventoryTxRecorded` 위주로 쓴다 */
+export type WmsEventType =
+  | "InventoryTxRecorded"
+  | "PickBatchClaimed"
+  | "PickTaskConfirmed"
+  | "PickBatchDone"
+  | "RebinSessionStarted"
+  | "RebinSessionFinished"
+  | "RebinSlotCompleted"
+  | "CountTaskStarted"
+  | "CountTaskSubmitted"
+  | "OrderRouted"
+  | "OrderStatusChanged"
+  | "OrderCancelled"
+  | "WaveReleased"
+  | "WaveDone"
+  | "ShipmentPacked"
+  | "ShipmentShipped"
+  | "TransferDispatched"
+  | "TransferReceived";
+
+/** `InventoryTxRecorded.payload.txType` — 원장 tx 유형 10종(정본 §13.2). 베이 점등 색을 가른다 */
+export type InventoryTxType =
+  | "RECEIVE"
+  | "PUTAWAY"
+  | "PICK"
+  | "REBIN"
+  | "RESTOCK"
+  | "SHIP"
+  | "ADJUST"
+  | "STATUS_CHANGE"
+  | "TRANSFER_OUT"
+  | "TRANSFER_IN";
+
+/**
+ * `GET /events/stream`·`GET /events` 행 하나(outbox row, 정본 §13.2·§13.3).
+ *
+ * ⚠️ 라이브 검증 대기(정본 §13.7) — `locationId` → 베이 매핑을 이벤트가 직접 주는지
+ * (`payload.bayId`) `GET /bays/{id}/bins` 역참조가 필요한지 백엔드 노트로 확정 전까지,
+ * 이 화면은 `payload.bayId`가 있으면 그것을 쓰고 없으면 베이 점등·마커 이동을 건너뛴다
+ * (`lib/use-events.ts`·`app/analytics/_data/use-control-mode.ts` 참고). 목(mock)은
+ * `payload.bayId`를 채워 둔다.
+ */
+export interface WmsEvent {
+  seq: number;
+  eventType: WmsEventType | string;
+  aggregateType: string;
+  aggregateId: string;
+  centerId: string;
+  sellerId: string | null;
+  locationId: number | null;
+  worker: string | null;
+  payload: {
+    txType?: InventoryTxType;
+    qty?: number;
+    bayId?: number;
+    [key: string]: unknown;
+  };
+  occurredAt: string;
+}
+
+/** `GET /events` 쿼리 — 리플레이·KPI 계산용 범위 조회(정본 §13.3, 순번 또는 시각 범위) */
+export interface EventsQuery {
+  center: string;
+  from?: number;
+  to?: number;
+  occurredFrom?: string;
+  occurredTo?: string;
+  types?: string;
+  limit?: number;
+}
+
+export interface EventsKpiQuery {
+  center: string;
+  window?: string;
+}
+
+/** `GET /events/kpi` 응답 — 서버 집계 5종(정본 §13.3) */
+export interface EventsKpiResponse {
+  center: string;
+  window: string;
+  pickingLinesPerHour: number;
+  avgTaskDurationSec: number;
+  pendingTasksByZone: { zoneCode: string; count: number }[];
+  rebinCompletionsPerHour: number;
+  receivingCount: number;
+  shippingCount: number;
+  generatedAt: string;
+}
+
+export type EventStreamStatus = "connecting" | "open" | "reconnecting" | "closed";

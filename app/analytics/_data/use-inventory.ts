@@ -35,12 +35,19 @@ export function useStockLedger(stockId: number | null, params?: { page?: number;
 /**
  * BIN 전체 점유 — 3D·2D 지도 인스턴스 매핑용(3,888행, 정본 §2.4).
  * 30초 폴링 — 브리프 §3 S2.6. 재고 창의 조정 성공(`useAdjustInventory`)도 즉시 무효화한다.
+ *
+ * Stage 11A(정본 §13.5 "폴링 제거") — 관제 모드가 SSE 로 `layout` 캐시를 직접 갱신하는
+ * 동안은 이 폴링이 필요 없다. `enabled: false` 로 끄면(스트림 연결 중) 조회를 멈추고,
+ * 스트림이 끊기면 다시 `enabled: true` 로 돌려 30초 폴백으로 쓴다
+ * (`app/analytics/_data/use-control-mode.ts`).
  */
-export function useOccupancy() {
+export function useOccupancy(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   return useQuery({
     queryKey: queryKeys.occupancy,
     queryFn: () => inventory.occupancy(),
     refetchInterval: 30_000,
+    enabled,
   });
 }
 
