@@ -49,10 +49,10 @@ const WarehouseSlot3D = dynamic(
  * `/analytics?highlight=<로케이션 코드>` 진입점 — 진열(Stage 4) 탭의 "3D에서 보기" 버튼이
  * 이 쿼리로 옮겨 온다(정본 §4.6). **존 단위까지만 강조한다** — 3D `flyTo`/`setHighlight`
  * 가 지금 받는 값은 구역 하나(zone id)뿐이다(`master-window.tsx` 머리말 "존·랙 단위 강조까지만
- * 한다" 참고). 그래서 로케이션 코드의 첫 글자(zone, 예 "A-03-02-14" → "A")만 잘라 쓴다 —
- * 칸 하나까지 정확히 확대하려면 3D 엔진에 칸 단위 flyTo 를 새로 만들어야 하는데, 그건 이
- * 파일(P3)이 아니라 3D 엔진(`warehouse-slot-3d.jsx`) 쪽 작업이라 범위 밖이다(Stage 4 프론트
- * 인수인계 보고 참고).
+ * 한다" 참고). 그래서 로케이션 코드의 첫 조각(zone, 예 "AMBS-02-01-01-04" → "AMBS")만
+ * 잘라 쓴다 — 칸 하나까지 정확히 확대하려면 3D 엔진에 칸 단위 flyTo 를 새로 만들어야
+ * 하는데, 그건 이 파일(P3)이 아니라 3D 엔진(`warehouse-slot-3d.tsx`) 쪽 작업이라 범위
+ * 밖이다(Stage 4 프론트 인수인계 보고 참고).
  *
  * `useSearchParams` 를 쓰는 조각만 따로 떼어 `<Suspense>` 로 감싼다 — 페이지 전체가 아니라
  * 이 훅을 쓰는 자리만 감싸면 된다(App Router 규칙, 정적 렌더에서 에러가 나지 않게 하는 최소
