@@ -85,7 +85,9 @@ export function BayDetailPanel({
                       key={position}
                       title={tooltip}
                       className={`flex min-w-0 flex-col items-center justify-center overflow-hidden rounded border-2 px-0.5 py-1 text-center text-[10px] leading-tight ${border} ${
-                        filled ? "bg-[color:var(--surface-variant)]" : "bg-[color:var(--surface-dim)] text-[color:var(--muted-foreground)]"
+                        filled
+                          ? "bg-[color:var(--surface-variant)] text-[color:var(--foreground)]"
+                          : "bg-[color:var(--surface-dim)] text-[color:var(--muted-foreground)]"
                       }`}
                     >
                       {filled ? (
