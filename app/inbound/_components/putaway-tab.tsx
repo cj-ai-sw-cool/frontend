@@ -114,9 +114,10 @@ export function PutawayTab() {
       {
         locationCode: capacity.locationCode,
         zoneCode: address?.zoneCode ?? capacity.zoneCode ?? "",
-        rackNo: address?.rackNo ?? 0,
+        aisleNo: address?.aisleNo ?? 0,
+        bayNo: address?.bayNo ?? 0,
         levelNo: address?.levelNo ?? 0,
-        colNo: address?.colNo ?? 0,
+        positionNo: address?.positionNo ?? 0,
         qty: placeQty,
         tier,
         loadLevelAfterPct: capacity.loadLevelPct,

@@ -53,7 +53,13 @@ export function BayDetailPanel({
               <span className="w-6 shrink-0 font-mono text-[11px] text-[color:var(--muted-foreground)]">
                 {level}단
               </span>
-              <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${positions.length}, minmax(0, 1fr))` }}>
+              {/* min-w-0 이 없으면 이 grid 가 flex 자식의 기본 min-width:auto 를 따라가
+                  칸 글자의 원래 폭만큼 커져 패널 밖으로 잘린다(2026-09-13 화면 체크에서
+                  발견) — 열은 항상 패널 폭 안에서 `positions.length` 등분한다 */}
+              <div
+                className="grid min-w-0 flex-1 gap-1"
+                style={{ gridTemplateColumns: `repeat(${positions.length}, minmax(0, 1fr))` }}
+              >
                 {positions.map((position) => {
                   const bin = byCell.get(`${level}-${position}`);
                   const filled = bin && bin.qty > 0;
@@ -62,21 +68,24 @@ export function BayDetailPanel({
                     : bin.role === "PICK_FACE"
                       ? "border-[color:var(--status-success)]"
                       : "border-[color:var(--primary)]";
+                  /* 상품명은 칸에 안 넣는다 — 화주 코드·수량 두 줄만으로도 XS(4위치)에서
+                     이미 폭이 빠듯하다. 여러 품목이면 호버 툴팁에서 전부 보여준다 */
+                  const tooltip = bin
+                    ? `${bin.code} · ${ROLE_LABEL[bin.role]}${
+                        bin.items.length > 0 ? " · " + bin.items.map((it) => `${it.productName}(${it.qty})`).join(", ") : ""
+                      }`
+                    : undefined;
                   return (
                     <div
                       key={position}
-                      title={bin ? `${bin.code} · ${ROLE_LABEL[bin.role]}` : undefined}
-                      className={`flex flex-col items-center justify-center rounded border-2 px-1 py-1 text-center text-[10px] leading-tight ${border} ${
+                      title={tooltip}
+                      className={`flex min-w-0 flex-col items-center justify-center rounded border-2 px-0.5 py-1 text-center text-[10px] leading-tight ${border} ${
                         filled ? "bg-[color:var(--surface-variant)]" : "bg-[color:var(--surface-dim)] text-[color:var(--muted-foreground)]"
                       }`}
                     >
                       {filled ? (
                         <>
-                          <span className="truncate font-bold">{bin.sellerCode}</span>
-                          <span className="truncate">
-                            {bin.items[0]?.productName}
-                            {bin.items.length > 1 ? ` 외 ${bin.items.length - 1}` : ""}
-                          </span>
+                          <span className="w-full truncate font-bold">{bin.sellerCode}</span>
                           <span className="font-mono">{bin.qty}</span>
                         </>
                       ) : (

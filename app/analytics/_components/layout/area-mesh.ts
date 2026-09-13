@@ -11,6 +11,10 @@ import * as THREE from "three";
 import type { Area, LayoutResponse } from "@/lib/types";
 import { zoneWorldRect } from "./layout-geometry";
 
+/** 이 폭(m) 아래면 방 라벨이 옆 방과 겹친다 — 2D(`warehouse-map.tsx`) 의 70px 문턱과
+ * 같은 취지, 3D 는 화면 픽셀이 카메라 거리에 따라 바뀌므로 월드 미터로 잰다 */
+const NARROW_ROOM_M = 6;
+
 const AREA_COLOR: Record<Area["kind"], number> = {
   STORAGE: 0x3a4656,
   RECEIVING: 0x4a5a3a,
@@ -122,4 +126,48 @@ export function buildStaticGroup(layout: LayoutResponse): THREE.Group {
   }
 
   return root;
+}
+
+export interface AreaLabels {
+  /** 매 프레임 호출 — 화면 좌표로 다시 투영한다(카메라가 도니까 고정 위치를 못 쓴다) */
+  update: (camera: THREE.Camera, width: number, height: number) => void;
+  dispose: () => void;
+}
+
+/**
+ * 방 이름표 — three.js 안에 글자를 그리는 대신 캔버스 위에 얹는 HTML 라벨이다(스프라이트
+ * 텍스처보다 가볍고 또렷하다). 좁은 방(`NARROW_ROOM_M` 아래, 라이브 CHL 4.2m·FRZ 2.8m
+ * 같은 경우)은 방 **앞쪽 바깥**에 코드만 띄운다 — 안에 넣으면 옆 방 라벨과 겹친다
+ * (2D `warehouse-map.tsx` 와 같은 처리, 같은 문턱).
+ */
+export function buildAreaLabels(container: HTMLElement, areas: Area[]): AreaLabels {
+  const entries = areas.map((area) => {
+    const el = document.createElement("div");
+    el.className =
+      "pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded bg-[rgba(12,17,24,.6)] px-1.5 py-0.5 text-[11px] font-bold text-[#DCE5EF]";
+    container.appendChild(el);
+    const narrow = Math.min(area.wM, area.dM) < NARROW_ROOM_M;
+    return { area, el, narrow };
+  });
+
+  const proj = new THREE.Vector3();
+  const update = (camera: THREE.Camera, width: number, height: number) => {
+    for (const { area, el, narrow } of entries) {
+      const wx = area.xM + area.wM / 2;
+      const wz = narrow ? area.yM - 0.8 : area.yM + area.dM / 2; // 좁으면 방 앞쪽 바깥
+      proj.set(wx, 0.05, wz).project(camera);
+      if (proj.z > 1 || proj.z < -1) {
+        el.style.display = "none";
+        continue;
+      }
+      el.style.display = "block";
+      el.style.left = `${((proj.x + 1) / 2) * width}px`;
+      el.style.top = `${((1 - proj.y) / 2) * height}px`;
+      el.textContent = narrow ? area.code : `${area.code} · ${area.name}`;
+    }
+  };
+  const dispose = () => {
+    for (const { el } of entries) el.remove();
+  };
+  return { update, dispose };
 }

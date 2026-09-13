@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   분석 화면 — 월간 물동량 · 박스 규격별 재고
+   분석 화면 — 월간 물동량 · 칸 규격별 재고
 
    ★ 이 자리에 규격별 재고 → 일별 추이 그래프를 차례로 놓아 봤는데 둘 다 물러섰다. 앞엣것은
      아래 지도와 겹쳤고, 뒤엣것은 "데이터를 보여 줄 뿐 뜻이 한눈에 안 온다" 는 지적을 받았다.
@@ -9,12 +9,16 @@
        10월 출고가 입고를 앞지름 → 재고 감소
      날짜별 그래프에서는 이 셋이 톱니 속에 묻혀 있었다.
 
-   ★ 아래 칸은 **박스 규격별 재고(1~6호)** 다 (사용자 결정). 한때 여기 소진율과 재고
+   ★ 아래 칸은 **칸 규격별 재고** 다 (사용자 결정). 한때 여기 소진율과 재고
      순증을 두 상자로 두었는데, 셋으로 나뉜 칸이 저마다 다른 것을 말해 화면이 흩어졌다.
      지금은 **위가 시간(달별 물동량), 아래가 지금(규격별 재고)** 으로 두 가지만 말한다.
-   ⚠️ 규격 색은 쓰지 않고 **구역 기호(A~F)** 를 오른쪽에 작게 적는다. 아래 지도는 여전히
-      A~F 로 말하므로 잇는 고리는 필요하지만, 이 칸은 무채색이라 색 조각을 여섯 개 놓으면
-      그것만 튄다.
+   ⚠️ Stage 11(11.0) 개정 — 존이 더 이상 상품 크기를 뜻하지 않는다(존은 매체 구획,
+      존 7개 A~F 등급 배치가 사라졌다). 규격은 이제 `bin_type`(XS·S·M·L·XL·PLT) 의
+      몫이라 이 칸도 존 코드(`GET /zones/summary`) 대신 `GET /layout` 베이의
+      `binType`×`occupiedBins`/`totalBins` 합으로 다시 센다(백엔드에 bin_type 별
+      집계 API 가 없다, 노트 참고). "박스 규격별 재고" → **"칸 규격별 재고"** 로도
+      이름을 바꿨다 — bin_type 은 보관칸 규격이지 포장 박스(`GET /box-types`, 출고
+      화면이 따로 쓴다)가 아니라 "박스"라고 부르면 다른 규격표와 헷갈린다.
 
    ⚠️ 이 칸만 **61일 전부**를 본다. 지도·흐름도는 `day`(기본 29 = 2024-09-11)를 "오늘"로
       말하지만, 여기는 지나간 달을 정리하는 자리라 달을 잘라 보여 주면 8월 한 달과 9월
@@ -60,7 +64,8 @@
 import { useMemo, useState } from "react";
 
 import type { DailyInventory } from "@/lib/types";
-import { useRecentDailyInventory, useZonesSummary } from "../_data/use-inventory";
+import { useLayout } from "../_data/use-layout";
+import { useRecentDailyInventory } from "../_data/use-inventory";
 import { FAINT, FILL, FILL_WEAK, INK, MUTED, RULE, TRACK } from "./clean-ui";
 import { w98 } from "./win98-ui";
 
@@ -101,18 +106,16 @@ function byMonth(daily: DailyInventory[]): Month[] {
 
 const W = 340, H = 214, PAD_B = 26;
 
-/* 실제 포장 박스 규격 (1~6호, mm).
-   ★ 창고 구역 기호(A~F) 대신 **현장에서 부르는 이름**으로 적는다. "C 중형" 보다
-     "3호 340x250x210" 이 포장 담당자에게 훨씬 빨리 읽힌다.
-   ⚠️ 순서는 `gradeStats` 가 돌려주는 A~F 차례와 **같아야** 한다. 둘 다 작은 것부터라
-      지금은 맞지만, 한쪽 정렬을 바꾸면 규격과 재고 수가 뒤바뀐 채로 그려진다. */
-const BOX_SPEC = [
-  { no: "1호", mm: "220×190×90" },
-  { no: "2호", mm: "270×180×150" },
-  { no: "3호", mm: "340×250×210" },
-  { no: "4호", mm: "410×310×280" },
-  { no: "5호", mm: "480×380×340" },
-  { no: "6호", mm: "520×480×400" },
+/* 보관칸 규격(`bin_type`, 정본 §11.0 표) — 치수는 그 표에서 그대로 옮겼다(mm).
+   PLT_FLOOR 는 시드 기본값이 0(냉장 파렛트 예비)이라 화면에서 뺀다 — 늘 0/0 인
+   줄은 "규격 사다리"에 자리만 차지하고 아무 것도 말하지 않는다. */
+const BIN_TYPE_SPEC = [
+  { code: "XS", mm: "300×300×200" },
+  { code: "S", mm: "350×350×300" },
+  { code: "M", mm: "400×400×400" },
+  { code: "L", mm: "500×500×400" },
+  { code: "XL", mm: "600×600×600" },
+  { code: "PLT", mm: "1100×1100×1500" },
 ];
 
 /** 한 화면에 놓는 달 수 */
@@ -124,14 +127,27 @@ export function MonthlyPanel() {
   const { data: daily } = useRecentDailyInventory();
   const all = useMemo(() => byMonth(daily ?? []), [daily]);
 
-  /* 규격별 재고는 `GET /zones/summary` 로 그린다. `BOX_SPEC` 은 실제 포장 박스 6종(1~6호)
-     뿐이라 G(냉동)는 대응이 없다 — 존 코드로 걸러 뺀다(A~F 는 코드 오름차순이 곧
-     1호~6호 순서와 같다, `lib/zone-layout.ts` 의 `INV_KEY_BY_CODE` 와 같은 대응). */
-  const { data: zonesSummary } = useZonesSummary();
-  const boxStats = useMemo(
-    () => (zonesSummary ?? []).filter((z) => z.code !== "G").slice().sort((a, b) => (a.code < b.code ? -1 : 1)),
-    [zonesSummary],
-  );
+  /* 규격별 재고는 Stage 11(11.0)부터 존이 아니라 `bin_type` 기준이다(파일 머리말).
+     백엔드에 bin_type 별 집계 API 가 없어(2026-09-13 확인) `GET /layout` 베이를
+     `binType` 으로 묶어 `totalBins`/`occupiedBins` 를 직접 더한다 — 칸(Position)
+     단위가 아니라 베이 단위 합이라 실제 칸 수와 같다(베이의 totalBins 가 이미
+     levels×positions 다, `Bay` 타입 참고). */
+  const { data: layout } = useLayout();
+  const binTypeStats = useMemo(() => {
+    const acc = new Map<string, { binCount: number; occupiedBins: number }>();
+    for (const bay of layout?.bays ?? []) {
+      const entry = acc.get(bay.binType) ?? { binCount: 0, occupiedBins: 0 };
+      entry.binCount += bay.totalBins;
+      entry.occupiedBins += bay.occupiedBins;
+      acc.set(bay.binType, entry);
+    }
+    return BIN_TYPE_SPEC.map((spec) => ({
+      code: spec.code,
+      mm: spec.mm,
+      binCount: acc.get(spec.code)?.binCount ?? 0,
+      occupiedBins: acc.get(spec.code)?.occupiedBins ?? 0,
+    })).filter((stat) => stat.binCount > 0);
+  }, [layout]);
 
   /* 보이는 창의 **첫 달** 번호. 데이터가 들어오기 전에는 null 로 두고, 들어오면 **가장
      최근 석 달**이 보이게 연다 — 30일치라 대개 한두 달뿐이라도 그중 최신 쪽이다. */
@@ -264,42 +280,40 @@ export function MonthlyPanel() {
         </svg>
       </div>
 
-      {/* ── 박스 규격별 재고 ── */}
+      {/* ── 칸 규격별 재고 ── */}
       <div className={`${w98.sunken} flex min-h-0 flex-1 flex-col bg-white px-3 py-2.5`}>
         <div className="flex shrink-0 items-baseline justify-between gap-2">
-          <span className="text-[15px] font-semibold" style={{ color: INK }}>박스 규격별 재고</span>
+          <span className="text-[15px] font-semibold" style={{ color: INK }}>칸 규격별 재고</span>
           <span className="text-[11px]" style={{ color: MUTED }}>채움 / 전체</span>
         </div>
 
         {/* ── 한 줄 = 규격 하나 ────────────────────────────────────────
-            ★ 한 줄에 호수·치수·구역 기호·재고 수·비율·막대 여섯 가지가 있었다. 다 있으니
-              **아무것도 눈에 안 들어왔다** (사용자 지적). 호수만 크게 남기고 나머지를 낮췄다.
-            ★ 호수를 **왼쪽 기둥에 세로로 정렬**한다. 여섯 줄의 왼쪽 끝이 1호~6호로 줄지어
-              서면, 눈이 그 기둥만 훑어도 규격 사다리가 읽힌다.
-            ⚠️ 치수(220x190x90)는 뺐다. 규격을 **정의**하는 값이라 규격표에는 있어야 하지만,
-               여기는 "지금 얼마나 찼나"를 보는 자리다. 여섯 줄에 다 적으면 그 숫자가 재고
-               수와 섞여 어느 쪽이 재고인지 흐려진다.
-            ⚠️ 여섯 줄이 남는 높이를 나눠 갖는다(`flex-1`). 줄 높이를 못 박으면 창 높이가
+            ★ 한 줄에 규격·치수·재고 수·비율·막대 다섯 가지가 있었다. 다 있으니
+              **아무것도 눈에 안 들어왔다** (사용자 지적). 규격 코드만 크게 남기고
+              나머지를 낮췄다.
+            ★ 규격 코드를 **왼쪽 기둥에 세로로 정렬**한다. 줄의 왼쪽 끝이 XS~PLT 로
+              줄지어 서면, 눈이 그 기둥만 훑어도 규격 사다리가 읽힌다.
+            ⚠️ 치수는 코드 아래 작게만 둔다 — 여기는 "지금 얼마나 찼나"를 보는 자리라
+               재고 수와 나란히 두면 어느 쪽이 재고인지 흐려진다.
+            ⚠️ 줄이 남는 높이를 나눠 갖는다(`flex-1`). 줄 높이를 못 박으면 창 높이가
                조금만 달라져도 마지막 줄이 잘리거나 아래가 휑하다. */}
         <div className="mt-2 flex min-h-0 flex-1 flex-col">
-          {boxStats.map((z, i) => {
-            const spec = BOX_SPEC[i];
-            const pct = z.binCount > 0 ? (z.occupiedBins / z.binCount) * 100 : 0;
+          {binTypeStats.map((stat, i) => {
+            const pct = stat.binCount > 0 ? (stat.occupiedBins / stat.binCount) * 100 : 0;
             /* 임계를 넘긴 규격만 굵게. 색을 안 쓰므로 굵기가 유일한 강조다 */
             const hot = pct > 85;
             return (
               <div
-                key={z.code}
+                key={stat.code}
                 className="flex min-h-0 flex-1 items-center gap-3"
                 style={i === 0 ? undefined : { borderTop: `1px solid ${RULE}` }}
               >
-                {/* 호수 — 이 줄의 이름이자 이 칸에서 가장 큰 글자 */}
+                {/* 규격 코드 — 이 줄의 이름이자 이 칸에서 가장 큰 글자 */}
                 <div className="w-[38px] shrink-0 text-center">
                   <div className="text-[21px] leading-none font-bold" style={{ color: INK }}>
-                    {spec?.no}
+                    {stat.code}
                   </div>
-                  {/* 구역 기호 — 아래 지도가 A~F 로 말하므로 잇는 고리만 남긴다 */}
-                  <div className="mt-0.5 text-[10px] leading-none" style={{ color: FAINT }}>{z.code}</div>
+                  <div className="mt-0.5 text-[9px] leading-none" style={{ color: FAINT }}>{stat.mm}</div>
                 </div>
 
                 <div className="min-w-0 flex-1">
@@ -308,10 +322,10 @@ export function MonthlyPanel() {
                       className={`text-[16px] tabular-nums ${hot ? "font-bold" : "font-semibold"}`}
                       style={{ color: INK }}
                     >
-                      {z.occupiedBins.toLocaleString()}
+                      {stat.occupiedBins.toLocaleString()}
                     </span>
                     <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>
-                      /{z.binCount.toLocaleString()}
+                      /{stat.binCount.toLocaleString()}
                     </span>
                     <span className="ml-auto text-[12px] tabular-nums" style={{ color: hot ? INK : MUTED }}>
                       {pct.toFixed(1)}%

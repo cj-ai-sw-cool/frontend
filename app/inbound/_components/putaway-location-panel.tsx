@@ -98,17 +98,21 @@ export function PutawayLocationPanel({
               </p>
             ) : (
               <>
-                {/* ── 주소판 — 존 글자를 크게, 랙·단·열은 숫자 칩으로. 백엔드가 이미 분해해서
-                    준다(2026-09-11 라이브 보고) — 프론트에서 코드 문자열을 다시 쪼개지 않는다. */}
+                {/* ── 주소판 — 존 글자를 크게, 코드 문자열을 그 아래 가장 눈에 띄게 둔다.
+                    통로·베이·단·위치는 보조 칩으로만(Stage 11, 11.0 "주소" 5단 — 백엔드가
+                    진열 API 를 맞춰 고치는 중이라 분해 필드는 라이브 검증 대기,
+                    `PutawayMove` 타입 주석 참고). 백엔드가 이미 분해해서 준다 — 프론트에서
+                    코드 문자열을 다시 쪼개지 않는다. */}
                 <div className={`${w98.mono} text-[64px] leading-none font-bold text-[color:var(--primary)]`}>
                   {primary.zoneCode}
                 </div>
+                <div className={`${w98.mono} text-[20px] font-bold`}>{primary.locationCode}</div>
                 <div className="flex gap-2">
-                  <AddressChip label="랙" value={String(primary.rackNo)} />
+                  <AddressChip label="통로" value={String(primary.aisleNo)} />
+                  <AddressChip label="베이" value={String(primary.bayNo)} />
                   <AddressChip label="단" value={String(primary.levelNo)} />
-                  <AddressChip label="열" value={String(primary.colNo)} />
+                  <AddressChip label="위치" value={String(primary.positionNo)} />
                 </div>
-                <div className={`${w98.mono} text-[15px] font-bold`}>{primary.locationCode}</div>
                 <div className={`${w98.small} text-[color:var(--muted-foreground)]`}>
                   {PUTAWAY_TIER_LABEL[primary.tier]} · 이동 후 적재율 {primary.loadLevelAfterPct}%
                 </div>

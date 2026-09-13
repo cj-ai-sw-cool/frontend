@@ -115,8 +115,18 @@ export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
         ctx.strokeRect(px(x), px(y), Math.round(aw), Math.round(ah));
         ctx.setLineDash([]);
       }
+      /* 라벨 — 방이 좁으면(라이브 데이터의 CHL 4.2m·FRZ 2.8m 처럼) 안에 넣으면 옆 방
+       * 라벨과 겹친다. 폭이 모자라면 방 위쪽 바깥으로 빼고 이름 없이 코드만 남긴다 */
       ctx.fillStyle = "#1A1F28";
-      ctx.fillText(`${area.code} · ${area.name}`, x + 6, y + 16);
+      const fullLabel = `${area.code} · ${area.name}`;
+      if (aw < 70) {
+        ctx.textAlign = "center";
+        ctx.fillText(area.code, x + aw / 2, y - 4);
+        ctx.textAlign = "left";
+      } else {
+        const label = ctx.measureText(fullLabel).width <= aw - 12 ? fullLabel : area.code;
+        ctx.fillText(label, x + 6, y + 16);
+      }
     }
 
     // ── 존 구획선

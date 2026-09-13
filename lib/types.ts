@@ -955,12 +955,20 @@ export interface PutawayPendingQuery {
  * `zoneCode`/`rackNo`/`levelNo`/`colNo` — 백엔드가 `locationCode` 와 함께 분해된 값도 준다
  * (2026-09-11 라이브 보고). 프론트에서 문자열을 다시 쪼갤 필요가 없다.
  */
+/**
+ * ⚠️ Stage 11(11.0) — 로케이션 주소가 `{존}-{랙:2}-{단:2}-{열:2}` 4단에서 `{존}-
+ * {통로:2}-{베이:2}-{단:2}-{위치:2}` 5단으로 바뀌면서, 이 응답의 분해 필드도
+ * `rackNo`/`colNo` 대신 `aisleNo`/`bayNo`/`positionNo` 로 온다(2026-09-13, 백엔드가
+ * 진열 API를 맞춰 고치는 중 — 라이브 검증 대기, 그 전까진 타입만 맞춘다). `locationCode`
+ * 가 코드 문자열이라 화면은 이 값을 우선 보여주고, 분해 필드는 보조 표시로만 쓴다.
+ */
 export interface PutawayMove {
   locationCode: string;
   zoneCode: string;
-  rackNo: number;
+  aisleNo: number;
+  bayNo: number;
   levelNo: number;
-  colNo: number;
+  positionNo: number;
   qty: number;
   tier: PutawayTier;
   /** 이 이동을 반영한 뒤의 적재율(%) — `BinCapacity.loadLevel` */

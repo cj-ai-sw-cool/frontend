@@ -15,7 +15,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Bay, Bin, LayoutResponse } from "@/lib/types";
-import { buildStaticGroup } from "./area-mesh";
+import { buildAreaLabels, buildStaticGroup } from "./area-mesh";
 import { applyZoneHighlight, type BayInstanceMesh, buildBayInstances, buildExpandedBins } from "./bay-mesh";
 import { bayDisplayCode, buildLayoutIndex, layoutBounds } from "./layout-geometry";
 
@@ -46,6 +46,7 @@ export function LayoutScene({
 }: LayoutSceneProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const labelsLayerRef = useRef<HTMLDivElement>(null);
   const expandedGroupRef = useRef<THREE.Group | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const bimRef = useRef<BayInstanceMesh | null>(null);
@@ -69,6 +70,7 @@ export function LayoutScene({
     sceneRef.current = scene;
 
     scene.add(buildStaticGroup(layout));
+    const labels = labelsLayerRef.current ? buildAreaLabels(labelsLayerRef.current, layout.areas) : null;
     const bim = buildBayInstances(layout.bays, index);
     if (bim) {
       scene.add(bim.mesh);
@@ -179,6 +181,7 @@ export function LayoutScene({
     const tick = () => {
       controls.update();
       renderer.render(scene, camera);
+      labels?.update(camera, renderer.domElement.clientWidth, renderer.domElement.clientHeight);
       raf = requestAnimationFrame(tick);
     };
     tick();
@@ -191,6 +194,7 @@ export function LayoutScene({
       controls.dispose();
       renderer.dispose();
       wrap.removeChild(renderer.domElement);
+      labels?.dispose();
       sceneRef.current = null;
       bimRef.current = null;
     };
@@ -217,6 +221,7 @@ export function LayoutScene({
 
   return (
     <div ref={wrapRef} className="relative h-full w-full">
+      <div ref={labelsLayerRef} className="pointer-events-none absolute inset-0 z-0" />
       <div
         ref={tooltipRef}
         hidden
