@@ -114,9 +114,14 @@ export function PutawayTab() {
       {
         locationCode: capacity.locationCode,
         zoneCode: address?.zoneCode ?? capacity.zoneCode ?? "",
-        rackNo: address?.rackNo ?? 0,
+        // GET /locations/{code}/capacity 응답엔 binTypeCode 가 없다 — "다른 칸"은
+        // 사용자가 직접 고른 칸이라 추천 응답(PutawayMove.binTypeCode, 백엔드 노트
+        // §4.6)과 달리 이 정보가 없다. 어디서도 아직 표시하지 않는 필드라 빈 값으로 둔다.
+        binTypeCode: "",
+        aisleNo: address?.aisleNo ?? 0,
+        bayNo: address?.bayNo ?? 0,
         levelNo: address?.levelNo ?? 0,
-        colNo: address?.colNo ?? 0,
+        positionNo: address?.positionNo ?? 0,
         qty: placeQty,
         tier,
         loadLevelAfterPct: capacity.loadLevelPct,

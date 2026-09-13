@@ -150,6 +150,28 @@ function WaveResultView({
   result: WaveCreateResponse;
   onClose: () => void;
 }) {
+  /* Stage 11(11.4) "빈 웨이브 금지" 결정 — 마감 지난 ALLOCATED 주문이 0건이면 백엔드가
+   * 웨이브 행 자체를 만들지 않고 `waveId: null` 로 돌려준다(정본 §11.4). 실패가 아니라
+   * "만들 게 없었다"는 정상 응답이라 에러 배너가 아니라 결과 화면 한 장으로 보여준다. */
+  if (result.waveId === null) {
+    return (
+      <>
+        <div className="flex flex-col gap-3 p-3">
+          <p className={`${w98.small} font-bold`}>대상 주문 없음</p>
+          <p className={`${w98.small} text-[color:var(--muted-foreground)]`}>
+            마감시각이 지난 ALLOCATED 주문이 없어 웨이브를 만들지 않았습니다. 마감시각을
+            늦추거나, 주문을 먼저 투입한 뒤 다시 시도하세요.
+          </p>
+        </div>
+        <div className="flex justify-end gap-2 border-t-2 border-[color:var(--surface-dim)] p-2">
+          <Btn onClick={onClose} className="h-7 w-24 font-bold">
+            닫기
+          </Btn>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="flex flex-col gap-3 p-3">

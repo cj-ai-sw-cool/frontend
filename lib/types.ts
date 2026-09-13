@@ -388,44 +388,197 @@ export interface CreateSellerRequest {
 
 export type TempZone = "AMBIENT" | "CHILLED" | "FROZEN";
 
+/* ── 11.0 로케이션 계층 개정 (Stage 11) ───────────────────────────────────
+   정본: backend/docs/02-system/02-data-model.md §11.0 "3D·2D 계약". `Zone` 이
+   존 7개 두 줄 배치(등급 상한·랙 쌍·줄 배치)를 버리고 `Area(방) → Zone(매체) →
+   Aisle(통로) → Bay(랙) → Level → Position(칸)` 계층으로 바뀐다. 3D·2D
+   레이아웃은 이제 `lib/zone-layout.ts` 대신 `GET /layout`(`LayoutResponse`)을
+   그린다(`app/analytics/_components/layout/` 참고). */
+
+export type AreaKind = "STORAGE" | "RECEIVING" | "PACKING" | "RETURNS";
+export type Medium = "SHELF" | "PALLET_RACK" | "PALLET_FLOOR";
+export type AisleDirection = "FORWARD" | "REVERSE";
+export type BaySide = "LEFT" | "RIGHT";
+export type BinRole = "PICK_FACE" | "RESERVE";
+
 /**
- * `GET /zones` 항목 — 3D·2D 레이아웃(`lib/zone-layout.ts`)과 로케이션 탭의
- * 존 단이 함께 읽는다. `locationCount` 는 그 존 소속 BIN 로케이션 수다.
+ * `GET /layout` 의 `areas[]` — 방(기능 구역) 하나. 냉장·냉동은 벽으로 닫힌 방이다
+ * (`kind = STORAGE`, `tempZone = CHILLED`/`FROZEN`).
+ *
+ * ⚠️ 좌표는 **건물 하나의 전역 좌표**다(2026-09-13 라이브 검증 — `id` 필드도 같이
+ * 있었다). 브리프 원문 "area 원점 기준"을 처음엔 "zone/aisle/bay 가 자기 area 원점에서
+ * 상대"로 읽었으나, 실제 응답은 `zone.xM === area.xM`(존이 area 왼쪽 끝에서 시작)처럼
+ * **모두 같은 전역 평면 좌표**였다 — area 오프셋을 더하면 안 된다(더하면 위치가 두 배로
+ * 밀린다). `layout-geometry.ts` 의 `zoneWorldRect`/`bayBox` 가 이 해석으로 되어 있다.
+ * ⚠️ 존(zone)의 `dM`(69.6m)이 자기 area 의 `dM`(48m)보다 **클 수 있다** — 존은 통로를
+ * 한 방향으로 쌓은 개략도라 area 의 물리적 방 사각형과 정확히 맞물리지 않는다(라이브
+ * 확인, 노트 "계약과 다르게 한 것"). 그래서 이 파일은 area 를 zone/aisle/bay 를 담는
+ * 그릇이 아니라 **바닥판 배경**으로만 그린다.
  */
-export interface Zone {
+export interface Area {
+  id: number;
   code: string;
   name: string;
+  kind: AreaKind;
   tempZone: TempZone;
-  /** 세 변 합 상한(cm). null = 상한 없음 */
-  gradeCapCm: number | null;
-  binWidthCm: number;
-  binHeightCm: number;
-  rackPairs: number;
-  rackSingles: number;
-  cols: number;
-  levels: number;
-  /** 3D 배치 줄 — 0 뒷줄, 1 앞줄 */
-  rowNo: number;
-  /** 줄 안 순서 */
-  orderInRow: number;
-  locationCount: number;
+  xM: number;
+  yM: number;
+  wM: number;
+  dM: number;
 }
 
-export type LocationType = "BIN" | "TOTE" | "REBIN_SLOT" | "RECEIVING" | "PACKING";
+/**
+ * `GET /zones` 항목이자 `GET /layout` 의 `zones[]` — 존 7개 등급 배치(gradeCapCm·
+ * rackPairs·cols·levels·rowNo·orderInRow)가 전부 사라졌다(11.0 표 "삭제"). 존은
+ * 이제 방(`areaCode`) 안의 매체(`medium`) 구획이다.
+ *
+ * ⚠️ `binCount` 는 **`GET /zones` 단독 호출에만** 있다(2026-09-13 라이브 검증) —
+ * `GET /layout` 의 `zones[]` 에는 없다(선택 필드로 둔 이유). 3D·2D 는 베이 합계로
+ * 직접 구한다(`layout-geometry.ts` `zoneBinCount`).
+ */
+export interface Zone {
+  id: number;
+  code: string;
+  name: string;
+  areaCode: string;
+  /** `GET /zones` 단독 호출에만 온다(백엔드 노트 §4.1) — `GET /layout` 의
+   * `zones[]` 에는 없다 */
+  areaName?: string;
+  tempZone?: TempZone;
+  medium: Medium;
+  binCount?: number;
+  xM: number;
+  yM: number;
+  wM: number;
+  dM: number;
+}
+
+/** `GET /layout` 의 `aisles[]` — 존 안의 통로 하나. 좌표는 Area 와 같은 전역 평면(m) */
+export interface Aisle {
+  id: number;
+  zoneCode: string;
+  no: number;
+  direction: AisleDirection;
+  xM: number;
+  yM: number;
+  lengthM: number;
+}
+
+/**
+ * `GET /layout` 의 `bays[]` — 통로 한쪽의 랙 한 대. 칸(Position) 메시는 그리지 않고
+ * 이 블록 하나로 점유율(occupiedBins/totalBins)을 5단계 색으로 보여준다. 베이를
+ * 클릭했을 때만 `GET /bays/{id}/bins` 로 칸을 편다.
+ *
+ * ⚠️ `aisleId` 가 아니라 **`zoneCode` + `aisleNo`**로 통로를 가리킨다(2026-09-13 라이브
+ * 검증 — 브리프 §1 표는 `aisleId` 라고 적었으나 실제 응답 필드는 이거였다). 통로
+ * `Aisle.id` 가 필요하면(로케이션 탭 Select 값 등) `zoneCode`+`aisleNo` 로 역매칭한다
+ * (`layout-geometry.ts` `buildLayoutIndex`).
+ * ⚠️ `xM/yM` 은 그 베이 footprint 의 **통로 쪽 모서리**(중심이 아니다) — 통로가 뻗는
+ * 축(대개 X)으로 갈수록 `no` 가 커지며 `xM` 이 `BAY_LENGTH_M` 만큼 늘어난다.
+ */
+export interface Bay {
+  id: number;
+  zoneCode: string;
+  aisleNo: number;
+  no: number;
+  side: BaySide;
+  binType: string;
+  levels: number;
+  positions: number;
+  xM: number;
+  yM: number;
+  totalBins: number;
+  occupiedBins: number;
+  qty: number;
+}
+
+/** `GET /layout` 응답 — 3D·2D 가 그리는 전체(정본 §11.0 "3D·2D 계약"). 베이 약
+ * 800~1,000행이라 칸은 포함하지 않는다 */
+export interface LayoutResponse {
+  areas: Area[];
+  zones: Zone[];
+  aisles: Aisle[];
+  bays: Bay[];
+}
+
+/**
+ * `GET /bays/{id}/bins` 응답의 `bins[]` 항목 하나(≤ 20개, 베이 클릭 시에만).
+ *
+ * ⚠️ 2026-09-13 라이브 검증 — 브리프 §1 이 적은 `Bin{…, productName, qty}`(칸 하나 =
+ * 상품 하나)와 달리, 실제 칸은 **로트별로 여러 품목을 담을 수 있어** `items[]` 로
+ * 온다(`pickSequence` 도 함께 온다, 정본 §11.0 "pick_sequence"). `qty` 는 그 칸의
+ * 합계, `items[].qty` 는 로트별 수량이다. 비어 있으면 `sellerCode` 가 null 이고
+ * `items` 가 빈 배열이다.
+ */
+export interface BinItem {
+  gtin: string;
+  productName: string;
+  lotNo: string;
+  qty: number;
+}
+
+export interface Bin {
+  locationId: number;
+  code: string;
+  levelNo: number;
+  positionNo: number;
+  role: BinRole;
+  pickSequence: number;
+  sellerCode: string | null;
+  qty: number;
+  items: BinItem[];
+}
+
+/** `GET /bays/{id}/bins` 응답 — 브리프 §1 은 이걸 `Bin[]` 이라고 적었으나 실제로는 베이
+ * 메타(존·통로·베이 번호·binType·levels·positions)를 두른 객체다(라이브 검증). 칸
+ * 배열은 `bins` 필드에 있다 — `use-layout.ts` `useBayBins` 가 이 필드만 꺼내 쓴다. */
+export interface BayBinsResponse {
+  bayId: number;
+  zoneCode: string;
+  aisleNo: number;
+  bayNo: number;
+  binType: string;
+  levels: number;
+  positions: number;
+  bins: Bin[];
+}
+
+export type LocationType =
+  | "BIN"
+  | "TOTE"
+  | "REBIN_SLOT"
+  | "RECEIVING"
+  | "PACKING"
+  /** 냉장·냉동 피킹분이 상온 포장에 합류하기 전 대기하는 자리(11.0, `PCK` 구역) */
+  | "COLD_BUFFER"
+  /** 반품 격리 — Stage 12 */
+  | "RETURNS_HOLD";
 export type LocationStatus = "ACTIVE" | "BLOCKED";
 
 /**
  * `GET /locations` 항목 / `GET /locations/{code}` 단건.
  * `zoneCode`·좌표·치수는 BIN 에만 있다 — 토트·슬롯·입고장·포장대는 전부 null 이다.
  */
+/**
+ * ⚠️ Stage 11 (11.0) — `rackNo`·`colNo` 컬럼이 DB 에서 삭제되고 `bayId`·`positionNo` 가
+ * 대신한다(정본 §11.0 location 표 "삭제: rack_no·col_no"). `GET /locations` 응답 DTO
+ * 변경은 정본이 명시하지 않아(§11.0 은 `GET /zones` 만 명시) 스키마 변경을 그대로
+ * 따라간 **추정**이다 — 노트 "계약과 다르게 한 것" 참고, 라이브 검증 대기.
+ */
 export interface Location {
   id: number;
   code: string;
   type: LocationType;
+  areaCode: string | null;
   zoneCode: string | null;
-  rackNo: number | null;
+  aisleNo: number | null;
+  bayId: number | null;
+  bayNo: number | null;
   levelNo: number | null;
-  colNo: number | null;
+  positionNo: number | null;
+  binTypeCode: string | null;
+  role: BinRole | null;
+  pickSequence: number | null;
   widthCm: number | null;
   lengthCm: number | null;
   heightCm: number | null;
@@ -433,10 +586,19 @@ export interface Location {
   status: LocationStatus;
 }
 
-/** `GET /locations` 쿼리 — 전부 선택(§2 S1.2) */
+/**
+ * `GET /locations` 쿼리 — 전부 선택(§2 S1.2). 2026-09-13 백엔드 노트 §4.5로 최종
+ * 확정 — 브리프 §3 S11.4가 요청한 `aisleId`·`bayId` 필터가 이제 실제로 동작한다.
+ * `aisle`(통로 **번호**, `Aisle.no`)은 `zone` 과 반드시 같이 와야 한다(안 주면 400) —
+ * `aisleId`/`bayId`(`GET /layout` 이 준 진짜 id)는 단독으로도 된다. `rack` 파라미터는
+ * 사라졌다. 페이지 크기 상한은 2,000(Spring 기본값)로 유지 — 화면이 통로·베이로
+ * 범위를 좁혀 부르므로 커서 페이지네이션은 없다(노트 §4.5 "2026-09-13 프론트와 확인").
+ */
 export interface LocationsQuery {
   zone?: string;
-  rack?: number;
+  aisle?: number;
+  aisleId?: number;
+  bayId?: number;
   type?: LocationType;
   page?: number;
   size?: number;
@@ -502,13 +664,19 @@ export interface StockLedgerEntry {
   createdAt: string;
 }
 
-/** `GET /stock/occupancy` 행 — BIN 전체(3,888행). 3D·2D 지도가 인스턴스 매핑에 쓴다 */
+/**
+ * `GET /stock/occupancy` 행 — BIN 전체(Stage 11 규모로 13,000여 행). 화면 미사용 API 다
+ * (3D·2D 는 이제 `GET /layout`을 그린다, `master.layout` 주석 참고).
+ *
+ * ⚠️ Stage 11(11.0) — `rack`/`col` → `bayId`/`position`(2026-09-13 백엔드 노트 §4.9).
+ * 통로·베이 번호까지는 안 붙인다(13,000행 조인 비용).
+ */
 export interface StockOccupancyRow {
   code: string;
   zone: string;
-  rack: number;
+  bayId: number;
   level: number;
-  col: number;
+  position: number;
   qty: number;
   sellerCode: string | null;
 }
@@ -793,16 +961,21 @@ export interface PutawayPendingQuery {
 }
 
 /**
- * `POST /putaway/recommend` 이동 후보 한 칸.
- * `zoneCode`/`rackNo`/`levelNo`/`colNo` — 백엔드가 `locationCode` 와 함께 분해된 값도 준다
- * (2026-09-11 라이브 보고). 프론트에서 문자열을 다시 쪼갤 필요가 없다.
+ * `POST /putaway/recommend` 이동 후보 한 칸 — Stage 11(11.0) 로케이션 주소가
+ * `{존}-{랙:2}-{단:2}-{열:2}` 4단에서 `{존}-{통로:2}-{베이:2}-{단:2}-{위치:2}` 5단으로
+ * 바뀌면서 분해 필드도 `rackNo`/`colNo` 대신 `aisleNo`/`bayNo`/`positionNo`(2026-09-13
+ * 백엔드 노트 §4.6로 확정). `binTypeCode` 는 새로 추가된 필드 — 추천은 이제 피킹면
+ * (`role = PICK_FACE`)만 돌려준다. `locationCode` 가 코드 문자열이라 화면은 이 값을
+ * 우선 보여주고, 분해 필드는 보조 표시로만 쓴다.
  */
 export interface PutawayMove {
   locationCode: string;
   zoneCode: string;
-  rackNo: number;
+  binTypeCode: string;
+  aisleNo: number;
+  bayNo: number;
   levelNo: number;
-  colNo: number;
+  positionNo: number;
   qty: number;
   tier: PutawayTier;
   /** 이 이동을 반영한 뒤의 적재율(%) — `BinCapacity.loadLevel` */
@@ -815,8 +988,11 @@ export interface PutawayRecommendRequest {
   qty?: number;
 }
 
-/** `POST /putaway/recommend` 응답 — 상한 5칸, 다 못 넣으면 `unplacedQty` */
+/** `POST /putaway/recommend` 응답 — 상한 5칸, 다 못 넣으면 `unplacedQty`. `stockId`·
+ * `requestedQty` 는 2026-09-13 백엔드 노트 §4.6로 추가 확인된 필드 */
 export interface PutawayRecommendResponse {
+  stockId: number;
+  requestedQty: number;
   moves: PutawayMove[];
   unplacedQty: number;
 }
@@ -1179,15 +1355,22 @@ export interface WaveDetail {
  * ⚠️ Stage 7 — `zoneCode`/`rackNo`/`levelNo`/`colNo` 추가(정본 §7.4 "location{code,zone,
  * rack,level,col}", 백엔드 2026-09-12 보고). BIN 이 아닌 로케이션이면 null 일 수 있어
  * 타입은 nullable 이지만, 피킹 태스크는 항상 BIN 이라 실제로는 늘 채워진다.
+ *
+ * ⚠️ Stage 11(11.0) — `rackNo`/`colNo` → `aisleNo`/`bayNo`/`positionNo`, `pickSequence`
+ * 추가(2026-09-13 백엔드 노트 §4.7). 순회 순서가 로케이션 코드가 아니라 `pickSequence`
+ * 로 바뀌었다. 이 화면은 아직 `GET /waves/{id}/tasks` 를 안 불러(`pickBatches.get` 을
+ * 대신 쓴다, `WaveTasksResponse` 주석 참고) 계약에 있는 API 라 타입만 맞춘다.
  */
 export interface PickTask {
   pickTaskId: number;
   seqNo: number;
+  pickSequence: number | null;
   locationCode: string;
   zoneCode: string | null;
-  rackNo: number | null;
+  aisleNo: number | null;
+  bayNo: number | null;
   levelNo: number | null;
-  colNo: number | null;
+  positionNo: number | null;
   sellerCode: string;
   gtin: string;
   productName: string;
@@ -1243,11 +1426,18 @@ export interface WaveCreateRequest {
   cutoffAt: string;
 }
 
-/** `POST /waves` 응답 — 정본 §6.4 "주문 수·배치 수·태스크 수·skipped". 이 응답의 `skipped`
- * 만 항상 찬다(`WaveDetail.skipped` 주석 참고) */
+/**
+ * `POST /waves` 응답 — 정본 §6.4 "주문 수·배치 수·태스크 수·skipped". 이 응답의 `skipped`
+ * 만 항상 찬다(`WaveDetail.skipped` 주석 참고).
+ *
+ * ⚠️ Stage 11(11.4) — **빈 웨이브 금지**(2026-09-13 결정). 대상 주문이 0이면 웨이브
+ * 행을 만들지 않고 `waveId: null, orderCount: 0` 로 200을 돌려준다(정본 §11.4). `waveNo`
+ * 도 만들어진 행이 없으니 함께 null 로 잡았다 — 정본은 `waveId` 만 명시한다, 라이브
+ * 검증 대기(노트 "계약과 다르게 한 것").
+ */
 export interface WaveCreateResponse {
-  waveId: number;
-  waveNo: string;
+  waveId: number | null;
+  waveNo: string | null;
   orderCount: number;
   batchCount: number;
   taskCount: number;

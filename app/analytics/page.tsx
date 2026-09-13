@@ -26,8 +26,10 @@ const WarehouseMap = dynamic(() => import("./_components/warehouse-map"), {
  * ★ 이 컴포넌트는 원래 별도 창고 라우트가 소유했다. 그 라우트를 지우면서(Stage 1,
  *   docs/tasks/2026-09-09-stage1-master-handoff.md §3 S1.4a) 분석 화면이 유일한
  *   소유자가 됐다 — 분석 화면이 같은 3D 를 "3D 전체 ▶"로 이미 렌더했으므로 단독
- *   화면은 중복이었다. 파일은 내용 변경 없이 위치만 `_components/` 아래로 옮겼다.
- *   2,000줄짜리 three.js 씬이라 지금도 계속 손보는 중이니 사본을 두지 않는다.
+ *   화면은 중복이었다.
+ *   Stage 11(11.0)에서 존 7개 두 줄 배치 전제가 깨져 `app/analytics/_components/
+ *   layout/`(카메라·메시·좌표 변환 분할)로 다시 썼다 — `warehouse-slot-3d.tsx` 는
+ *   그 조각들을 무대에 올리는 얇은 오케스트레이터다.
  * ⚠️ `ssr: false` 여야 한다. three.js 가 모듈 최상단에서 `document` 를 만진다.
  * ⚠️ 눌렀을 때만 불러온다 — 분석 화면을 열 때마다 3D 번들을 받아 오면 첫 로딩이 무거워진다.
  */
@@ -246,7 +248,7 @@ export default function AnalyticsPage() {
             ★ 흐름도를 키우면서 이 폭도 **같이 늘렸다**(300 → 402). 위를 키우면 지도가 낮아지고,
               그러면 지도가 요구하는 폭도 함께 줄어든다 — 한쪽만 만지면 그만큼이 띠로 남는다.
               지도 축척은 31.24 → 28.94 로 7% 작아지지만 여백이 0 이라 실제 그림은 거의 같다. */}
-        <Panel title="월간 물동량 · 박스 재고" className="min-h-0 w-[402px] shrink-0">
+        <Panel title="월간 물동량 · 칸 재고" className="min-h-0 w-[402px] shrink-0">
           <MonthlyPanel />
         </Panel>
       </div>
@@ -260,7 +262,6 @@ export default function AnalyticsPage() {
       {full && (
         <div className="fixed top-0 left-0 z-[200] h-[1004px] w-[1600px] bg-[#10151C]">
           <WarehouseSlot3D
-            initialTab="3d"
             onReady={handleWarehouseReady}
             initialHighlight={highlightZone}
           />

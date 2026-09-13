@@ -5,9 +5,10 @@
      읽던 집계 함수를 전부 지웠다. 재고·점유는 이제
      `GET /stock/occupancy`·`GET /zones/summary`·`GET /inventory/daily` 에서 온다
      (`../_data/use-inventory.ts`, `warehouse-map.jsx`, `flow-panel.tsx`, `monthly-panel.tsx`).
-   ⚠️ **배치(존 규격·랙 배치)는 여기 없다** (Stage 1, docs/tasks/2026-09-09-stage1-master-
-      handoff.md §3 S1.5). `GRADES`·`ROWS`·`computeLayout` 은 `GET /zones` 응답을 그대로
-      쓰는 `lib/zone-layout.ts` 에 있다 — 3D·2D 가 같은 함수를 부른다.
+   ⚠️ **배치(방·존·통로·베이)는 여기 없다** (Stage 11, 정본 §11.0 "3D·2D 계약"). `GET
+      /layout` 응답을 세계 좌표로 바꾸는 계산은 `app/analytics/_components/layout/
+      layout-geometry.ts` 에 있다 — 3D(`layout-scene.tsx`)·2D(`warehouse-map.tsx`)가
+      같은 함수를 부른다.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /** 지도 바닥색.
