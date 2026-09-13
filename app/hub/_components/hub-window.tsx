@@ -17,11 +17,13 @@ import Link from "next/link";
 import { Terminal } from "lucide-react";
 import { AtpTab } from "./atp-tab";
 import { CentersTab } from "./centers-tab";
+import { ControlTab } from "./control-tab";
 import { OrdersTab } from "./orders-tab";
 import { TransfersTab } from "./transfers-tab";
 import { Btn, w98 } from "./win98-ui";
 
-const TABS = ["주문", "이동", "글로벌 ATP", "센터"] as const;
+// Stage 11A — "관제"(정본 §13.5 "허브 창에 '관제' 탭") 추가
+const TABS = ["주문", "이동", "글로벌 ATP", "센터", "관제"] as const;
 type Tab = (typeof TABS)[number];
 
 export function HubWindow() {
@@ -60,8 +62,10 @@ export function HubWindow() {
           <TransfersTab />
         ) : tab === "글로벌 ATP" ? (
           <AtpTab />
-        ) : (
+        ) : tab === "센터" ? (
           <CentersTab />
+        ) : (
+          <ControlTab />
         )}
       </div>
     </div>

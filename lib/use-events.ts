@@ -132,13 +132,60 @@ function mockEventsForRange(query: EventsQuery): WmsEvent[] {
   return sample.filter((event) => new Date(event.occurredAt).getTime() >= fromMs);
 }
 
-/** KPI 패널 — `GET /events/kpi`. 라이브 연결 중엔 스트림 이벤트로 화면이 직접 증분하므로
- * (호출부 몫) 여기는 폴링 없이 최초 1회 + `staleTime` 만료 후 재조회만 한다(브리프 §3) */
-export function useEventsKpi(center: string, windowSize = "1h") {
-  return useQuery<EventsKpiResponse>({
+/**
+ * KPI 패널 — `GET /events/kpi`. 라이브 연결 중엔 스트림 이벤트로 화면이 직접 증분하므로
+ * (호출부 몫) 여기는 폴링 없이 최초 1회 + `staleTime` 만료 후 재조회만 한다(브리프 §3).
+ *
+ * `recentEvents`를 주면(분석 화면 KPI 패널·허브 관제 탭 둘 다) 서버 집계가 실패했을 때
+ * 그 버퍼로 대충 낸 값을 대신 쓴다 — 정확한 서버 집계가 아니므로 호출부가 `usingMock`
+ * 으로 배지를 달아야 한다.
+ */
+export function useEventsKpi(center: string, windowSize = "1h", recentEvents?: WmsEvent[]) {
+  const result = useQuery<EventsKpiResponse>({
     queryKey: queryKeys.eventsKpi({ center, window: windowSize }),
     queryFn: () => events.kpi({ center, window: windowSize }),
     retry: false,
     staleTime: 30_000,
   });
+  const usingMock = result.isError && recentEvents !== undefined;
+  const estimated = useMemo(
+    () => (usingMock ? estimateKpiFromEvents(recentEvents ?? []) : undefined),
+    [usingMock, recentEvents],
+  );
+  return { ...result, data: result.data ?? estimated, usingMock };
+}
+
+/** `GET /events/kpi`가 없을 때 최근 버퍼(최대 50건)로 대충 낸 값 — `avgTaskDurationSec`·
+ * `pendingTasksByZone`은 `InventoryTxRecorded`만으로 못 내 0/빈 배열로 둔다(서버 집계 필요) */
+export function estimateKpiFromEvents(events: WmsEvent[]): EventsKpiResponse {
+  if (events.length === 0) {
+    return {
+      center: "",
+      window: "표본 없음",
+      pickingLinesPerHour: 0,
+      avgTaskDurationSec: 0,
+      pendingTasksByZone: [],
+      rebinCompletionsPerHour: 0,
+      receivingCount: 0,
+      shippingCount: 0,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+  const byType = (type: string) => events.filter((e) => e.payload.txType === type).length;
+  const oldest = events[events.length - 1];
+  const newest = events[0];
+  const spanMin = Math.max(1, (new Date(newest.occurredAt).getTime() - new Date(oldest.occurredAt).getTime()) / 60_000);
+  const perHour = (count: number) => Math.round((count / spanMin) * 60);
+
+  return {
+    center: newest.centerId,
+    window: `최근 ${Math.round(spanMin)}분 표본`,
+    pickingLinesPerHour: perHour(byType("PICK")),
+    avgTaskDurationSec: 0,
+    pendingTasksByZone: [],
+    rebinCompletionsPerHour: perHour(byType("REBIN")),
+    receivingCount: byType("RECEIVE"),
+    shippingCount: byType("SHIP"),
+    generatedAt: new Date().toISOString(),
+  };
 }
