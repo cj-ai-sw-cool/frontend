@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Clock as ClockIcon,
   LayoutGrid,
@@ -14,7 +14,8 @@ import {
 } from "lucide-react";
 import { TruckDock } from "./truck-dock";
 import { ClockWindow } from "./clock-window";
-import { w98, Btn, Etched, TrayBox } from "./win98-ui";
+import { w98, Btn, Etched, Select, TrayBox } from "./win98-ui";
+import { centerPath, useCenter, useHubCenters, type CenterScreen } from "@/lib/center";
 
 /**
  * 데스크톱 셸 — 목업 HTML 의 header / main / footer 세 덩어리를 그대로 옮긴 것이다.
@@ -39,7 +40,7 @@ import { w98, Btn, Etched, TrayBox } from "./win98-ui";
  */
 
 type Screen = {
-  href: string;
+  screenKey: CenterScreen;
   /** 좌측 네비·태스크바에 보이는 이름 (목업이 영문이라 영문을 쓴다) */
   label: string;
   /** 창 타이틀바에 뜨는 이름 */
@@ -109,13 +110,13 @@ function AnalyticsIcon({ className }: { className?: string }) {
    중복이었다. 그 화면을 태스크바·목차에서 가리던 `hidden` 항목도 함께 지웠다. */
 const SCREENS: Screen[] = [
   {
-    href: "/inbound",
+    screenKey: "inbound",
     label: "Inbound",
     windowTitle: "INBOUND REGISTRATION — 입고 등록",
     icon: InboundIcon, // 목업: inventory_2
   },
   {
-    href: "/packing",
+    screenKey: "packing",
     label: "Packing",
     windowTitle: "OUTBOUND PACKING — 출고 포장",
     icon: PackingIcon, // 목업: desktop_windows
@@ -124,7 +125,7 @@ const SCREENS: Screen[] = [
     /* 분석 — **아직 비어 있는 화면**이다(자리와 생김새만 잡아 둔 뼈대).
        그래도 목록에 넣는 이유: 잠긴 버튼으로 두면 "언젠가 생긴다"는 뜻이 되는데, 실제로는
        이미 열 수 있는 화면이고 안에서 스스로 `준비 중` 이라고 말한다. 그쪽이 정직하다. */
-    href: "/analytics",
+    screenKey: "analytics",
     label: "Storage",
     windowTitle: "ANALYTICS — 분석",
     icon: AnalyticsIcon, // 목업: analytics
@@ -134,7 +135,11 @@ const SCREENS: Screen[] = [
 export function Win98Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
-  const active = SCREENS.find((screen) => pathname.startsWith(screen.href)) ?? SCREENS[0];
+  const center = useCenter();
+  const router = useRouter();
+  const { data: hubCenters } = useHubCenters();
+  const active =
+    SCREENS.find((screen) => pathname.startsWith(centerPath(center, screen.screenKey))) ?? SCREENS[0];
 
   /** 시계 팝업이 열려 있는가. 태스크바 트레이의 시계를 누르면 토글된다 */
   const [isClockOpen, setIsClockOpen] = useState(false);
@@ -161,6 +166,27 @@ export function Win98Shell({ children }: { children: ReactNode }) {
             LOGISTICS TERMINAL v1.0
           </Link>
         </div>
+
+        {/* 센터 선택 — Stage 11D(정본 §12.8) "셸 상단(세 셸 공통) 센터 선택". 바꾸면
+            같은 화면의 다른 센터 경로로 이동한다(`router.push`, 타이틀바 자체는 이동
+            안 한다 — 창을 새로 열지 않고 안의 데이터만 센터를 바꿔 다시 읽는다). */}
+        <label className="flex items-center gap-1 normal-case">
+          <span className={`${w98.small} opacity-80`}>Center</span>
+          <Select
+            aria-label="센터 선택"
+            title="센터 선택 — 같은 화면의 다른 센터로 이동"
+            mono
+            value={center}
+            onChange={(event) => router.push(centerPath(event.target.value, active.screenKey))}
+            className="h-5 w-auto px-1 py-0 text-[11px] normal-case"
+          >
+            {(hubCenters ?? [{ code: center, name: center }]).map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.code} · {c.name}
+              </option>
+            ))}
+          </Select>
+        </label>
 
         <div className="flex gap-1">
           {[Minus, Square, X].map((Icon, index) => (
@@ -250,7 +276,7 @@ export function Win98Shell({ children }: { children: ReactNode }) {
                 (검수 탭)이 이미 여유 없이 꽉 차 있어(`f9b7d9c`) 그 4px 을 여기서 되찾는다.
                 탭 바를 넣지 않는 화면(packing/analytics, 각자 사본)에는 옮기지 않는다. */}
           <div className="flex min-h-0 flex-1 gap-2 px-2 pt-1 pb-1">
-            <SideNav activeHref={active.href} />
+            <SideNav activeHref={centerPath(center, active.screenKey)} center={center} />
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
           </div>
         </div>
@@ -271,11 +297,12 @@ export function Win98Shell({ children }: { children: ReactNode }) {
           {/* 실행 중인 창 = 화면 전환 */}
           <nav aria-label="열려 있는 창" className="flex h-full items-center gap-1">
             {SCREENS.filter((s) => !s.hidden).map((screen) => {
-              const isActive = screen.href === active.href;
+              const href = centerPath(center, screen.screenKey);
+              const isActive = href === centerPath(center, active.screenKey);
               return (
                 <Link
-                  key={screen.href}
-                  href={screen.href}
+                  key={href}
+                  href={href}
                   aria-current={isActive ? "page" : undefined}
                   className={`${w98.btn} ${isActive ? w98.raisedActive : w98.raised} ${w98.small} flex h-6 max-w-[170px] items-center gap-1 overflow-hidden px-3 font-bold whitespace-nowrap ${
                     isActive ? "bg-[color:var(--surface-variant)]" : ""
@@ -339,7 +366,7 @@ function clamp(value: number, min: number, max: number): number {
       이 목차는 장식이 아니라 진짜로 화면을 오가는 수단이라, 없는 화면 이름을 달면 눌렀을 때
       갈 곳이 없다. 세 번째 자리(Analytics)만 목업 이름을 그대로 뒀다 — 이 스킨에 아직
       대시보드가 없어서 잠근 자리이기 때문이다. */
-function SideNav({ activeHref }: { activeHref: string }) {
+function SideNav({ activeHref, center }: { activeHref: string; center: string }) {
   return (
     <nav
       aria-label="주요 화면"
@@ -356,11 +383,12 @@ function SideNav({ activeHref }: { activeHref: string }) {
       </div>
 
       {SCREENS.filter((s) => !s.hidden).map((screen) => {
-        const isActive = screen.href === activeHref;
+        const href = centerPath(center, screen.screenKey);
+        const isActive = href === activeHref;
         return (
           <Link
-            key={screen.href}
-            href={screen.href}
+            key={href}
+            href={href}
             aria-current={isActive ? "page" : undefined}
             /* 항목을 세 번에 걸쳐 키웠다 (사용자 지적 — "세로로 길게길게, 가독성 좋게").
                p-1(4px)+15px → px-2 py-2.5+17px → px-2 py-4+18px → **아이콘을 글자 위로

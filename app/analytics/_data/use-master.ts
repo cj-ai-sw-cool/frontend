@@ -37,11 +37,14 @@ export function useCreateSeller() {
   });
 }
 
-/** 존 목록 — 로케이션 탭의 1단(존 목록)과 랙 수 계산의 근거 */
-export function useZones() {
+/** 존 목록 — 로케이션 탭의 1단(존 목록)과 랙 수 계산의 근거.
+ * Stage 11D(정본 §12.6) — `center` 가 필수 인자다. 이 화면은 지금 `useLayout()` 의
+ * `layout.zones` 를 대신 읽고 있어(로케이션 탭, `master-window.tsx`) 아직 호출부가
+ * 없다 — 래퍼만 맞춰 둔다. */
+export function useZones(center: string) {
   return useQuery({
-    queryKey: queryKeys.zones,
-    queryFn: () => master.zones(),
+    queryKey: queryKeys.zones(center),
+    queryFn: () => master.zones(center),
   });
 }
 

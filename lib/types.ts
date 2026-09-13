@@ -56,7 +56,9 @@ export type ApiErrorCode =
    * (`detail.replenishBatchId`)로 막힐 때 409(백엔드 2026-09-12 라이브 보고). 코드 이름은
    * Stage 7~8 전환기의 `NOT_READY`와 같지만 뜻은 Stage 9로 완전히 바뀌었다 — 전환기의
    * PICKING/REBINNING 이중 차감 차단은 §9.1에서 제거됐다 */
-  | "NOT_READY";
+  | "NOT_READY"
+  /** 이동 생성·출발(Stage 11D) — 출발 센터 ATP < qty 일 때 409(정본 §12.5 ①·②) */
+  | "INSUFFICIENT_ATP";
 
 export interface ApiErrorBody {
   code: ApiErrorCode | string;
@@ -602,6 +604,10 @@ export interface LocationsQuery {
   type?: LocationType;
   page?: number;
   size?: number;
+  /** Stage 11D — 센터 필터. 존 코드(예 AMBS)가 센터마다 있어 이게 없으면 다른 센터
+   * 존과 섞인다(코디네이터 지시, 2026-09-13). 정본 §12.6 목록엔 없지만 로케이션 탭이
+   * 센터 안에서 동작하려면 필요. 없으면 서버 기본값 C1 */
+  center?: string;
 }
 
 /* ── 5. 재고 — 로트·현재고·원장 (Stage 2) ─────────────────────────────────
@@ -632,6 +638,8 @@ export interface StockQuery {
   status?: StockStatus;
   page?: number;
   size?: number;
+  /** Stage 11D — 센터 필터(정본 §12.6 `GET /stock…?center=`). 없으면 서버 기본값 `C1` */
+  center?: string;
 }
 
 export type TxType =
@@ -1173,6 +1181,8 @@ export interface OrdersQuery {
   status?: OrderStatus;
   page?: number;
   size?: number;
+  /** Stage 11D — 센터 필터(정본 §12.6 `GET /orders?center=`). 없으면 서버 기본값 `C1` */
+  center?: string;
 }
 
 /** `POST /orders/{id}/cancel` 응답 — `orderId` 는 2026-09-11 라이브 검증으로 정정 */
@@ -1424,6 +1434,8 @@ export interface WaveTasksResponse {
 /** `POST /waves` 요청 — 정본 §6.4. 마감시각 기본값은 화면이 계산한다(정본 §6.2, 브리프 §3) */
 export interface WaveCreateRequest {
   cutoffAt: string;
+  /** Stage 11D — 센터별 웨이브(정본 §12.6 `POST /waves {cutoffAt, center}`). 없으면 서버 기본값 `C1` */
+  center?: string;
 }
 
 /**
@@ -1449,6 +1461,8 @@ export interface WavesQuery {
   status?: WaveStatus;
   page?: number;
   size?: number;
+  /** Stage 11D — 센터 필터(정본 §12.6 `GET /waves?center=`). 없으면 서버 기본값 `C1` */
+  center?: string;
 }
 
 /* ── 7. 피킹 (Stage 7) ──────────────────────────────────────────────────────
@@ -1759,6 +1773,8 @@ export interface CountTasksQuery {
   status?: CountTaskStatus;
   page?: number;
   size?: number;
+  /** Stage 11D — 센터 필터(정본 §12.6 `GET /count-tasks?center=`). 없으면 서버 기본값 `C1` */
+  center?: string;
 }
 
 export interface GenerateCountTasksRequest {
@@ -1854,4 +1870,151 @@ export interface SimulateCountTaskOverride {
 export interface SimulateCountTaskRequest {
   worker: string;
   overrides?: SimulateCountTaskOverride[];
+}
+
+/* ── 12. 다창고 — 센터 축·주문 라우팅·센터 간 이동 (Stage 11D) ──────────────────
+   정본: backend/docs/02-system/02-data-model.md §12.6·§12.8, 브리프
+   docs/tasks/2026-09-13-stage11d-frontend-handoff.md.
+   2026-09-13 라이브 대조 완료(`localhost:8000`, 커밋 aaefe85 "S11D.3 센터 간 이동" 시점) —
+   필드 이름은 전부 실제 응답으로 정정했다. `GET /hub/orders`·`GET /hub/transfers`·
+   `GET /hub/atp`는 셋 다 Spring `Page<T>` 로 온다(`Page` 타입 재사용, §5 참고). */
+
+/** 센터 코드 — 시드 3곳 고정(정본 §12.2) */
+export type CenterCode = "C1" | "C2" | "C3";
+
+/** `GET /hub/centers` 행 — 센터 하나의 요약(라이브 대조: `status` 없음, 칸·현재고·OPEN
+ * 주문 필드명이 정본 문장과 다르다) */
+export interface CenterSummary {
+  code: CenterCode;
+  name: string;
+  bins: number;
+  stockQty: number;
+  openOrders: number;
+}
+
+export type RoutingRule = "PRIORITY" | "REGION" | "STOCK" | "REROUTE";
+
+/** 허브 "주문" 탭 표 행(라이브 대조: `orderId`·`receiptNo`·`center`·`routingRule`·
+ * `orderedAt`. `cutoffAt` 도 같이 온다) */
+export interface HubOrderListItem {
+  orderId: number;
+  receiptNo: string;
+  sellerCode: string;
+  sellerName: string;
+  regionCode: string | null;
+  center: CenterCode;
+  routingRule: RoutingRule;
+  status: OrderStatus;
+  orderedAt: string;
+  cutoffAt: string;
+}
+
+export interface HubOrdersQuery {
+  center?: CenterCode;
+  status?: OrderStatus;
+  page?: number;
+  size?: number;
+}
+
+/** 라우팅 후보 센터 하나의 라인별 ATP(라이브 대조: `requested`·`available`, GTIN 만
+ * 오고 상품명은 없다 — 화면은 GTIN 만 보여준다) */
+export interface RoutingCandidateLine {
+  gtin: string;
+  requested: number;
+  available: number;
+}
+
+export interface RoutingCandidate {
+  center: CenterCode;
+  feasible: boolean;
+  lines: RoutingCandidateLine[];
+  totalAtp: number;
+}
+
+/**
+ * `GET /hub/orders/{id}/routing` 응답(라이브 대조: `center`·`decidedAt`, `orderNo`·
+ * `rejected` 필드 없음). 이 API 는 성공적으로 라우팅된 주문에만 있다 — 거부된 접수는
+ * `orders.id` 자체가 안 생기므로(정본 §12.3 "3. 남은 센터가 없으면 주문 거부") 이
+ * 화면에서 "거부" 배지를 만들 데이터가 없다. 화면은 `center`(선택된 센터)만 강조한다.
+ */
+export interface RoutingDecision {
+  orderId: number;
+  center: CenterCode;
+  rule: RoutingRule;
+  candidates: RoutingCandidate[];
+  decidedAt: string;
+}
+
+export type TransferStatus = "CREATED" | "DISPATCHED" | "RECEIVED" | "CLOSED";
+
+export interface TransferItemRow {
+  itemId: number;
+  gtin: string;
+  productName: string;
+  lotNo: string | null;
+  qty: number;
+  shippedQty: number;
+  receivedQty: number;
+}
+
+/**
+ * 이동 오더 — 허브 "이동" 탭 표 행과 상세가 **같은 모양**이다(라이브 대조: 목록 응답도
+ * `items` 배열을 통째로 준다, 별도 요약 DTO 가 없다). 표의 "품목 수"는 `items.length`
+ * 로 센다. 라이브 대조: `transferId`, `inTransitQty`(이동 중 수량 합계, 보너스 필드).
+ */
+export interface TransferOrder {
+  transferId: number;
+  transferNo: string;
+  fromCenter: CenterCode;
+  toCenter: CenterCode;
+  sellerCode: string;
+  status: TransferStatus;
+  asnNo: string | null;
+  inTransitQty: number;
+  items: TransferItemRow[];
+  createdAt: string;
+  dispatchedAt: string | null;
+  receivedAt: string | null;
+}
+
+export interface TransfersQuery {
+  status?: TransferStatus;
+  page?: number;
+  size?: number;
+}
+
+export interface CreateTransferItemInput {
+  gtin: string;
+  qty: number;
+}
+
+/** `POST /hub/transfers` 요청(정본 §12.5 ①) */
+export interface CreateTransferRequest {
+  fromCenter: CenterCode;
+  toCenter: CenterCode;
+  sellerCode: string;
+  items: CreateTransferItemInput[];
+}
+
+/** 센터별 ATP — `GET /hub/atp` 행의 `byCenter[]`(라이브 대조: `onHand`·`allocated`·
+ * `blockedByShelfLife` 도 같이 오지만 막대에는 `atp` 만 쓴다) */
+export interface GlobalAtpCenterAtp {
+  center: CenterCode;
+  atp: number;
+}
+
+/** 글로벌 ATP 표 한 행 — SKU 하나의 센터별 막대 + 이동 중(라이브 대조: 상품명은
+ * `name`, `productId`·`onHand`·`allocated`·`blockedByShelfLife` 도 같이 오지만
+ * 막대에는 `total`·`inTransit`·`byCenter`만 쓴다) */
+export interface GlobalAtpRow {
+  gtin: string;
+  name: string;
+  total: number;
+  inTransit: number;
+  byCenter: GlobalAtpCenterAtp[];
+}
+
+export interface GlobalAtpQuery {
+  seller: string;
+  gtin?: string;
 }

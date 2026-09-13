@@ -16,6 +16,7 @@
 
 import { useState, type ReactNode } from "react";
 import { ApiError } from "@/lib/api";
+import { useCenter } from "@/lib/center";
 import type { StockStatus } from "@/lib/types";
 import { useSellers } from "../_data/use-master";
 import { useAdjustInventory, useStock, useStockLedger } from "../_data/use-inventory";
@@ -38,6 +39,8 @@ const TX_LABEL: Record<string, string> = {
 };
 
 export function InventoryWindow({ onClose }: { onClose: () => void }) {
+  const center = useCenter();
+
   /* ── 필터 ── */
   const [sellerCode, setSellerCode] = useState("");
   const [gtin, setGtin] = useState("");
@@ -48,6 +51,7 @@ export function InventoryWindow({ onClose }: { onClose: () => void }) {
 
   const { data: sellers } = useSellers();
   const { data: stockPage, isLoading, error } = useStock({
+    center,
     seller: sellerCode || undefined,
     gtin: gtin.trim() || undefined,
     location: locationCode.trim() || undefined,
