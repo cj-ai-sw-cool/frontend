@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { events, queryKeys } from "./endpoints";
 import { openEventStream } from "./events-stream";
+import { parseServerInstant } from "./events-time";
 import { createMockEventStream, mockEventSample } from "./mocks/events";
 import type { EventsKpiResponse, EventsQuery, EventStreamStatus, WmsEvent } from "./types";
 
@@ -58,10 +59,11 @@ export function useEventStream(center: string): EventStreamState & { subscribe: 
   }
 
   const handleEvent = useCallback((event: WmsEvent) => {
+    const occurredMs = parseServerInstant(event.occurredAt);
     setState((prev) => ({
       ...prev,
       lastSeq: event.seq,
-      lagMs: Date.now() - new Date(event.occurredAt).getTime(),
+      lagMs: occurredMs !== null ? Date.now() - occurredMs : prev.lagMs,
       recent: [event, ...prev.recent].slice(0, RECENT_BUFFER),
     }));
     for (const listener of listenersRef.current) listener(event);
@@ -127,9 +129,12 @@ export function useEventsRange(query: EventsQuery, enabled: boolean) {
 
 function mockEventsForRange(query: EventsQuery): WmsEvent[] {
   const sample = mockEventSample(query.center, 200);
-  if (!query.occurredFrom) return sample;
-  const fromMs = new Date(query.occurredFrom).getTime();
-  return sample.filter((event) => new Date(event.occurredAt).getTime() >= fromMs);
+  const fromMs = parseServerInstant(query.occurredFrom);
+  if (fromMs === null) return sample;
+  return sample.filter((event) => {
+    const ms = parseServerInstant(event.occurredAt);
+    return ms !== null && ms >= fromMs;
+  });
 }
 
 /**
@@ -155,37 +160,67 @@ export function useEventsKpi(center: string, windowSize = "1h", recentEvents?: W
   return { ...result, data: result.data ?? estimated, usingMock };
 }
 
-/** `GET /events/kpi`가 없을 때 최근 버퍼(최대 50건)로 대충 낸 값 — `avgTaskDurationSec`·
- * `pendingTasksByZone`은 `InventoryTxRecorded`만으로 못 내 0/빈 배열로 둔다(서버 집계 필요) */
+/**
+ * `GET /events/kpi`가 없을 때 최근 버퍼(최대 50건)로 대충 낸 값 — `avgTaskDurationSec`·
+ * `pendingTasksByZone`은 `InventoryTxRecorded`만으로 못 내 `null`/빈 배열로 둔다(서버
+ * 집계 필요). 필드 이름은 `EventKpi.java` 실제 응답과 맞춘 것이다(정본 §13.3 라이브
+ * 검증) — `payload.txType`는 백엔드 직렬화 버그로 지금은 항상 비어 있어(`WmsEvent`
+ * 주석) 이 추정치도 그 버그가 고쳐지기 전까지는 전부 0 이다.
+ */
 export function estimateKpiFromEvents(events: WmsEvent[]): EventsKpiResponse {
+  const now = new Date().toISOString();
   if (events.length === 0) {
     return {
       center: "",
       window: "표본 없음",
+      windowFrom: now,
+      windowTo: now,
+      windowSeconds: 0,
       pickingLinesPerHour: 0,
-      avgTaskDurationSec: 0,
+      pickingLines: 0,
+      avgTaskDurationSec: null,
+      tasksDone: 0,
+      rebinCompletedPerHour: 0,
+      rebinCompleted: 0,
+      ordersReceived: 0,
+      ordersShipped: 0,
+      shipmentsPacked: 0,
+      totalEvents: 0,
+      lastSeq: null,
+      lastEventAt: null,
+      lagSec: null,
       pendingTasksByZone: [],
-      rebinCompletionsPerHour: 0,
-      receivingCount: 0,
-      shippingCount: 0,
-      generatedAt: new Date().toISOString(),
     };
   }
   const byType = (type: string) => events.filter((e) => e.payload.txType === type).length;
   const oldest = events[events.length - 1];
   const newest = events[0];
-  const spanMin = Math.max(1, (new Date(newest.occurredAt).getTime() - new Date(oldest.occurredAt).getTime()) / 60_000);
+  const oldestMs = parseServerInstant(oldest.occurredAt) ?? Date.now();
+  const newestMs = parseServerInstant(newest.occurredAt) ?? Date.now();
+  const spanMin = Math.max(1, (newestMs - oldestMs) / 60_000);
   const perHour = (count: number) => Math.round((count / spanMin) * 60);
+  const pick = byType("PICK");
+  const rebin = byType("REBIN");
 
   return {
-    center: newest.centerId,
+    center: newest.center,
     window: `최근 ${Math.round(spanMin)}분 표본`,
-    pickingLinesPerHour: perHour(byType("PICK")),
-    avgTaskDurationSec: 0,
+    windowFrom: oldest.occurredAt,
+    windowTo: newest.occurredAt,
+    windowSeconds: Math.round((newestMs - oldestMs) / 1000),
+    pickingLinesPerHour: perHour(pick),
+    pickingLines: pick,
+    avgTaskDurationSec: null,
+    tasksDone: 0,
+    rebinCompletedPerHour: perHour(rebin),
+    rebinCompleted: rebin,
+    ordersReceived: byType("RECEIVE"),
+    ordersShipped: byType("SHIP"),
+    shipmentsPacked: 0,
+    totalEvents: events.length,
+    lastSeq: newest.seq,
+    lastEventAt: newest.occurredAt,
+    lagSec: (Date.now() - newestMs) / 1000,
     pendingTasksByZone: [],
-    rebinCompletionsPerHour: perHour(byType("REBIN")),
-    receivingCount: byType("RECEIVE"),
-    shippingCount: byType("SHIP"),
-    generatedAt: new Date().toISOString(),
   };
 }

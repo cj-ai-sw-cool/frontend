@@ -12,6 +12,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { centerPath } from "@/lib/center";
+import { parseServerInstant } from "@/lib/events-time";
 import { useEventStream, useEventsKpi } from "@/lib/use-events";
 import { useHubCenters } from "../_data/use-hub";
 import { Th, Td } from "./table";
@@ -48,10 +49,10 @@ export function ControlTab() {
 
       <div className="grid shrink-0 grid-cols-5 gap-2">
         <Kpi label="시간당 피킹 라인" value={kpi.data?.pickingLinesPerHour} />
-        <Kpi label="태스크 평균 소요(초)" value={kpi.usingMock ? undefined : kpi.data?.avgTaskDurationSec} />
-        <Kpi label="리빈 완성/시간" value={kpi.data?.rebinCompletionsPerHour} />
-        <Kpi label="접수" value={kpi.data?.receivingCount} />
-        <Kpi label="출고" value={kpi.data?.shippingCount} />
+        <Kpi label="태스크 평균 소요(초)" value={kpi.data?.avgTaskDurationSec ?? undefined} />
+        <Kpi label="리빈 완성/시간" value={kpi.data?.rebinCompletedPerHour} />
+        <Kpi label="접수" value={kpi.data?.ordersReceived} />
+        <Kpi label="출고" value={kpi.data?.ordersShipped} />
       </div>
       {kpi.usingMock ? (
         <span className="w-fit bg-[color:var(--status-error)] px-1.5 py-0.5 text-[11px] font-bold text-white">
@@ -79,9 +80,9 @@ export function ControlTab() {
             ) : (
               stream.recent.map((event) => (
                 <tr key={event.seq} className="border-b border-[color:var(--border)]">
-                  <Td mono>{new Date(event.occurredAt).toLocaleTimeString("ko-KR", { hour12: false })}</Td>
-                  <Td mono>{event.payload.txType ?? event.eventType}</Td>
-                  <Td mono>{event.locationId ?? "—"}</Td>
+                  <Td mono>{formatEventTime(event.occurredAt)}</Td>
+                  <Td mono>{event.payload.txType ?? event.type}</Td>
+                  <Td mono>{event.locationCode ?? event.locationId ?? "—"}</Td>
                   <Td mono>{event.worker ?? "—"}</Td>
                 </tr>
               ))
@@ -91,6 +92,11 @@ export function ControlTab() {
       </Sunken>
     </div>
   );
+}
+
+function formatEventTime(occurredAt: string): string {
+  const ms = parseServerInstant(occurredAt);
+  return ms === null ? "—" : new Date(ms).toLocaleTimeString("ko-KR", { hour12: false });
 }
 
 function Kpi({ label, value }: { label: string; value: number | undefined }) {

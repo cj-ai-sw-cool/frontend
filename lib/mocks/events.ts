@@ -1,17 +1,15 @@
 /**
- * `GET /events`·`GET /events/stream` 표본 — 정본 §13.2·§13.3. 백엔드가 같은 시각
- * `feat/stage11a-events`에서 작업 중이라(브리프 머리말) `lib/events-stream.ts`가 라이브
- * SSE 를 못 열 때 이 파일이 대신한다: 표본 200건(`mockEventSample`)을 먼저 채우고,
- * 그 뒤로는 가짜 타이머(`createMockEventStream`)가 새 이벤트를 계속 만든다.
+ * `GET /events`·`GET /events/stream` 표본 — 정본 §13.2·§13.3. `lib/events-stream.ts`가
+ * 라이브 SSE 를 못 열 때 이 파일이 대신한다: 표본 200건(`mockEventSample`)을 먼저
+ * 채우고, 그 뒤로는 가짜 타이머(`createMockEventStream`)가 새 이벤트를 계속 만든다.
  *
  * `InventoryTxRecorded`만 만든다 — 3D 관제·KPI가 쓰는 것이 이 유형뿐이다(브리프 §1·§2).
  * 베이·통로는 `lib/mocks/layout.ts`의 `mockLayout`(존 4·베이 40)을 그대로 참조해, 3D가
  * 목 레이아웃으로 대체돼 있을 때도(`use-layout.ts`) 이벤트가 실제로 있는 베이를 가리킨다.
  *
- * ⚠️ `payload.bayId`를 직접 채운다 — 계약 §13.7이 "로케이션 → 베이 매핑"을 미결로 남겨
- * 뒀다(백엔드 노트로 확정 전까지). 라이브 응답이 `bayId`를 안 주면 `use-events.ts`가
- * 점등을 건너뛰므로, 목 단계에서는 계약이 가장 단순한 형태(payload 가 직접 준다)라고
- * 가정하고 화면 체크 1을 이걸로 통과시킨다 — 백엔드 노트로 정정 예정(완료 보고 참고).
+ * 2026-09-14 라이브 검증 — `bayId`·`zoneCode`·`locationCode`는 `payload` 안이 아니라
+ * 이벤트 최상위 필드다(`EventRow.java` 확인, `lib/types.ts` `WmsEvent` 주석). 이 파일도
+ * 그 모양 그대로 만든다 — 목 단계에서 이미 실제 계약과 같은 필드로 화면 체크가 된다.
  */
 
 import { mockLayout } from "./layout";
@@ -52,21 +50,32 @@ function bayForTick(tick: number): Bay {
   return mockLayout.bays[tick % mockLayout.bays.length];
 }
 
+/** 목이 만드는 가상 센터 내부 id — 라이브 `centerId`(숫자)와 자리만 맞추면 되고
+ * 화면은 이 값을 안 쓴다("C1" → 1, "C2" → 2 식) */
+function fakeCenterId(center: string): number {
+  const n = Number(center.replace(/\D/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 function buildEvent(seq: number, center: string, occurredAt: Date, tick: number): WmsEvent {
   const worker = MOCK_WORKER_CODES[tick % MOCK_WORKER_CODES.length];
   const bay = bayForTick(tick);
   const txType = TX_TYPES[tick % TX_TYPES.length];
   return {
     seq,
-    eventType: "InventoryTxRecorded",
+    type: "InventoryTxRecorded",
     aggregateType: "INVENTORY_TX",
-    aggregateId: `TX-${center}-${seq}`,
-    centerId: center,
+    aggregateId: seq,
+    center,
+    centerId: fakeCenterId(center),
     sellerId: null,
     locationId: bay.id * 100 + 1 + (tick % bay.positions),
+    locationCode: `${bay.zoneCode}-${String(bay.aisleNo).padStart(2, "0")}-${String(bay.no).padStart(2, "0")}`,
+    bayId: bay.id,
+    zoneCode: bay.zoneCode,
     worker,
-    payload: { txType, qty: 1 + (tick % 5), bayId: bay.id },
     occurredAt: occurredAt.toISOString(),
+    payload: { txType, qty: 1 + (tick % 5) },
   };
 }
 

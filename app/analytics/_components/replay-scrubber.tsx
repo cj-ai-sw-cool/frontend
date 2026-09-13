@@ -6,6 +6,8 @@
  * "replay"`일 때만 `warehouse-slot-3d.tsx`가 이 컴포넌트를 띄운다.
  */
 
+import { parseServerInstant } from "@/lib/events-time";
+
 const RANGE_OPTIONS = [
   { label: "최근 30분", minutes: 30 },
   { label: "최근 1시간", minutes: 60 },
@@ -60,6 +62,6 @@ export function ReplayScrubber({ rangeMin, onRangeChange, index, total, onSeek, 
 }
 
 function formatTimestamp(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString("ko-KR", { hour12: false });
+  const ms = parseServerInstant(iso);
+  return ms === null ? "—" : new Date(ms).toLocaleTimeString("ko-KR", { hour12: false });
 }

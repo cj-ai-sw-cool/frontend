@@ -31,10 +31,10 @@ export function KpiPanel({ center, recentEvents }: KpiPanelProps) {
 
       <div className="mt-2 grid grid-cols-2 gap-1.5">
         <Stat label="시간당 피킹 라인" value={kpi?.pickingLinesPerHour.toLocaleString() ?? "—"} />
-        <Stat label="태스크 평균 소요" value={kpi && !usingMock ? `${kpi.avgTaskDurationSec}s` : "—"} />
-        <Stat label="리빈 완성/시간" value={kpi?.rebinCompletionsPerHour.toLocaleString() ?? "—"} />
-        <Stat label="접수" value={kpi?.receivingCount.toLocaleString() ?? "—"} />
-        <Stat label="출고" value={kpi?.shippingCount.toLocaleString() ?? "—"} />
+        <Stat label="태스크 평균 소요" value={kpi?.avgTaskDurationSec !== null && kpi?.avgTaskDurationSec !== undefined ? `${kpi.avgTaskDurationSec.toFixed(1)}s` : "—"} />
+        <Stat label="리빈 완성/시간" value={kpi?.rebinCompletedPerHour.toLocaleString() ?? "—"} />
+        <Stat label="접수" value={kpi?.ordersReceived.toLocaleString() ?? "—"} />
+        <Stat label="출고" value={kpi?.ordersShipped.toLocaleString() ?? "—"} />
       </div>
 
       {kpi && kpi.pendingTasksByZone.length > 0 ? (
@@ -42,8 +42,8 @@ export function KpiPanel({ center, recentEvents }: KpiPanelProps) {
           <span className="font-mono text-[10px] font-bold tracking-wider text-[#9DB0C4]">존별 대기 태스크</span>
           <ul className="mt-1 flex flex-col gap-0.5">
             {kpi.pendingTasksByZone.map((z) => (
-              <li key={z.zoneCode} className="flex justify-between text-[11px] text-[#DCE5EF]">
-                <span className="font-mono font-bold">{z.zoneCode}</span>
+              <li key={z.zone} className="flex justify-between text-[11px] text-[#DCE5EF]">
+                <span className="font-mono font-bold">{z.zone}</span>
                 <span>{z.count}</span>
               </li>
             ))}

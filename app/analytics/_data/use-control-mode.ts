@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/endpoints";
+import { parseServerInstant, toServerLocalDateTime } from "@/lib/events-time";
 import { useEventStream, useEventsRange } from "@/lib/use-events";
 import type { Bay, LayoutResponse, WmsEvent } from "@/lib/types";
 import type { ControlOverlay } from "../_components/layout/control-overlay";
@@ -39,9 +40,12 @@ export function useControlMode(center: string) {
 
   const applyEvent = useCallback(
     (event: WmsEvent) => {
-      if (event.eventType !== "InventoryTxRecorded") return;
-      const bayId = event.payload.bayId;
-      if (bayId === undefined) return;
+      if (event.type !== "InventoryTxRecorded") return;
+      // 2026-09-14 라이브 검증 — bayId 는 payload 가 아니라 이벤트 최상위 필드다
+      // (`EventRow.java`, `lib/types.ts` `WmsEvent` 주석). BIN 이 아닌 로케이션
+      // (RECEIVING 등)은 null 이라 점등·마커 이동을 건너뛴다.
+      const bayId = event.bayId;
+      if (bayId === null) return;
 
       patchLayoutCache(queryClient, center, bayId, event);
       overlayRef.current?.pulseBay(bayId, event.payload.txType, performance.now());
@@ -77,7 +81,9 @@ export function useControlMode(center: string) {
     applyEvent(current);
     const next = range.data[replayIndex + 1];
     if (!next) return undefined;
-    const gapMs = Math.max(20, (new Date(next.occurredAt).getTime() - new Date(current.occurredAt).getTime()) / speed);
+    const nextMs = parseServerInstant(next.occurredAt) ?? 0;
+    const currentMs = parseServerInstant(current.occurredAt) ?? 0;
+    const gapMs = Math.max(20, (nextMs - currentMs) / speed);
     const timer = setTimeout(() => setReplayIndex((i) => i + 1), gapMs);
     return () => clearTimeout(timer);
   }, [source, paused, range.data, replayIndex, speed, applyEvent]);
@@ -85,7 +91,7 @@ export function useControlMode(center: string) {
   const startReplay = useCallback(() => {
     setReplayIndex(0);
     setPaused(false);
-    setReplayStartIso(new Date(Date.now() - replayRangeMin * 60_000).toISOString());
+    setReplayStartIso(toServerLocalDateTime(Date.now() - replayRangeMin * 60_000));
     setSource("replay");
   }, [replayRangeMin]);
   const stopReplay = useCallback(() => setSource("live"), []);
@@ -93,7 +99,7 @@ export function useControlMode(center: string) {
   const changeReplayRange = useCallback((minutes: number) => {
     setReplayRangeMin(minutes);
     setReplayIndex(0);
-    setReplayStartIso(new Date(Date.now() - minutes * 60_000).toISOString());
+    setReplayStartIso(toServerLocalDateTime(Date.now() - minutes * 60_000));
   }, []);
 
   const setControlOverlay = useCallback((overlay: ControlOverlay | null) => {

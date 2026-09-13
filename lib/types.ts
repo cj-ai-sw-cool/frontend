@@ -2027,30 +2027,35 @@ export interface GlobalAtpQuery {
 }
 
 /* ── 실시간 관제 — outbox 이벤트 스트림·리플레이 (Stage 11A, 정본 §13.2·§13.3) ─────
-   백엔드는 같은 시각 `feat/stage11a-events`에서 작업 중이라(브리프 머리말) 이 시점엔
-   `/events/**`가 없을 수 있다 — `lib/mocks/events.ts` 표본으로 대신 그리다가 라이브가
-   뜨면 필드를 맞춘다(`lib/use-events.ts`, `lib/events-stream.ts` 머리말). */
+   2026-09-14 라이브 검증(백엔드 `feat/stage11a-events` 배포, `EventRow`·`EventKpi`
+   소스 확인) — 아래 필드는 실제 응답 그대로다. 브리프 초안 당시 가정했던 이름(예:
+   `eventType`, `receivingCount`)과 다르니 새로 고칠 때 이 주석부터 본다. */
 
-/** `outbox.event_type` 카탈로그(정본 §13.2). 화면은 `InventoryTxRecorded` 위주로 쓴다 */
-export type WmsEventType =
-  | "InventoryTxRecorded"
-  | "PickBatchClaimed"
-  | "PickTaskConfirmed"
-  | "PickBatchDone"
-  | "RebinSessionStarted"
-  | "RebinSessionFinished"
-  | "RebinSlotCompleted"
-  | "CountTaskStarted"
-  | "CountTaskSubmitted"
-  | "OrderRouted"
-  | "OrderStatusChanged"
-  | "OrderCancelled"
-  | "WaveReleased"
-  | "WaveDone"
-  | "ShipmentPacked"
-  | "ShipmentShipped"
-  | "TransferDispatched"
-  | "TransferReceived";
+/** `outbox.event_type` 카탈로그(정본 §13.2) — SSE 이벤트 이름이 이 값 그대로라
+ * `lib/events-stream.ts`가 이 배열로 리스너를 전부 건다(브라우저 `EventSource` 는
+ * named event 를 `onmessage` 로 못 받는다, 라이브 검증으로 발견). 화면은
+ * `InventoryTxRecorded` 위주로 쓴다 */
+export const WMS_EVENT_TYPES = [
+  "InventoryTxRecorded",
+  "PickBatchClaimed",
+  "PickTaskConfirmed",
+  "PickBatchDone",
+  "RebinSessionStarted",
+  "RebinSessionFinished",
+  "RebinSlotCompleted",
+  "CountTaskStarted",
+  "CountTaskSubmitted",
+  "OrderRouted",
+  "OrderStatusChanged",
+  "OrderCancelled",
+  "WaveReleased",
+  "WaveDone",
+  "ShipmentPacked",
+  "ShipmentShipped",
+  "TransferDispatched",
+  "TransferReceived",
+] as const;
+export type WmsEventType = (typeof WMS_EVENT_TYPES)[number];
 
 /** `InventoryTxRecorded.payload.txType` — 원장 tx 유형 10종(정본 §13.2). 베이 점등 색을 가른다 */
 export type InventoryTxType =
@@ -2066,33 +2071,49 @@ export type InventoryTxType =
   | "TRANSFER_IN";
 
 /**
- * `GET /events/stream`·`GET /events` 행 하나(outbox row, 정본 §13.2·§13.3).
+ * `GET /events/stream`·`GET /events` 행 하나(`EventRow.java`, 정본 §13.2·§13.3).
  *
- * ⚠️ 라이브 검증 대기(정본 §13.7) — `locationId` → 베이 매핑을 이벤트가 직접 주는지
- * (`payload.bayId`) `GET /bays/{id}/bins` 역참조가 필요한지 백엔드 노트로 확정 전까지,
- * 이 화면은 `payload.bayId`가 있으면 그것을 쓰고 없으면 베이 점등·마커 이동을 건너뛴다
- * (`lib/use-events.ts`·`app/analytics/_data/use-control-mode.ts` 참고). 목(mock)은
- * `payload.bayId`를 채워 둔다.
+ * ⚠️ `bayId`·`zoneCode`·`locationCode`는 §13.7 이 미결로 남겼던 것과 달리 **이벤트가
+ * 조인해서 최상위 필드로 직접 준다** — `payload` 안이 아니다(라이브 검증, `EventRow`
+ * 머리말 "locationCode·bayId·zoneCode는 표에 없고 조인해서 붙인다"). `BIN` 로케이션이
+ * 아니면(RECEIVING 등) null 일 수 있다 — 그 이벤트는 베이 점등·마커 이동을 건너뛴다.
+ *
+ * ⚠️ `payload.txType`·`payload.qty`는 **백엔드 직렬화 버그로 현재 못 쓴다** — 응답의
+ * `payload`가 실제 내용 대신 Jackson `JsonNode`의 `isArray()`/`isObject()` 같은 getter
+ * 를 리플렉션한 값(`{"array":false,"object":true,"nodeType":"OBJECT",…}`)을 담고 온다
+ * (Spring MVC 가 기본으로 쓰는 `com.fasterxml.jackson` 컨버터가 도메인이 쓰는
+ * `tools.jackson`(Jackson 3) `JsonNode`를 못 알아보고 평범한 POJO 로 리플렉션한 결과 —
+ * 완료 보고 "백엔드 요청" 참고). 고쳐지기 전까지 화면은 `payload.txType`이 없으면 회색
+ * (`STATUS_CHANGE` 색)으로, `qty`가 없으면 1로 대신한다.
+ *
+ * ⚠️ `occurredAt`은 `LocalDateTime`이라 오프셋이 없다 — `lib/events-time.ts`
+ * `parseServerInstant`로만 파싱한다(그냥 `new Date(x)`를 쓰면 KST 환경에서 9시간
+ * 어긋난다).
  */
 export interface WmsEvent {
   seq: number;
-  eventType: WmsEventType | string;
+  type: WmsEventType | string;
   aggregateType: string;
-  aggregateId: string;
-  centerId: string;
-  sellerId: string | null;
+  aggregateId: number;
+  center: string;
+  centerId: number;
+  sellerId: number | null;
   locationId: number | null;
+  locationCode: string | null;
+  bayId: number | null;
+  zoneCode: string | null;
   worker: string | null;
+  occurredAt: string;
   payload: {
     txType?: InventoryTxType;
     qty?: number;
-    bayId?: number;
     [key: string]: unknown;
   };
-  occurredAt: string;
 }
 
-/** `GET /events` 쿼리 — 리플레이·KPI 계산용 범위 조회(정본 §13.3, 순번 또는 시각 범위) */
+/** `GET /events` 쿼리 — 리플레이·KPI 계산용 범위 조회(정본 §13.3, 순번 또는 시각 범위).
+ * `occurredFrom`/`occurredTo`는 서버가 오프셋 없는 `LocalDateTime`으로 바인딩한다 —
+ * `lib/events-time.ts` `toServerLocalDateTime`로 만든 문자열만 보낸다(끝에 `Z` 없이). */
 export interface EventsQuery {
   center: string;
   from?: number;
@@ -2108,17 +2129,43 @@ export interface EventsKpiQuery {
   window?: string;
 }
 
-/** `GET /events/kpi` 응답 — 서버 집계 5종(정본 §13.3) */
+/**
+ * `GET /events/kpi` 응답(`EventKpi.java`, 정본 §13.3) — 라이브 검증으로 필드명을
+ * 다시 맞췄다(초안의 `receivingCount`→`ordersReceived`, `shippingCount`→
+ * `ordersShipped`, `rebinCompletionsPerHour`→`rebinCompletedPerHour` 등).
+ * `avgTaskDurationSec`·`lastSeq`·`lastEventAt`·`lagSec`는 이벤트가 아직 없으면 서버가
+ * `null`을 준다.
+ */
 export interface EventsKpiResponse {
   center: string;
+  /** ISO-8601 duration 문자열(`PT1H` 등) — 요청 시 보낸 `1h` 꼴과 다르게 온다 */
   window: string;
+  windowFrom: string;
+  windowTo: string;
+  windowSeconds: number;
   pickingLinesPerHour: number;
-  avgTaskDurationSec: number;
-  pendingTasksByZone: { zoneCode: string; count: number }[];
-  rebinCompletionsPerHour: number;
-  receivingCount: number;
-  shippingCount: number;
-  generatedAt: string;
+  pickingLines: number;
+  avgTaskDurationSec: number | null;
+  tasksDone: number;
+  rebinCompletedPerHour: number;
+  rebinCompleted: number;
+  ordersReceived: number;
+  ordersShipped: number;
+  shipmentsPacked: number;
+  totalEvents: number;
+  lastSeq: number | null;
+  lastEventAt: string | null;
+  lagSec: number | null;
+  pendingTasksByZone: EventsKpiZoneCount[];
+}
+
+/** `zone`이 존 코드다 — 비보관 로케이션이 섞인 창이면 비어 있을 수 있다(`EventKpi` 주석) */
+export interface EventsKpiZoneCount {
+  center: string;
+  zone: string;
+  zoneName: string;
+  count: number;
+  openBatches: number;
 }
 
 export type EventStreamStatus = "connecting" | "open" | "reconnecting" | "closed";
