@@ -12,19 +12,26 @@
  */
 export const NAV = [
   {
-    href: "/inbound",
+    href: "/center/C1/inbound",
     label: "입고",
     description: "ASN 검수 → 측정 → 수량 입고",
   },
   {
-    href: "/packing",
+    href: "/center/C1/packing",
     label: "출고 포장",
     description: "토트 스캔 → 박스 추천 → 포장 완료",
   },
   {
-    href: "/analytics",
+    href: "/center/C1/analytics",
     label: "분석",
     description: "창고 지도 · 입출고 흐름 · 규격별 재고",
+  },
+  {
+    /* Stage 11D — 센터 축 밖의 독립 라우트(정본 §12.8). 주문 라우팅·센터 간 이동·글로벌
+     * ATP·센터 요약을 한 창에서 본다(브리프 §2). */
+    href: "/hub",
+    label: "다창고 허브",
+    description: "주문 라우팅 · 센터 간 이동 · 글로벌 ATP · 센터 요약",
   },
 ] as const;
 
