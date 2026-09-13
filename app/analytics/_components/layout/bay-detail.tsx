@@ -71,22 +71,27 @@ export function BayDetailPanel({
                   /* 상품명은 칸에 안 넣는다 — 화주 코드·수량 두 줄만으로도 XS(4위치)에서
                      이미 폭이 빠듯하다. 여러 품목이면 호버 툴팁에서 전부 보여준다 */
                   const tooltip = bin
-                    ? `${bin.code} · ${ROLE_LABEL[bin.role]}${
+                    ? `${bin.code} · ${bin.sellerCode ?? ""} · ${ROLE_LABEL[bin.role]}${
                         bin.items.length > 0 ? " · " + bin.items.map((it) => `${it.productName}(${it.qty})`).join(", ") : ""
                       }`
                     : undefined;
+                  /* "SEL-" 접두를 뺀 번호만 보여준다 — 4위치(XS) 칸 폭(약 55~60px)에서
+                     "SEL-0068"(8자) 는 truncate 여백이 0이라 화면·폰트에 따라 잘려
+                     보일 수 있었다(2026-09-13 재확인). "0068"(4자) 이면 실제 여유가
+                     생긴다 — 전체 코드는 툴팁에 그대로 남는다. */
+                  const sellerLabel = bin?.sellerCode?.replace(/^SEL-/, "") ?? "";
                   return (
                     <div
                       key={position}
                       title={tooltip}
-                      className={`flex min-w-0 flex-col items-center justify-center rounded border-2 px-0.5 py-1 text-center text-[10px] leading-tight ${border} ${
+                      className={`flex min-w-0 flex-col items-center justify-center overflow-hidden rounded border-2 px-0.5 py-1 text-center text-[10px] leading-tight ${border} ${
                         filled ? "bg-[color:var(--surface-variant)]" : "bg-[color:var(--surface-dim)] text-[color:var(--muted-foreground)]"
                       }`}
                     >
                       {filled ? (
                         <>
-                          <span className="w-full truncate font-bold">{bin.sellerCode}</span>
-                          <span className="font-mono">{bin.qty}</span>
+                          <span className="w-full truncate font-bold">{sellerLabel}</span>
+                          <span className="w-full truncate font-mono">{bin.qty}</span>
                         </>
                       ) : (
                         "빈 칸"
