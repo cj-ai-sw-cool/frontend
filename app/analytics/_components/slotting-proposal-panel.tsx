@@ -113,9 +113,14 @@ export function SlottingProposalPanel({
         </Btn>
       </div>
 
+      {/* ⚠️ `border-collapse` 는 쓰지 않는다. sticky thead 와 같이 쓰면 tbody 첫 행이 collapse
+       * 된 경계선 자리에서 헤더 배경 위로 비쳐 보인다(스크롤해 보면 헤더 위로 잘린 행 하나가
+       * 겹쳐 보이는 결함, 2026-09-14 화면 체크 s11b-3d 캡처에서 발견). `border-separate` +
+       * `border-spacing-0` 로 바꾸고, 배경은 `<thead>` 뿐 아니라 각 `<Th>` 에도 칠해 win98
+       * 표면 톤으로 완전히 덮는다. */}
       <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto`}>
-        <table className="w-full border-collapse text-left text-[12px]">
-          <thead className="sticky top-0 bg-[color:var(--surface)]">
+        <table className="w-full border-separate border-spacing-0 text-left text-[12px]">
+          <thead className="sticky top-0 z-10 bg-[color:var(--surface)]">
             <tr>
               <Th></Th>
               <Th>상품</Th>
@@ -129,28 +134,30 @@ export function SlottingProposalPanel({
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id} className="border-t border-[color:var(--border)]">
-                <td className="p-1.5">
+              <tr key={item.id}>
+                <td className="border-t border-[color:var(--border)] p-1.5">
                   {item.status === "PROPOSED" ? (
                     <Checkbox label="" checked={checked.has(item.id)} onToggle={() => toggle(item.id)} />
                   ) : null}
                 </td>
-                <td className={`${w98.mono} p-1.5`}>{item.productName}</td>
-                <td className="p-1.5">{item.grade}</td>
-                <td className={`${w98.mono} p-1.5`}>{item.lines}</td>
-                <td className={`${w98.mono} p-1.5 text-[11px]`}>
+                <td className={`${w98.mono} border-t border-[color:var(--border)] p-1.5`}>{item.productName}</td>
+                <td className="border-t border-[color:var(--border)] p-1.5">{item.grade}</td>
+                <td className={`${w98.mono} border-t border-[color:var(--border)] p-1.5`}>{item.lines}</td>
+                <td className={`${w98.mono} border-t border-[color:var(--border)] p-1.5 text-[11px]`}>
                   {item.fromLocationCode ?? "—"} → {item.toLocationCode ?? "—"}
                 </td>
-                <td className="p-1.5">{KIND_LABEL[item.kind]}</td>
-                <td className={`${w98.small} p-1.5 text-[color:var(--muted-foreground)]`}>
+                <td className="border-t border-[color:var(--border)] p-1.5">{KIND_LABEL[item.kind]}</td>
+                <td
+                  className={`${w98.small} border-t border-[color:var(--border)] p-1.5 text-[color:var(--muted-foreground)]`}
+                >
                   {REASON_LABEL[item.reason]}
                 </td>
-                <td className="p-1.5 font-bold">{STATUS_LABEL[item.status]}</td>
+                <td className="border-t border-[color:var(--border)] p-1.5 font-bold">{STATUS_LABEL[item.status]}</td>
               </tr>
             ))}
             {items.length === 0 ? (
               <tr>
-                <td colSpan={8} className="p-3 text-center text-[color:var(--muted-foreground)]">
+                <td colSpan={8} className="border-t border-[color:var(--border)] p-3 text-center text-[color:var(--muted-foreground)]">
                   항목 없음
                 </td>
               </tr>
@@ -170,5 +177,9 @@ export function SlottingProposalPanel({
 }
 
 function Th({ children }: { children?: React.ReactNode }) {
-  return <th className="border-b-2 border-[color:var(--border)] p-1.5 font-bold">{children}</th>;
+  return (
+    <th className="border-b-2 border-[color:var(--border)] bg-[color:var(--surface)] p-1.5 font-bold">
+      {children}
+    </th>
+  );
 }
