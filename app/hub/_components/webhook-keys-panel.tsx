@@ -67,19 +67,19 @@ export function WebhookKeysPanel({ sellerCode }: { sellerCode: string }) {
             ) : (
               keys.map((key) => (
                 <tr key={key.id} className="border-t border-[color:var(--border)]">
-                  <Td mono>{key.keyPrefix}…</Td>
+                  <Td mono>{key.prefix}…</Td>
                   <Td>{key.label}</Td>
                   <Td mono>{formatKst(key.createdAt)}</Td>
                   <Td mono>{formatKst(key.lastUsedAt)}</Td>
                   <Td>
-                    {key.revokedAt !== null ? (
+                    {key.revoked ? (
                       <span className="font-bold text-[color:var(--status-error)]">폐기됨</span>
                     ) : (
                       <span className="font-bold text-[color:var(--status-success)]">사용 중</span>
                     )}
                   </Td>
                   <Td>
-                    {key.revokedAt === null ? (
+                    {!key.revoked ? (
                       <Btn
                         disabled={revoke.isPending}
                         onClick={() => handleRevoke(key.id)}

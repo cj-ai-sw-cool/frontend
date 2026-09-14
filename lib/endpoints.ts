@@ -29,6 +29,7 @@ import type {
   CreateSellerRequest,
   CreateTransferRequest,
   CreateWebhookEndpointRequest,
+  CreateWebhookEndpointResponse,
   DailyInventory,
   DamageReportRequest,
   DamageReportResponse,
@@ -109,6 +110,7 @@ import type {
   WebhookEndpoint,
   WebhookEndpointsQuery,
   WebhookRelaySummary,
+  WebhookResumeResponse,
   WebhookSummaryRow,
   WmsEvent,
   WorkerRow,
@@ -734,10 +736,11 @@ function toWorkersQueryString(params: WorkersQuery): string {
 }
 
 /* ── 화주 웹훅 관리자 API — 키·엔드포인트·발송 이력·릴레이 (Stage 11C) ──────────────
-   정본 §14.2·§14.5·§14.8. 백엔드가 같은 시각 `feat/stage11c-webhooks`에서 작업 중이라
-   (브리프 머리말) 2026-09-14 시점엔 없다(`GET /admin/webhooks/summary` 404 확인) —
-   호출부(`app/hub/_data/use-webhooks.ts`)가 실패하면 `lib/mocks/webhooks.ts` 표본으로
-   대신한다. 라이브 검증 대기. */
+   정본 §14.2·§14.5·§14.8. 2026-09-14 라이브 대조 완료(`localhost:8000`, 백엔드 노트
+   `backend/docs/tasks/2026-09-14-stage11c-backend-notes.md` §3) — 필드 이름은 전부
+   실제 응답으로 정정했다. 조회 실패(네트워크 끊김 등)는 방어적으로 `lib/mocks/
+   webhooks.ts` 표본으로 대신한다(`app/hub/_data/use-webhooks.ts`, `use-hub.ts`의
+   `useHubOrders`와 같은 관례) — 뮤테이션은 표본으로 흉내 내지 않는다. */
 export const webhookAdmin = {
   /** 화주 API 키 목록(정본 §14.2) */
   apiKeys: (sellerCode: string) =>
@@ -749,33 +752,36 @@ export const webhookAdmin = {
 
   /** 키 폐기 — `revoked_at` 만 찍고 행은 남는다(정본 §14.2) */
   revokeApiKey: (sellerCode: string, id: number) =>
-    api.del<unknown>(`/admin/sellers/${encodeURIComponent(sellerCode)}/api-keys/${id}`),
+    api.del<SellerApiKey>(`/admin/sellers/${encodeURIComponent(sellerCode)}/api-keys/${id}`),
 
   /** 엔드포인트 목록 — 화주로 거른다(정본 §14.5) */
   endpoints: (params?: WebhookEndpointsQuery) =>
     api.get<WebhookEndpoint[]>(`/admin/webhooks/endpoints${toWebhookEndpointsQueryString(params)}`),
 
-  /** 엔드포인트 추가 — URL·구독 유형 */
+  /** 엔드포인트 추가 — URL·구독 유형. 평문 비밀이 응답에 한 번만 온다 */
   createEndpoint: (body: CreateWebhookEndpointRequest) =>
-    api.post<WebhookEndpoint>("/admin/webhooks/endpoints", body),
+    api.post<CreateWebhookEndpointResponse>("/admin/webhooks/endpoints", body),
 
-  /** 부분 갱신 — url·event_types·status(ACTIVE/DISABLED 토글) */
+  /** 부분 갱신 — url·event_types·status(ACTIVE/DISABLED 토글), 보낸 필드만 바뀐다 */
   updateEndpoint: (id: number, body: UpdateWebhookEndpointRequest) =>
     api.patch<WebhookEndpoint>(`/admin/webhooks/endpoints/${id}`, body),
 
-  /** 비밀 재발급 — 응답에 평문이 한 번만 온다 */
+  /** 비밀 재발급 — 응답에 평문이 한 번만 온다(엔드포인트 생성과 같은 모양) */
   rotateSecret: (id: number) =>
     api.post<RotateWebhookSecretResponse>(`/admin/webhooks/endpoints/${id}/rotate-secret`),
 
-  /** 재개 — SUSPENDED 인 엔드포인트를 ACTIVE 로, DEAD 건을 PENDING 으로 되돌린다 */
-  resumeEndpoint: (id: number) => api.post<WebhookEndpoint>(`/admin/webhooks/endpoints/${id}/resume`),
+  /** 재개 — SUSPENDED 인 엔드포인트를 ACTIVE 로, DEAD 건을 전부 PENDING 으로 되돌린다.
+   * `revived`가 되돌린 건수(백엔드 노트 §1.8) */
+  resumeEndpoint: (id: number) => api.post<WebhookResumeResponse>(`/admin/webhooks/endpoints/${id}/resume`),
 
-  /** 발송 이력 — 화주·엔드포인트·상태로 필터, `limit`(기본 100) */
+  /** 발송 이력 — 화주·엔드포인트·상태로 필터, `limit`(기본 200·최대 1,000) */
   deliveries: (params?: WebhookDeliveriesQuery) =>
     api.get<WebhookDelivery[]>(`/admin/webhooks/deliveries${toWebhookDeliveriesQueryString(params)}`),
 
-  /** DEAD 1건 재시도 — 성공하면 그 엔드포인트가 재개된다(정본 §14.5 "재개 두 갈래") */
-  retryDelivery: (id: number) => api.post<WebhookDelivery>(`/admin/webhooks/deliveries/${id}/retry`),
+  /** DEAD 1건 재시도 — 그 발송이 속한 엔드포인트를 통째로 재개한다(정본 §14.5 "재개
+   * 두 갈래", 백엔드 노트 §1.8 — 한 건만 살리면 순서가 깨진다). `resumeEndpoint`와
+   * 같은 `{endpoint, revived}` 응답 */
+  retryDelivery: (id: number) => api.post<WebhookResumeResponse>(`/admin/webhooks/deliveries/${id}/retry`),
 
   /** 엔드포인트별 pending/retry/dead/delivered24h 요약 — 화주 탭 좌측 배지 */
   summary: () => api.get<WebhookSummaryRow[]>("/admin/webhooks/summary"),
@@ -798,6 +804,7 @@ function toWebhookDeliveriesQueryString(params?: WebhookDeliveriesQuery): string
   if (params.seller !== undefined && params.seller !== "") qs.set("seller", params.seller);
   if (params.endpoint !== undefined) qs.set("endpoint", String(params.endpoint));
   if (params.status !== undefined) qs.set("status", params.status);
+  if (params.from !== undefined) qs.set("from", params.from);
   if (params.limit !== undefined) qs.set("limit", String(params.limit));
   const suffix = qs.toString();
   return suffix ? `?${suffix}` : "";

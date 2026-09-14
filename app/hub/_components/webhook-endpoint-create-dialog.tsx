@@ -4,9 +4,13 @@
  * "엔드포인트 추가" 대화 상자 — 정본 §14.5 `POST /admin/webhooks/endpoints`, 브리프 §2
  * "URL·구독 유형 체크 4종". `transfer-create-dialog.tsx`와 같은 골격 — 폼 상태는 자식
  * (`EndpointCreateForm`)에 둬 Radix 가 닫힐 때 언마운트로 자동 초기화된다.
+ *
+ * 생성 응답에도 평문 비밀이 한 번만 온다(백엔드 노트 §3.2 "`secret`은 여기와
+ * `rotate-secret` 응답에만 있다") — 저장 성공 후 바로 닫지 않고 `webhook-key-issue-
+ * dialog.tsx`와 같은 평문 1회 패널을 보여준다.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from "@/lib/types";
 import { useCreateWebhookEndpoint } from "../_data/use-webhooks";
+import { PlaintextSecretPanel } from "./plaintext-secret-panel";
 import { Btn, Checkbox, Field, w98 } from "./win98-ui";
 
 const EVENT_TYPE_LABEL: Record<WebhookEventType, string> = {
@@ -34,8 +39,15 @@ export function WebhookEndpointCreateDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const blockCloseRef = useRef(false);
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next && blockCloseRef.current) return;
+    onOpenChange(next);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         showCloseButton={false}
         className={`${w98.dialogTheme} ${w98.raised} w-[460px] max-w-none gap-0 rounded-none border-0 p-[3px] shadow-[3px_3px_0_0_rgba(0,0,0,0.35)] sm:max-w-none`}
@@ -50,17 +62,43 @@ export function WebhookEndpointCreateDialog({
         </DialogHeader>
 
         {open ? (
-          <EndpointCreateForm sellerCode={sellerCode} onClose={() => onOpenChange(false)} />
+          <EndpointCreateForm
+            sellerCode={sellerCode}
+            onClose={() => onOpenChange(false)}
+            onBlockCloseChange={(blocked) => {
+              blockCloseRef.current = blocked;
+            }}
+          />
         ) : null}
       </DialogContent>
     </Dialog>
   );
 }
 
-function EndpointCreateForm({ sellerCode, onClose }: { sellerCode: string; onClose: () => void }) {
+function EndpointCreateForm({
+  sellerCode,
+  onClose,
+  onBlockCloseChange,
+}: {
+  sellerCode: string;
+  onClose: () => void;
+  onBlockCloseChange: (blocked: boolean) => void;
+}) {
   const [url, setUrl] = useState("");
   const [eventTypes, setEventTypes] = useState<WebhookEventType[]>([...WEBHOOK_EVENT_TYPES]);
+  const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const create = useCreateWebhookEndpoint();
+
+  if (createdSecret !== null) {
+    return (
+      <PlaintextSecretPanel
+        description="새 엔드포인트의 서명 비밀"
+        value={createdSecret}
+        onCopiedChange={(copied) => onBlockCloseChange(!copied)}
+        onClose={onClose}
+      />
+    );
+  }
 
   const toggleType = (type: WebhookEventType) =>
     setEventTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
@@ -71,7 +109,7 @@ function EndpointCreateForm({ sellerCode, onClose }: { sellerCode: string; onClo
     if (!canSubmit) return;
     create.mutate(
       { sellerCode, url: url.trim(), eventTypes },
-      { onSuccess: onClose },
+      { onSuccess: (data) => setCreatedSecret(data.secret) },
     );
   };
 
@@ -84,7 +122,7 @@ function EndpointCreateForm({ sellerCode, onClose }: { sellerCode: string; onClo
             mono
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="http://mock-sellers:9101/webhook"
+            placeholder="http://seller-normal:9100/webhooks/{eventType}"
             className="h-7 text-[13px]"
           />
         </label>

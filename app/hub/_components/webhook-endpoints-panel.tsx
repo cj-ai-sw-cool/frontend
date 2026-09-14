@@ -36,7 +36,8 @@ export function WebhookEndpointsPanel({ sellerCode }: { sellerCode: string }) {
 
   const handleResume = (id: number) => {
     resume.mutate(id, {
-      onSuccess: () => toast.success("엔드포인트를 재개했습니다", w98Toast.success),
+      onSuccess: (data) =>
+        toast.success(`엔드포인트를 재개했습니다 (${data.revived}건 재전송)`, w98Toast.success),
       onError: (err) => toast.error("재개에 실패했습니다", { ...w98Toast.notice, description: err.message }),
     });
   };
@@ -92,7 +93,7 @@ export function WebhookEndpointsPanel({ sellerCode }: { sellerCode: string }) {
               </tr>
             ) : (
               endpoints.map((ep) => (
-                <tr key={ep.id} className="border-t border-[color:var(--border)] align-top">
+                <tr key={ep.endpointId} className="border-t border-[color:var(--border)] align-top">
                   <Td mono>{ep.url}</Td>
                   <Td mono>{ep.eventTypes.length}종</Td>
                   <Td>
@@ -104,7 +105,7 @@ export function WebhookEndpointsPanel({ sellerCode }: { sellerCode: string }) {
                       {ep.status === "SUSPENDED" ? (
                         <Btn
                           disabled={resume.isPending}
-                          onClick={() => handleResume(ep.id)}
+                          onClick={() => handleResume(ep.endpointId)}
                           className="h-6 px-2 text-[11px] font-bold"
                         >
                           재개
@@ -113,13 +114,13 @@ export function WebhookEndpointsPanel({ sellerCode }: { sellerCode: string }) {
                       {ep.status !== "SUSPENDED" ? (
                         <Btn
                           disabled={updateStatus.isPending}
-                          onClick={() => handleToggle(ep.id, ep.status)}
+                          onClick={() => handleToggle(ep.endpointId, ep.status)}
                           className="h-6 px-2 text-[11px]"
                         >
                           {ep.status === "DISABLED" ? "활성" : "비활성"}
                         </Btn>
                       ) : null}
-                      <Btn onClick={() => setRotateEndpointId(ep.id)} className="h-6 px-2 text-[11px]">
+                      <Btn onClick={() => setRotateEndpointId(ep.endpointId)} className="h-6 px-2 text-[11px]">
                         비밀 재발급
                       </Btn>
                     </div>

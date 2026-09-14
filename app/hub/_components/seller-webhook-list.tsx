@@ -3,13 +3,15 @@
 /**
  * "화주" 탭 좌측 — 화주 목록(정본 §14.8, 브리프 §2 상단 "코드·이름·상태·키 개수·엔드포인트
  * 개수·DEAD 건수 배지"). `GET /sellers`(라이브)와 `GET /admin/webhooks/summary`(엔드포인트
- * 별, 목/라이브)를 화주 코드로 합친다. 키 개수는 요약에 없어(정본 §14.5는 엔드포인트
- * 집계만 준다) 행마다 `useApiKeys`를 따로 불러 센다 — 행 하나가 컴포넌트 하나라 훅을
- * 반복문 밖에서 부르는 규칙을 어기지 않는다.
+ * 별, 라이브)를 화주 코드로 합친다. 키 개수는 `GET /sellers`의 `apiKeyCount`를 그대로
+ * 쓴다(백엔드 노트 §1.16) — 화주마다 `GET .../api-keys`를 따로 부르지 않는다.
+ *
+ * 패널 폭 `w-72`(288px) — `w-64`(256px)였을 때 "SEL-A · 키 2 · 엔드포인트 1" 같은 메타
+ * 줄이 DEAD 배지와 좁아진 폭 안에서 단어 중간에 줄바꿈됐다(코디네이터 지적). `truncate`
+ * 로 넘치면 말줄임표로 자르되, 이 폭에서는 실제로 넘치지 않는다.
  */
 
 import type { Seller, WebhookSummaryRow } from "@/lib/types";
-import { useApiKeys } from "../_data/use-webhooks";
 import { Btn, Panel, Sunken, w98 } from "./win98-ui";
 
 export function SellerWebhookList({
@@ -24,7 +26,7 @@ export function SellerWebhookList({
   onSelect: (code: string) => void;
 }) {
   return (
-    <Panel title="화주 목록" className="h-full w-64 shrink-0" bodyClassName="min-h-0">
+    <Panel title="화주 목록" className="h-full w-72 shrink-0" bodyClassName="min-h-0">
       <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto`}>
         <ul className="flex flex-col">
           {sellers.map((seller) => (
@@ -53,8 +55,6 @@ function SellerRow({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const { data: keys } = useApiKeys(seller.code);
-  const activeKeyCount = (keys ?? []).filter((k) => k.revokedAt === null).length;
   const deadCount = rows.reduce((sum, r) => sum + r.dead, 0);
 
   return (
@@ -68,8 +68,8 @@ function SellerRow({
           <span className="truncate text-[13px] font-bold">
             {seller.name} <span className={w98.small}>({seller.status === "ACTIVE" ? "운영" : "정지"})</span>
           </span>
-          <span className={`${w98.mono} ${w98.small} text-[color:var(--muted-foreground)]`}>
-            {seller.code} · 키 {activeKeyCount} · 엔드포인트 {rows.length}
+          <span className={`${w98.mono} ${w98.small} truncate whitespace-nowrap text-[color:var(--muted-foreground)]`}>
+            {seller.code} · 키 {seller.apiKeyCount ?? 0} · 엔드포인트 {rows.length}
           </span>
         </span>
         {deadCount > 0 ? (

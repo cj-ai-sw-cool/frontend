@@ -42,7 +42,7 @@ export function WebhookDeliveriesPanel({ sellerCode }: { sellerCode: string | nu
 
   const handleRetry = (id: number) => {
     retry.mutate(id, {
-      onSuccess: () => toast.success("재시도를 요청했습니다", w98Toast.success),
+      onSuccess: (data) => toast.success(`재시도를 요청했습니다 (${data.revived}건 재전송)`, w98Toast.success),
       onError: (err) => toast.error("재시도에 실패했습니다", { ...w98Toast.notice, description: err.message }),
     });
   };
@@ -107,14 +107,14 @@ export function WebhookDeliveriesPanel({ sellerCode }: { sellerCode: string | nu
                 </tr>
               ) : (
                 deliveries.map((d) => (
-                  <Fragment key={d.id}>
+                  <Fragment key={d.deliveryId}>
                     <tr
-                      onClick={() => setExpandedId(expandedId === d.id ? null : d.id)}
+                      onClick={() => setExpandedId(expandedId === d.deliveryId ? null : d.deliveryId)}
                       className="cursor-pointer border-t border-[color:var(--border)] hover:bg-[color:var(--surface-variant)]"
                     >
                       <Td mono>{d.outboxSeq}</Td>
                       <Td mono>{d.eventType}</Td>
-                      <Td mono>{d.endpointUrl}</Td>
+                      <Td mono>{d.url}</Td>
                       <Td>
                         <span className={`font-bold ${STATUS_TONE[d.status]}`}>{STATUS_LABEL[d.status]}</span>
                       </Td>
@@ -128,7 +128,7 @@ export function WebhookDeliveriesPanel({ sellerCode }: { sellerCode: string | nu
                             disabled={retry.isPending}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleRetry(d.id);
+                              handleRetry(d.deliveryId);
                             }}
                             className="h-6 px-2 text-[11px] font-bold"
                           >
@@ -137,7 +137,7 @@ export function WebhookDeliveriesPanel({ sellerCode }: { sellerCode: string | nu
                         ) : null}
                       </Td>
                     </tr>
-                    {expandedId === d.id ? (
+                    {expandedId === d.deliveryId ? (
                       <tr className="border-t border-[color:var(--border)]">
                         <td colSpan={9} className="p-0">
                           <Sunken className={`${w98.mono} m-1 max-h-48 overflow-auto p-2 text-[11px]`}>
