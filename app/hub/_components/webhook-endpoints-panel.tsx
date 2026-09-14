@@ -56,6 +56,8 @@ export function WebhookEndpointsPanel({ sellerCode }: { sellerCode: string }) {
   return (
     <Panel
       title="엔드포인트"
+      className="min-h-0 flex-1"
+      bodyClassName="min-h-0"
       right={
         <Btn onClick={() => setCreateOpen(true)} className="h-6 px-2 text-[12px] font-bold">
           엔드포인트 추가

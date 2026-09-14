@@ -28,6 +28,8 @@ export function WebhookKeysPanel({ sellerCode }: { sellerCode: string }) {
   return (
     <Panel
       title="API 키"
+      className="min-h-0 flex-1"
+      bodyClassName="min-h-0"
       right={
         <Btn onClick={() => setIssueOpen(true)} className="h-6 px-2 text-[12px] font-bold">
           키 발급
