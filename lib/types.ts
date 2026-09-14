@@ -2194,3 +2194,139 @@ export interface WorkersQuery {
   center?: string;
   role?: string;
 }
+
+/* ── 화주 웹훅 — API 키·엔드포인트·발송 이력·릴레이 (Stage 11C) ──────────────────
+   정본: backend/docs/02-system/02-data-model.md §14.2·§14.5·§14.8, 브리프
+   docs/tasks/2026-09-14-stage11c-frontend-handoff.md. 백엔드가 같은 시각
+   `feat/stage11c-webhooks`에서 작업 중이라(브리프 머리말) 2026-09-14 시점엔 관리자
+   API가 없다(`GET /admin/webhooks/summary` 404 확인) — `lib/mocks/webhooks.ts` 표본으로
+   그리고 라이브 검증은 완료 보고에서 남긴다. 필드 이름은 정본 컬럼명을 camelCase로
+   옮긴 추정치라 라이브 대조 전까지 바뀔 수 있다. */
+
+/** `seller_api_key` 한 건 — `GET /admin/sellers/{code}/api-keys` 항목(정본 §14.2).
+ * 평문 키는 발급 응답에만 있고 여기엔 없다 */
+export interface SellerApiKey {
+  id: number;
+  keyPrefix: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
+/** `POST /admin/sellers/{code}/api-keys` 요청 */
+export interface CreateApiKeyRequest {
+  label: string;
+}
+
+/** 발급 응답 — 평문 키가 여기 한 번만 온다(정본 §14.2 "생성 응답에만 평문 1회") */
+export interface CreateApiKeyResponse {
+  id: number;
+  prefix: string;
+  key: string;
+}
+
+export type WebhookEndpointStatus = "ACTIVE" | "SUSPENDED" | "DISABLED";
+
+/** 화주에게 나가는 이벤트 유형 4종(정본 §14.6) — 엔드포인트 구독 체크박스 */
+export type WebhookEventType =
+  | "OrderStatusChanged"
+  | "OrderCancelled"
+  | "ShipmentShipped"
+  | "InventoryChanged";
+
+export const WEBHOOK_EVENT_TYPES: WebhookEventType[] = [
+  "OrderStatusChanged",
+  "OrderCancelled",
+  "ShipmentShipped",
+  "InventoryChanged",
+];
+
+/** `webhook_endpoint` 한 건(정본 §14.5) */
+export interface WebhookEndpoint {
+  id: number;
+  sellerCode: string;
+  url: string;
+  secretPrefix: string;
+  eventTypes: WebhookEventType[];
+  status: WebhookEndpointStatus;
+  suspendedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebhookEndpointsQuery {
+  seller?: string;
+}
+
+/** `POST /admin/webhooks/endpoints` 요청 — 화주는 본문에 코드로 지정한다(정본 §14.5엔
+ * 화주 지정 방식이 명시돼 있지 않다 — 라이브 대조 대기) */
+export interface CreateWebhookEndpointRequest {
+  sellerCode: string;
+  url: string;
+  eventTypes: WebhookEventType[];
+}
+
+/** `PATCH /admin/webhooks/endpoints/{id}` 요청 — 부분 갱신(url·구독·ACTIVE/DISABLED 전환) */
+export interface UpdateWebhookEndpointRequest {
+  url?: string;
+  eventTypes?: WebhookEventType[];
+  status?: "ACTIVE" | "DISABLED";
+}
+
+/** 비밀 재발급 응답 — 평문 1회(정본 §14.5 `secret_enc`, "생성·재발급 응답에만 평문 1회") */
+export interface RotateWebhookSecretResponse {
+  secretPrefix: string;
+  secret: string;
+}
+
+export type WebhookDeliveryStatus = "PENDING" | "SENDING" | "RETRY" | "DELIVERED" | "DEAD";
+
+/** `webhook_delivery` 한 건(정본 §14.5) — 발송 이력 표 행 + payload 펼치기 */
+export interface WebhookDelivery {
+  id: number;
+  endpointId: number;
+  endpointUrl: string;
+  sellerCode: string;
+  outboxSeq: number;
+  eventType: WebhookEventType;
+  payload: Record<string, unknown>;
+  status: WebhookDeliveryStatus;
+  attempts: number;
+  nextAttemptAt: string | null;
+  lastStatusCode: number | null;
+  lastError: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+}
+
+export interface WebhookDeliveriesQuery {
+  seller?: string;
+  endpoint?: number;
+  status?: WebhookDeliveryStatus;
+  limit?: number;
+}
+
+/** `GET /admin/webhooks/summary` 행 — 엔드포인트별(정본 §14.5). 화주 목록의 "DEAD 건수
+ * 배지"를 만들려면 `sellerCode`로 묶어야 하는데 정본 표엔 없다 — 있다고 가정하고 목에
+ * 포함했다(라이브 대조 대기) */
+export interface WebhookSummaryRow {
+  endpointId: number;
+  sellerCode: string;
+  status: WebhookEndpointStatus;
+  pending: number;
+  retry: number;
+  dead: number;
+  delivered24h: number;
+  lastDeliveredAt: string | null;
+  oldestPendingSeq: number | null;
+}
+
+/** `GET /admin/events/relay` — outbox → Kafka 릴레이 관찰(정본 §14.4) */
+export interface WebhookRelaySummary {
+  enabled: boolean;
+  lastPublishedSeq: number | null;
+  unpublished: number;
+  oldestUnpublishedAt: string | null;
+  lagSec: number | null;
+}

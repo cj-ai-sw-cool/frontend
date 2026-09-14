@@ -23,9 +23,12 @@ import type {
   CountTaskDetail,
   CountTaskListItem,
   CountTasksQuery,
+  CreateApiKeyRequest,
+  CreateApiKeyResponse,
   CreateAsnRequest,
   CreateSellerRequest,
   CreateTransferRequest,
+  CreateWebhookEndpointRequest,
   DailyInventory,
   DamageReportRequest,
   DamageReportResponse,
@@ -72,9 +75,11 @@ import type {
   RebinSessionDetail,
   RebinSimulateRequest,
   RebinSimulateResponse,
+  RotateWebhookSecretResponse,
   RoutingDecision,
   ScanResponse,
   Seller,
+  SellerApiKey,
   ShipmentDetail,
   ShipmentListItem,
   ShipmentStatus,
@@ -92,12 +97,19 @@ import type {
   TransferOrder,
   TransfersQuery,
   UpdateSellerRequest,
+  UpdateWebhookEndpointRequest,
   WaveCreateRequest,
   WaveCreateResponse,
   WaveDetail,
   WaveListItem,
   WaveTasksResponse,
   WavesQuery,
+  WebhookDelivery,
+  WebhookDeliveriesQuery,
+  WebhookEndpoint,
+  WebhookEndpointsQuery,
+  WebhookRelaySummary,
+  WebhookSummaryRow,
   WmsEvent,
   WorkerRow,
   WorkersQuery,
@@ -602,6 +614,13 @@ export const queryKeys = {
   eventsRange: (params: EventsQuery) => ["events", "range", params] as const,
   eventsKpi: (params: EventsKpiQuery) => ["events", "kpi", params] as const,
   workers: (params: WorkersQuery) => ["workers", params] as const,
+  // Stage 11C — 화주 웹훅(정본 §14.2·§14.5)
+  sellerApiKeys: (sellerCode: string) => ["admin", "sellers", sellerCode, "api-keys"] as const,
+  webhookEndpoints: (params?: WebhookEndpointsQuery) => ["admin", "webhooks", "endpoints", params ?? {}] as const,
+  webhookDeliveries: (params?: WebhookDeliveriesQuery) =>
+    ["admin", "webhooks", "deliveries", params ?? {}] as const,
+  webhookSummary: ["admin", "webhooks", "summary"] as const,
+  webhookRelay: ["admin", "events", "relay"] as const,
 };
 
 /* ── 다창고 — 센터 축·주문 라우팅·센터 간 이동 (Stage 11D) ──────────────────────
@@ -710,6 +729,76 @@ function toWorkersQueryString(params: WorkersQuery): string {
   const qs = new URLSearchParams();
   if (params.center !== undefined) qs.set("center", params.center);
   if (params.role !== undefined) qs.set("role", params.role);
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
+/* ── 화주 웹훅 관리자 API — 키·엔드포인트·발송 이력·릴레이 (Stage 11C) ──────────────
+   정본 §14.2·§14.5·§14.8. 백엔드가 같은 시각 `feat/stage11c-webhooks`에서 작업 중이라
+   (브리프 머리말) 2026-09-14 시점엔 없다(`GET /admin/webhooks/summary` 404 확인) —
+   호출부(`app/hub/_data/use-webhooks.ts`)가 실패하면 `lib/mocks/webhooks.ts` 표본으로
+   대신한다. 라이브 검증 대기. */
+export const webhookAdmin = {
+  /** 화주 API 키 목록(정본 §14.2) */
+  apiKeys: (sellerCode: string) =>
+    api.get<SellerApiKey[]>(`/admin/sellers/${encodeURIComponent(sellerCode)}/api-keys`),
+
+  /** 키 발급 — 응답에 평문이 한 번만 온다 */
+  issueApiKey: (sellerCode: string, body: CreateApiKeyRequest) =>
+    api.post<CreateApiKeyResponse>(`/admin/sellers/${encodeURIComponent(sellerCode)}/api-keys`, body),
+
+  /** 키 폐기 — `revoked_at` 만 찍고 행은 남는다(정본 §14.2) */
+  revokeApiKey: (sellerCode: string, id: number) =>
+    api.del<unknown>(`/admin/sellers/${encodeURIComponent(sellerCode)}/api-keys/${id}`),
+
+  /** 엔드포인트 목록 — 화주로 거른다(정본 §14.5) */
+  endpoints: (params?: WebhookEndpointsQuery) =>
+    api.get<WebhookEndpoint[]>(`/admin/webhooks/endpoints${toWebhookEndpointsQueryString(params)}`),
+
+  /** 엔드포인트 추가 — URL·구독 유형 */
+  createEndpoint: (body: CreateWebhookEndpointRequest) =>
+    api.post<WebhookEndpoint>("/admin/webhooks/endpoints", body),
+
+  /** 부분 갱신 — url·event_types·status(ACTIVE/DISABLED 토글) */
+  updateEndpoint: (id: number, body: UpdateWebhookEndpointRequest) =>
+    api.patch<WebhookEndpoint>(`/admin/webhooks/endpoints/${id}`, body),
+
+  /** 비밀 재발급 — 응답에 평문이 한 번만 온다 */
+  rotateSecret: (id: number) =>
+    api.post<RotateWebhookSecretResponse>(`/admin/webhooks/endpoints/${id}/rotate-secret`),
+
+  /** 재개 — SUSPENDED 인 엔드포인트를 ACTIVE 로, DEAD 건을 PENDING 으로 되돌린다 */
+  resumeEndpoint: (id: number) => api.post<WebhookEndpoint>(`/admin/webhooks/endpoints/${id}/resume`),
+
+  /** 발송 이력 — 화주·엔드포인트·상태로 필터, `limit`(기본 100) */
+  deliveries: (params?: WebhookDeliveriesQuery) =>
+    api.get<WebhookDelivery[]>(`/admin/webhooks/deliveries${toWebhookDeliveriesQueryString(params)}`),
+
+  /** DEAD 1건 재시도 — 성공하면 그 엔드포인트가 재개된다(정본 §14.5 "재개 두 갈래") */
+  retryDelivery: (id: number) => api.post<WebhookDelivery>(`/admin/webhooks/deliveries/${id}/retry`),
+
+  /** 엔드포인트별 pending/retry/dead/delivered24h 요약 — 화주 탭 좌측 배지 */
+  summary: () => api.get<WebhookSummaryRow[]>("/admin/webhooks/summary"),
+
+  /** outbox → Kafka 릴레이 관찰 — enabled=false 면 브로커 없음(로컬 기본 프로파일) */
+  relay: () => api.get<WebhookRelaySummary>("/admin/events/relay"),
+};
+
+function toWebhookEndpointsQueryString(params?: WebhookEndpointsQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.seller !== undefined && params.seller !== "") qs.set("seller", params.seller);
+  const suffix = qs.toString();
+  return suffix ? `?${suffix}` : "";
+}
+
+function toWebhookDeliveriesQueryString(params?: WebhookDeliveriesQuery): string {
+  if (!params) return "";
+  const qs = new URLSearchParams();
+  if (params.seller !== undefined && params.seller !== "") qs.set("seller", params.seller);
+  if (params.endpoint !== undefined) qs.set("endpoint", String(params.endpoint));
+  if (params.status !== undefined) qs.set("status", params.status);
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
   const suffix = qs.toString();
   return suffix ? `?${suffix}` : "";
 }
