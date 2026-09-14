@@ -46,7 +46,18 @@ interface BayRect {
   bay: Bay;
 }
 
-export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
+export default function WarehouseMap({
+  onOpen3D,
+  heatmapLines,
+  goldenBayIds,
+}: {
+  onOpen3D?: () => void;
+  /** Stage 11B 슬로팅 탭 — 있으면 점유율 대신 이 베이별 PICK 라인 수로 5단계 색을 칠한다
+   * (정본 §15.9 "베이 색 = 히트맵 라인 수"). 없으면 기존 점유율 색(창고 맵 기본 모드). */
+  heatmapLines?: Map<number, number> | null;
+  /** 골든존 테두리 토글 — 켜져 있으면 이 집합에 든 베이만 금색 테두리를 덧그린다(정본 §15.9) */
+  goldenBayIds?: Set<number> | null;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bayRectsRef = useRef<BayRect[]>([]);
@@ -143,7 +154,11 @@ export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
     }
     ctx.setLineDash([]);
 
-    // ── 베이 블록 — 점유율 5단계 색, 클릭용 사각형을 함께 기록한다
+    // ── 베이 블록 — 점유율(기본) 또는 히트맵 라인 수(슬로팅 탭) 5단계 색
+    /* Stage 11B — `heatmapLines` 가 있으면 그 최댓값을 1.0 으로 놓고 같은 5단계 경계
+     * (`occupancyTier`)를 재사용한다. 베이 색의 "뜻"만 바뀔 뿐 계산·팔레트는 그대로다
+     * (정본 §15.9 "베이 색 = 히트맵 라인 수", `warehouse-map.tsx` 재사용 지시). */
+    const maxHeat = heatmapLines ? Math.max(1, ...heatmapLines.values()) : 1;
     const rects: BayRect[] = [];
     for (const bay of layout.bays) {
       const box = bayBox(bay, index);
@@ -151,10 +166,12 @@ export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
       const bx = X(box.cx - box.width / 2), by = Y(box.cy - box.depth / 2);
       const bw = box.width * scale, bh = box.depth * scale;
       const isHot = hoveredBay?.id === bay.id || selectedBay?.id === bay.id;
-      ctx.fillStyle = hexToRgba(OCCUPANCY_COLORS[occupancyTier(box.occupancyRatio)], 1);
+      const ratio = heatmapLines ? (heatmapLines.get(bay.id) ?? 0) / maxHeat : box.occupancyRatio;
+      ctx.fillStyle = hexToRgba(OCCUPANCY_COLORS[occupancyTier(ratio)], 1);
       ctx.fillRect(bx, by, bw, bh);
-      ctx.strokeStyle = isHot ? "#FF8A2A" : "#000000";
-      ctx.lineWidth = isHot ? 2 : 1;
+      const isGolden = goldenBayIds?.has(bay.id) ?? false;
+      ctx.strokeStyle = isHot ? "#FF8A2A" : isGolden ? "#F0C020" : "#000000";
+      ctx.lineWidth = isHot || isGolden ? 2 : 1;
       ctx.strokeRect(px(bx), px(by), Math.max(1, Math.round(bw)), Math.max(1, Math.round(bh)));
       rects.push({ x: bx, y: by, w: bw, h: bh, bay });
     }
@@ -176,7 +193,7 @@ export default function WarehouseMap({ onOpen3D }: { onOpen3D?: () => void }) {
     ro.observe(wrap);
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout, index, hoveredBay, selectedBay]);
+  }, [layout, index, hoveredBay, selectedBay, heatmapLines, goldenBayIds]);
 
   const hitTest = (clientX: number, clientY: number): Bay | null => {
     const cvs = canvasRef.current;

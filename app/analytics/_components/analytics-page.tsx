@@ -7,7 +7,11 @@ import { FlowPanel } from "./flow-panel";
 import { InventoryWindow } from "./inventory-window";
 import { MasterWindow, type WarehouseApi } from "./master-window";
 import { MonthlyPanel } from "./monthly-panel";
+import { SlottingTab } from "./slotting-tab";
 import { Btn, Panel, Sunken, w98 } from "./win98-ui";
+
+const TOP_TABS = ["개요", "슬로팅"] as const;
+type TopTab = (typeof TOP_TABS)[number];
 
 /* 창고 맵은 캔버스와 `ResizeObserver` 를 쓰므로 서버에서 그릴 수 없다.
    ⚠️ `ssr: false` 를 빼면 빌드 시 정적 생성 단계에서 `window` 를 찾다가 터진다. */
@@ -104,6 +108,12 @@ function HighlightFromQuery({ onHighlight }: { onHighlight: (zoneCode: string) =
    ⚠️ 세 칸 모두 `min-w-0` 이 있어야 한다. 없으면 안쪽 캔버스가 줄어들지 못해 그 칸이
       제 몫보다 넓어지고, 나머지 두 칸이 밀려 찌그러진다. */
 export default function AnalyticsPage() {
+  /* Stage 11B — 상단 탭. "개요"는 이 파일이 원래 그리던 흐름·지도·월간 3칸(그대로 유지),
+   * "슬로팅"은 §15.9 새 화면(`slotting-tab.tsx`)을 통째로 올린다. 3D·마스터·재고 오버레이는
+   * "개요" 탭의 트리거만 갖고 있지만, 상태·Esc 핸들러는 탭과 무관하게 이 컴포넌트 최상단에
+   * 그대로 둔다(다른 탭에 있는 동안 열려 있을 이유가 없어 트리거만 숨긴다). */
+  const [tab, setTab] = useState<TopTab>("개요");
+
   /* 3D 전체 화면이 떠 있는가 */
   const [full, setFull] = useState(false);
 
@@ -194,6 +204,19 @@ export default function AnalyticsPage() {
         <HighlightFromQuery onHighlight={applyHighlightFromQuery} />
       </Suspense>
 
+      {/* ── 상단 탭 — Stage 11B. "개요"는 이 파일이 원래 그리던 3칸, "슬로팅"은 §15.9 */}
+      <div className="flex shrink-0 gap-1">
+        {TOP_TABS.map((t) => (
+          <Btn key={t} pressed={tab === t} onClick={() => setTab(t)} className="px-4 py-1.5">
+            {t}
+          </Btn>
+        ))}
+      </div>
+
+      {tab === "슬로팅" ? <SlottingTab /> : null}
+
+      {tab !== "개요" ? null : (
+        <>
       {/* ── 위 — 흐름도 한 줄이 **화면 폭을 다 쓴다** ────────────────────
           ★ 전에는 왼쪽 3/4 만 쓰고 오른쪽 칸이 위아래로 붙어 있었다. 흐름도를 더 넓게
             달라는 요청에 맞춰, 이 줄을 **전체 폭**으로 올리고 지도·재고를 그 아래 나란히
@@ -252,6 +275,8 @@ export default function AnalyticsPage() {
           <MonthlyPanel />
         </Panel>
       </div>
+        </>
+      )}
 
       {/* ── 3D 전체 화면 ────────────────────────────────────────────────
           ⚠️ 크기를 `inset-0` 이 아니라 **1600 x 1004 로 박는다.** `position: fixed` 의 기준은

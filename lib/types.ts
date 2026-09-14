@@ -1457,6 +1457,20 @@ export interface WaveCreateResponse {
   batchCount: number;
   taskCount: number;
   skipped: WaveSkipped[];
+  /** Stage 11B(§15.8) 웨이브 용량 분할 — 마감 대상이 유휴 토트 수를 넘으면 웨이브가
+   * 여러 개(`wave_no` 접미 "-2"·"-3") 생긴다. 이 배열이 실제 결과이고, 위 4개 단일
+   * 필드는 `waves[0]` 과 같은 값으로 남아 있다(정본 §15.8 "기존 단일 응답은 waves[0]과
+   * 호환 필드 유지"). 라이브 대조 전까지는 옵셔널로 두고, 없으면 화면이 단일 필드로
+   * 되돌아간다(`use-waves.ts` 참고). */
+  waves?: WaveSplitResult[];
+}
+
+/** `POST /waves` 응답의 웨이브 1건 — 정본 §15.8 */
+export interface WaveSplitResult {
+  waveId: number;
+  waveNo: string;
+  orders: number;
+  batches: number;
 }
 
 /** `GET /waves` 쿼리 */
@@ -2355,4 +2369,214 @@ export interface WebhookRelaySummary {
   unpublished: number;
   oldestUnpublishedAt: string | null;
   lagSec: number | null;
+}
+
+/* ── 15. 슬로팅 — 통로 그래프·회전율·골든존·재배치·웨이브 분할 (Stage 11B) ─────────
+   정본 §15. 2026-09-14 시점 백엔드가 같은 시각 작업 중이라 curl 라이브 대조 전이다 —
+   계약 문구를 그대로 옮기되, 응답 모양이 문서에 없는 자리는 이 파일 주석에 가정을
+   적고 노트 "계약 가정"에 백엔드 에이전트 앞으로 남긴다. */
+
+/** `GET/PUT /admin/slotting/params` 본문 — 정본 §15.2 표. `PUT` 은 `center` 를 쿼리로
+ * 받고 나머지 필드만 바디로 보낸다고 가정(다른 센터별 설정 PUT 과 같은 관례) */
+export interface SlottingParams {
+  walkSpeedMps: number;
+  secPerLine: number;
+  levelPenaltySec: number;
+  goldenShare: number;
+  heavyKg: number;
+  velocityDays: number;
+}
+
+/* ── 15.3 경로 평가기 ────────────────────────────────────────────────────── */
+
+export interface SlottingEvaluateRequest {
+  center: string;
+  waveIds?: number[];
+  batchIds?: number[];
+}
+
+export interface SlottingBatchEval {
+  batchId: number;
+  lines: number;
+  aisles: number;
+  distanceM: number;
+  timeSec: number;
+}
+
+/** 평가 합계 — 정본 §15.3 "배치마다 결과와 합계"에 합계 필드 모양이 없어, 비교 API
+ * (§15.7)의 `before`/`after` 모양(distanceM·timeSec·lines)과 같다고 가정 */
+export interface SlottingEvaluateResponse {
+  batches: SlottingBatchEval[];
+  totals: {
+    distanceM: number;
+    timeSec: number;
+    lines: number;
+  };
+}
+
+/* ── 15.4 회전율·ABC·히트맵 ──────────────────────────────────────────────── */
+
+export type SlottingGrade = "A" | "B" | "C";
+
+export interface VelocityCurrentBin {
+  locationCode: string;
+  golden: boolean;
+}
+
+/** `GET /admin/slotting/velocity` 행 — 정본 §15.4 */
+export interface VelocityRow {
+  productId: number;
+  gtin: string;
+  name: string;
+  sellerCode: string;
+  lines: number;
+  share: number;
+  cumShare: number;
+  grade: SlottingGrade;
+  currentBins: VelocityCurrentBin[];
+}
+
+export interface VelocityQuery {
+  center: string;
+  days?: number;
+}
+
+/** `GET /admin/slotting/heatmap` 행 — 베이별 PICK 라인 수(정본 §15.4) */
+export interface HeatmapBayRow {
+  bayId: number;
+  zoneCode: string;
+  aisleNo: number;
+  bayNo: number;
+  lines: number;
+}
+
+export interface HeatmapQuery {
+  center: string;
+  days?: number;
+}
+
+/* ── 15.5 골든존 ─────────────────────────────────────────────────────────── */
+
+/** `GET /admin/slotting/golden-zone` 행 — "베이 단위 골든 칸 수"(정본 §15.5). 저장하지
+ * 않고 계산만 하므로 히트맵과 같은 베이 식별 필드를 쓴다고 가정 */
+export interface GoldenZoneBayRow {
+  bayId: number;
+  zoneCode: string;
+  aisleNo: number;
+  bayNo: number;
+  goldenBinCount: number;
+}
+
+/* ── 15.6 재배치 제안기 ──────────────────────────────────────────────────── */
+
+export type RelocationProposalStatus = "DRAFT" | "APPLIED" | "DISCARDED";
+export type RelocationItemKind = "MOVE_IN" | "EVICT";
+export type RelocationItemStatus = "PROPOSED" | "OPEN" | "DONE" | "SKIPPED";
+export type RelocationItemReason = "A_OUTSIDE_GOLDEN" | "EVICT_C" | "HARD_ALLOCATED";
+
+/** `relocation_item` 한 행 — 정본 §15.6 표. 목록·표 렌더에 바로 쓰도록 상품명·칸 코드도
+ * 함께 온다고 가정(진열·재고 화면의 다른 목록 API와 같은 관례 — id 만 오면 화면이 N+1) */
+export interface RelocationItem {
+  id: number;
+  proposalId: number;
+  seq: number;
+  kind: RelocationItemKind;
+  productId: number;
+  gtin: string;
+  productName: string;
+  sellerId: number;
+  sellerCode: string;
+  lotId: number | null;
+  qty: number;
+  grade: SlottingGrade;
+  lines: number;
+  fromLocationId: number | null;
+  fromLocationCode: string | null;
+  toLocationId: number | null;
+  toLocationCode: string | null;
+  reason: RelocationItemReason;
+  selected: boolean;
+  status: RelocationItemStatus;
+  workerId: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+/** `relocation_proposal` — 정본 §15.6 표 */
+export interface RelocationProposal {
+  id: number;
+  centerId: number;
+  center: string;
+  status: RelocationProposalStatus;
+  params: SlottingParams;
+  beforeM: number | null;
+  afterM: number | null;
+  beforeSec: number | null;
+  afterSec: number | null;
+  createdAt: string;
+  appliedAt: string | null;
+}
+
+export interface RelocationProposalDetail extends RelocationProposal {
+  items: RelocationItem[];
+}
+
+export interface CreateProposalRequest {
+  center: string;
+}
+
+export interface ProposalsQuery {
+  center: string;
+  status?: RelocationProposalStatus;
+}
+
+export interface ApplyProposalRequest {
+  itemIds: number[];
+}
+
+/** 적용 응답 — 선택 항목이 `OPEN` 으로 바뀐 뒤 모습이라고 가정(상세와 같은 모양) */
+export type ApplyProposalResponse = RelocationProposalDetail;
+
+/* ── 15.7 전후 비교 ──────────────────────────────────────────────────────── */
+
+export interface CompareProposalRequest {
+  waveIds: number[];
+}
+
+export interface SlottingMetrics {
+  distanceM: number;
+  timeSec: number;
+  lines: number;
+}
+
+export interface CompareByBatch {
+  batchId: number;
+  before: SlottingMetrics;
+  after: SlottingMetrics;
+  diffPct: number;
+}
+
+/** `POST /admin/slotting/proposals/{id}/compare` 응답 — 정본 §15.7 */
+export interface CompareProposalResponse {
+  before: SlottingMetrics;
+  after: SlottingMetrics;
+  diffPct: number;
+  byBatch: CompareByBatch[];
+}
+
+/* ── 15.5 적용 — RELOCATE 시뮬레이터 ─────────────────────────────────────── */
+
+export interface SimulateRelocationRequest {
+  worker: string;
+}
+
+/** `POST /admin/relocations/{itemId}/simulate` 응답 — 웨이브 탭 `SimulateResponse` 와
+ * 같은 결과 뷰 관례(처리된 항목의 최종 모습)라고 가정 */
+export interface SimulateRelocationResponse {
+  item: RelocationItem;
+}
+
+export interface RelocationsQuery {
+  center: string;
+  status?: RelocationItemStatus;
 }
