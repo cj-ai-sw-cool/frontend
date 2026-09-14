@@ -70,7 +70,12 @@ function DialogBody({
   const [done, setDone] = useState<RelocationItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const sorted = [...items].sort((a, b) => a.seq - b.seq);
+  /* `items`(부모의 OPEN 목록)는 처리될 때마다 줄어든다 — 시뮬레이터가 항목을 DONE
+   * 으로 바꿀 때마다 부모가 openItems 를 다시 계산하고, 이 prop 이 바뀌면서 "몇 건 중
+   * 몇 건" 분모가 진행 중에 흔들리는 사고가 났다(2026-09-14 화면 체크에서 발견 — "진행
+   * 2/0"). 그래서 대화 상자를 여는 순간의 목록을 한 번만 얼려 둔다(state 초기화 함수,
+   * `DialogContent` 는 닫힐 때 언마운트되므로 다음에 열면 새로 얼린다). */
+  const [sorted] = useState(() => [...items].sort((a, b) => a.seq - b.seq));
 
   const run = async () => {
     if (!worker.trim() || sorted.length === 0) return;

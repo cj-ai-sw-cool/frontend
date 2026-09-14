@@ -112,7 +112,10 @@ export function SlottingCompareView({
 }) {
   const compare = useCompareResult(activeProposalId);
 
-  const before = activeProposalId === null ? evaluateTotals : compare?.before ?? null;
+  /* 제안이 막 생겼을 때는 아직 재평가 전이라 compare 가 없다 — 그래도 "전" 값은
+   * 제안 만들기 전에 조회해 둔 현재 평가(evaluateTotals)로 계속 보여준다(그 값을
+   * 캐시가 들고 있다, `useEvaluate` 는 `enabled` 가 꺼져도 마지막 data 를 유지한다). */
+  const before = compare?.before ?? evaluateTotals;
   const after = compare?.after ?? null;
 
   return (
