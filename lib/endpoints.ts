@@ -79,20 +79,40 @@ import type {
   RotateWebhookSecretResponse,
   RoutingDecision,
   ScanResponse,
+  ApplyProposalRequest,
+  ApplyProposalResponse,
+  CompareProposalRequest,
+  CompareProposalResponse,
+  CreateProposalRequest,
+  GoldenZoneResponse,
+  HeatmapQuery,
+  HeatmapResponse,
+  ProposalsQuery,
+  RelocationProposalDetail,
+  RelocationsQuery,
+  RelocationTask,
   Seller,
   SellerApiKey,
   ShipmentDetail,
   ShipmentListItem,
   ShipmentStatus,
   SimulateCountTaskRequest,
+  SimulateRelocationRequest,
+  SimulateRelocationResponse,
   SimulateRequest,
   SimulateResponse,
+  SlottingEvaluateRequest,
+  SlottingEvaluateResponse,
+  SlottingParams,
   StartCountTaskRequest,
   StartCountTaskResponse,
   StockItem,
   StockLedgerEntry,
   StockOccupancyRow,
   StockQuery,
+  UpdateSlottingParamsRequest,
+  VelocityQuery,
+  VelocityResponse,
   SubmitCountTaskRequest,
   SubmitCountTaskResponse,
   TransferOrder,
@@ -623,6 +643,15 @@ export const queryKeys = {
     ["admin", "webhooks", "deliveries", params ?? {}] as const,
   webhookSummary: ["admin", "webhooks", "summary"] as const,
   webhookRelay: ["admin", "events", "relay"] as const,
+  // Stage 11B — 슬로팅(정본 §15)
+  slottingParams: (center: string) => ["admin", "slotting", "params", center] as const,
+  slottingVelocity: (params: VelocityQuery) => ["admin", "slotting", "velocity", params] as const,
+  slottingHeatmap: (params: HeatmapQuery) => ["admin", "slotting", "heatmap", params] as const,
+  slottingGoldenZone: (center: string) => ["admin", "slotting", "golden-zone", center] as const,
+  slottingProposals: (params: ProposalsQuery) => ["admin", "slotting", "proposals", params] as const,
+  slottingProposal: (id: number) => ["admin", "slotting", "proposals", id] as const,
+  slottingEvaluate: (params: SlottingEvaluateRequest) => ["admin", "slotting", "evaluate", params] as const,
+  relocations: (params: RelocationsQuery) => ["admin", "relocations", params] as const,
 };
 
 /* ── 다창고 — 센터 축·주문 라우팅·센터 간 이동 (Stage 11D) ──────────────────────
@@ -808,4 +837,94 @@ function toWebhookDeliveriesQueryString(params?: WebhookDeliveriesQuery): string
   if (params.limit !== undefined) qs.set("limit", String(params.limit));
   const suffix = qs.toString();
   return suffix ? `?${suffix}` : "";
+}
+
+/* ── 슬로팅 — 통로 그래프·회전율·골든존·재배치·웨이브 분할 (Stage 11B) ─────────────
+   정본 §15. 2026-09-14 백엔드 노트(`backend/docs/tasks/2026-09-14-stage11b-backend-
+   notes.md` §3 "프론트 계약")로 라이브 대조 완료(`localhost:8000`) — 표본 폴백 없이
+   실제 응답만 쓴다(`lib/mocks/slotting.ts` 는 더 이상 이 파일이 참조하지 않는다). */
+export const slotting = {
+  /** 매개변수 조회 */
+  params: (center: string) => api.get<SlottingParams>(`/admin/slotting/params?center=${center}`),
+
+  /** 매개변수 저장 — 편집 Dialog "저장"(PUT). 센터는 쿼리, 나머지는 바디 */
+  updateParams: (center: string, body: UpdateSlottingParamsRequest) =>
+    api.put<SlottingParams>(`/admin/slotting/params?center=${center}`, body),
+
+  /** 경로 평가 — waveIds/batchIds 를 비우면 최근 웨이브 20개(고정). 전후 비교의 "현재" 쪽에도 쓴다 */
+  evaluate: (body: SlottingEvaluateRequest) =>
+    api.post<SlottingEvaluateResponse>("/admin/slotting/evaluate", body),
+
+  /** 회전율·ABC — `{distribution, rows}` */
+  velocity: (params: VelocityQuery) =>
+    api.get<VelocityResponse>(`/admin/slotting/velocity${toVelocityQuery(params)}`),
+
+  /** 베이별 PICK 라인 수 — 2D 히트맵 색, `{maxLines, bays}` */
+  heatmap: (params: HeatmapQuery) =>
+    api.get<HeatmapResponse>(`/admin/slotting/heatmap${toSlottingDaysQuery(params)}`),
+
+  /** 골든존 — 저장하지 않고 계산만, `{candidateBins, goldenBins, bays}` */
+  goldenZone: (center: string) =>
+    api.get<GoldenZoneResponse>(`/admin/slotting/golden-zone?center=${center}`),
+
+  /** 제안 목록 — `items`·`skipped` 는 빈 배열로 온다(상세만 채워진다) */
+  proposals: (params: ProposalsQuery) =>
+    api.get<RelocationProposalDetail[]>(`/admin/slotting/proposals${toProposalsQuery(params)}`),
+
+  /** 제안 상세 — 항목 포함 */
+  proposal: (id: number) => api.get<RelocationProposalDetail>(`/admin/slotting/proposals/${id}`),
+
+  /** 제안 생성 — DRAFT 1건(정본 §15.6 규칙 1~5) */
+  createProposal: (body: CreateProposalRequest) =>
+    api.post<RelocationProposalDetail>("/admin/slotting/proposals", body),
+
+  /** 제안 폐기 */
+  discardProposal: (id: number) => api.del<RelocationProposalDetail>(`/admin/slotting/proposals/${id}`),
+
+  /** 선택 항목 적용 — 비우면 전부, seq 순으로 OPEN 태스크로(정본 §15.6) */
+  applyProposal: (id: number, body: ApplyProposalRequest) =>
+    api.post<ApplyProposalResponse>(`/admin/slotting/proposals/${id}/apply`, body),
+
+  /** 전후 비교 — 제안이 전부 적용됐다고 가정한 재매핑으로 다시 평가(정본 §15.7).
+   * `diffPct` 는 양수가 개선이다(거리가 줄어든 비율) */
+  compareProposal: (id: number, body: CompareProposalRequest) =>
+    api.post<CompareProposalResponse>(`/admin/slotting/proposals/${id}/compare`, body),
+};
+
+function toVelocityQuery(params: VelocityQuery): string {
+  const qs = new URLSearchParams();
+  qs.set("center", params.center);
+  if (params.days !== undefined) qs.set("days", String(params.days));
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
+  return `?${qs.toString()}`;
+}
+
+function toSlottingDaysQuery(params: { center: string; days?: number }): string {
+  const qs = new URLSearchParams();
+  qs.set("center", params.center);
+  if (params.days !== undefined) qs.set("days", String(params.days));
+  return `?${qs.toString()}`;
+}
+
+function toProposalsQuery(params: ProposalsQuery): string {
+  const qs = new URLSearchParams();
+  qs.set("center", params.center);
+  if (params.status !== undefined) qs.set("status", params.status);
+  return `?${qs.toString()}`;
+}
+
+/** 재배치 태스크 실행 — 웨이브 탭과 같은 작업자 시뮬레이터 관례(정본 §15.6). 아직
+ * 고르지 않은 항목(`PROPOSED`)은 태스크가 아니라 목록에 나오지 않는다(라이브 대조) */
+export const relocations = {
+  list: (params: RelocationsQuery) => api.get<RelocationTask[]>(`/admin/relocations${toRelocationsQuery(params)}`),
+
+  simulate: (itemId: number, body: SimulateRelocationRequest) =>
+    api.post<SimulateRelocationResponse>(`/admin/relocations/${itemId}/simulate`, body),
+};
+
+function toRelocationsQuery(params: RelocationsQuery): string {
+  const qs = new URLSearchParams();
+  qs.set("center", params.center);
+  if (params.status !== undefined) qs.set("status", params.status);
+  return `?${qs.toString()}`;
 }

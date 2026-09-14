@@ -172,17 +172,67 @@ function WaveResultView({
     );
   }
 
+  /* Stage 11B(§15.8) 웨이브 용량 분할 — 마감 대상이 유휴 토트 수를 넘으면 웨이브가
+   * 여러 개("-2"·"-3" 접미) 생긴다. `waves` 가 2건 이상이면 목록으로 보여주고, 1건
+   * 이하(또는 옛 백엔드처럼 `waves` 필드 자체가 없으면)는 기존 단일 통계 그대로 —
+   * `waveId`/`waveNo`/`orderCount`/`batchCount`/`taskCount` 가 `waves[0]` 과 같은 값으로
+   * 남아 있다는 정본 §15.8 호환 규칙 덕분에 분기를 최소로 둘 수 있다. */
+  const multiWave = (result.waves?.length ?? 0) > 1;
+  const noToteCount = result.skippedCounts?.NO_TOTE ?? 0;
+
   return (
     <>
       <div className="flex flex-col gap-3 p-3">
-        <p className={`${w98.small}`}>
-          <b className={w98.mono}>{result.waveNo}</b> 생성 완료
-        </p>
-        <div className="grid grid-cols-3 gap-2">
-          <ResultStat label="주문" value={result.orderCount} />
-          <ResultStat label="배치" value={result.batchCount} />
-          <ResultStat label="태스크" value={result.taskCount} />
-        </div>
+        {multiWave ? (
+          <>
+            <p className={`${w98.small}`}>
+              웨이브 <b className={w98.mono}>{result.waves?.length}개</b> 생성 완료 — 토트 용량을
+              넘어 나눠졌습니다
+            </p>
+            <Sunken className={`${w98.scroll} max-h-40 overflow-y-auto`}>
+              <table className="w-full border-collapse text-left text-[12px]">
+                <thead className="sticky top-0 bg-[color:var(--surface)]">
+                  <tr>
+                    <th className="border-b-2 border-[color:var(--border)] p-1.5 font-bold">웨이브</th>
+                    <th className="border-b-2 border-[color:var(--border)] p-1.5 font-bold">주문</th>
+                    <th className="border-b-2 border-[color:var(--border)] p-1.5 font-bold">배치</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.waves?.map((w) => (
+                    <tr key={w.waveId} className="border-t border-[color:var(--border)]">
+                      <td className={`${w98.mono} p-1.5`}>{w.waveNo}</td>
+                      <td className={`${w98.mono} p-1.5`}>{w.orders}</td>
+                      <td className={`${w98.mono} p-1.5`}>{w.batches}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Sunken>
+          </>
+        ) : (
+          <>
+            <p className={`${w98.small}`}>
+              <b className={w98.mono}>{result.waveNo}</b> 생성 완료
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <ResultStat label="주문" value={result.orderCount} />
+              <ResultStat label="배치" value={result.batchCount} />
+              <ResultStat label="태스크" value={result.taskCount} />
+            </div>
+          </>
+        )}
+
+        {/* Stage 11B(§15.8) — 호출 하나는 유휴 토트가 허용하는 만큼만 웨이브 하나를 만든다
+         * (백엔드 노트 §1.10 "브리프의 '웨이브 3개' 는 만들 수 없다"). 나머지는 ALLOCATED
+         * 로 남아 다음 호출이 담아간다 — 토트는 포장 완료 때만 돌아오므로 이번 호출 안에서
+         * 바로 두 번째 웨이브가 서지 않는다(라이브 대조). `skippedCounts.NO_TOTE` 가 그
+         * 대기 건수다. */}
+        {noToteCount > 0 ? (
+          <p className={`${w98.small} font-bold text-[color:var(--status-error)]`}>
+            토트 부족으로 다음 웨이브 대기 {noToteCount}건
+          </p>
+        ) : null}
 
         <Etched />
 

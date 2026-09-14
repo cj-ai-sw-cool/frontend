@@ -23,6 +23,9 @@ export const TX_TYPE_COLORS: Record<InventoryTxType, number> = {
   REBIN: 0xe0c23a, // 브리프 미지정 — 보관 재배치, PUTAWAY 와 구분되는 노랑
   RESTOCK: 0x3d9e7a,
   STATUS_CHANGE: 0x8fa3b8,
+  // Stage 11B — 재배치(RELOCATE). 골든존 테두리(2D `warehouse-map.tsx`)와 같은 금색 계열로
+  // 묶어서, 슬로팅 탭에서 켠 골든존과 3D 점등이 "같은 이야기"로 보이게 한다
+  RELOCATE: 0xf0c020,
 };
 
 const MAX_ACTIVE = 96;
