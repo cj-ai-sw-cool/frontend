@@ -178,6 +178,7 @@ function WaveResultView({
    * `waveId`/`waveNo`/`orderCount`/`batchCount`/`taskCount` 가 `waves[0]` 과 같은 값으로
    * 남아 있다는 정본 §15.8 호환 규칙 덕분에 분기를 최소로 둘 수 있다. */
   const multiWave = (result.waves?.length ?? 0) > 1;
+  const noToteCount = result.skippedCounts?.NO_TOTE ?? 0;
 
   return (
     <>
@@ -221,6 +222,17 @@ function WaveResultView({
             </div>
           </>
         )}
+
+        {/* Stage 11B(§15.8) — 호출 하나는 유휴 토트가 허용하는 만큼만 웨이브 하나를 만든다
+         * (백엔드 노트 §1.10 "브리프의 '웨이브 3개' 는 만들 수 없다"). 나머지는 ALLOCATED
+         * 로 남아 다음 호출이 담아간다 — 토트는 포장 완료 때만 돌아오므로 이번 호출 안에서
+         * 바로 두 번째 웨이브가 서지 않는다(라이브 대조). `skippedCounts.NO_TOTE` 가 그
+         * 대기 건수다. */}
+        {noToteCount > 0 ? (
+          <p className={`${w98.small} font-bold text-[color:var(--status-error)]`}>
+            토트 부족으로 다음 웨이브 대기 {noToteCount}건
+          </p>
+        ) : null}
 
         <Etched />
 

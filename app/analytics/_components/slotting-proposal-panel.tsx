@@ -19,6 +19,7 @@ const REASON_LABEL: Record<RelocationItemReason, string> = {
   A_OUTSIDE_GOLDEN: "A상품이 골든존 밖",
   EVICT_C: "골든존 C상품 비움",
   HARD_ALLOCATED: "할당 중이라 제외",
+  NO_GOLDEN_BIN: "옮길 골든존 칸 없음",
 };
 const STATUS_LABEL: Record<RelocationItemStatus, string> = {
   PROPOSED: "제안됨",
@@ -29,12 +30,10 @@ const STATUS_LABEL: Record<RelocationItemStatus, string> = {
 
 export function SlottingProposalPanel({
   center,
-  waveWindow,
   activeProposalId,
   onProposalChange,
 }: {
   center: string;
-  waveWindow: number;
   activeProposalId: number | null;
   onProposalChange: (id: number) => void;
 }) {
@@ -61,8 +60,8 @@ export function SlottingProposalPanel({
       { center },
       {
         onSuccess: (data) => {
-          onProposalChange(data.id);
-          setChecked(new Set(data.items.filter((i) => i.status === "PROPOSED").map((i) => i.id)));
+          onProposalChange(data.proposalId);
+          setChecked(new Set(data.items.filter((i) => i.status === "PROPOSED").map((i) => i.itemId)));
         },
       },
     );
@@ -73,9 +72,10 @@ export function SlottingProposalPanel({
     applyProposal.mutate({ itemIds: Array.from(checked) }, { onSuccess: () => setChecked(new Set()) });
   };
 
+  /* `waveIds` 를 비우면 서버가 최근 웨이브 20개를 고정으로 쓴다(백엔드 노트 §1.14) */
   const handleReevaluate = () => {
     if (activeProposalId === null) return;
-    compareProposal.mutate({ waveIds: Array.from({ length: waveWindow }, (_, i) => i + 1) });
+    compareProposal.mutate({ waveIds: [] });
   };
 
   if (proposal === null) {
@@ -95,7 +95,7 @@ export function SlottingProposalPanel({
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex shrink-0 items-center gap-2">
         <span className={`${w98.small}`}>
-          제안 #{proposal.id} · {proposal.status} · 항목 {items.length}건
+          제안 #{proposal.proposalId} · {proposal.status} · 항목 {items.length}건
         </span>
         <div className="flex-1" />
         <Btn
@@ -134,10 +134,10 @@ export function SlottingProposalPanel({
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id}>
+              <tr key={item.itemId}>
                 <td className="border-t border-[color:var(--border)] p-1.5">
                   {item.status === "PROPOSED" ? (
-                    <Checkbox label="" checked={checked.has(item.id)} onToggle={() => toggle(item.id)} />
+                    <Checkbox label="" checked={checked.has(item.itemId)} onToggle={() => toggle(item.itemId)} />
                   ) : null}
                 </td>
                 <td className={`${w98.mono} border-t border-[color:var(--border)] p-1.5`}>{item.productName}</td>

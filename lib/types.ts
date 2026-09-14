@@ -1456,21 +1456,30 @@ export interface WaveCreateResponse {
   orderCount: number;
   batchCount: number;
   taskCount: number;
+  /** 주문별 skip 사유 — 라이브 대조(백엔드 노트 §3 "`skipped` 는 배열로 두고
+   * `skippedCounts` 를 더했다", 옛 웨이브 탭이 이 배열에 기대므로 그대로 유지) */
   skipped: WaveSkipped[];
-  /** Stage 11B(§15.8) 웨이브 용량 분할 — 마감 대상이 유휴 토트 수를 넘으면 웨이브가
-   * 여러 개(`wave_no` 접미 "-2"·"-3") 생긴다. 이 배열이 실제 결과이고, 위 4개 단일
-   * 필드는 `waves[0]` 과 같은 값으로 남아 있다(정본 §15.8 "기존 단일 응답은 waves[0]과
-   * 호환 필드 유지"). 라이브 대조 전까지는 옵셔널로 두고, 없으면 화면이 단일 필드로
-   * 되돌아간다(`use-waves.ts` 참고). */
+  /** Stage 11B(§15.8) 웨이브 용량 분할 — **호출 하나는 유휴 토트가 허용하는 만큼만 웨이브
+   * 하나를 만든다**(브리프가 가정한 "한 번에 여러 웨이브"가 아니다, 백엔드 노트 §1.10).
+   * 나머지 주문은 ALLOCATED 로 남아 다음 호출(다음 마감 처리)이 담아간다 — 토트는 포장
+   * 완료 때만 돌아오므로 같은 요청 안에서 두 번째 웨이브가 바로 서지 않는다. 그래서
+   * `waves` 는 보통 원소 1개고, 위 4개 단일 필드는 그 `waves[0]` 과 같은 값이다(정본
+   * §15.8 "기존 단일 응답은 waves[0]과 호환 필드 유지"). 리빈 시점으로 토트 배정을
+   * 미루면 한 호출이 여럿을 만들 수도 있다는 후속 논의가 있다(백엔드 노트 §4) —
+   * 그때를 대비해 배열 그대로 두고, 화면은 `length > 1` 일 때만 목록으로 보여준다. */
   waves?: WaveSplitResult[];
+  /** 이번 호출이 못 담은 주문의 사유별 건수 — 라이브 대조. `NO_TOTE` 가 다음 웨이브로
+   * 미뤄진 건수(웨이브 탭 "토트 부족으로 다음 웨이브 대기 N건"의 출처) */
+  skippedCounts?: Record<string, number>;
 }
 
-/** `POST /waves` 응답의 웨이브 1건 — 정본 §15.8 */
+/** `POST /waves` 응답의 웨이브 1건 — 라이브 대조: `tasks` 도 함께 온다 */
 export interface WaveSplitResult {
   waveId: number;
   waveNo: string;
   orders: number;
   batches: number;
+  tasks: number;
 }
 
 /** `GET /waves` 쿼리 */
@@ -2085,7 +2094,12 @@ export type InventoryTxType =
   | "ADJUST"
   | "STATUS_CHANGE"
   | "TRANSFER_OUT"
-  | "TRANSFER_IN";
+  | "TRANSFER_IN"
+  /** Stage 11B(§15.6) — 재배치 시뮬레이터가 남기는 원장 유형. 11A 3D 관제의
+   * `TX_TYPE_COLORS`(`bay-pulse.ts`)가 유형 10종 전부를 `Record` 로 요구해서, 이 값이
+   * 없으면 `TX_TYPE_COLORS[txType]` 가 `undefined` 가 되어 RELOCATE 이벤트가 와도
+   * 베이가 점등되지 않는다(2026-09-14 라이브 화면 체크에서 발견해 함께 추가) */
+  | "RELOCATE";
 
 /**
  * `GET /events/stream`·`GET /events` 행 하나(`EventRow.java`, 정본 §13.2·§13.3).
@@ -2372,13 +2386,13 @@ export interface WebhookRelaySummary {
 }
 
 /* ── 15. 슬로팅 — 통로 그래프·회전율·골든존·재배치·웨이브 분할 (Stage 11B) ─────────
-   정본 §15. 2026-09-14 시점 백엔드가 같은 시각 작업 중이라 curl 라이브 대조 전이다 —
-   계약 문구를 그대로 옮기되, 응답 모양이 문서에 없는 자리는 이 파일 주석에 가정을
-   적고 노트 "계약 가정"에 백엔드 에이전트 앞으로 남긴다. */
+   정본 §15. 2026-09-14 백엔드 노트(`backend/docs/tasks/2026-09-14-stage11b-backend-
+   notes.md` §3 "프론트 계약")로 라이브 대조 완료 — FULL 시드 서버에서 받은 실제 응답
+   그대로다. 처음 만들 때 가정했던 모양과 다른 자리는 이 파일 주석에 남긴다. */
 
-/** `GET/PUT /admin/slotting/params` 본문 — 정본 §15.2 표. `PUT` 은 `center` 를 쿼리로
- * 받고 나머지 필드만 바디로 보낸다고 가정(다른 센터별 설정 PUT 과 같은 관례) */
+/** `GET/PUT /admin/slotting/params` 응답 — `center` 포함 7개 필드(정본 §15.2 표) */
 export interface SlottingParams {
+  center: string;
   walkSpeedMps: number;
   secPerLine: number;
   levelPenaltySec: number;
@@ -2387,8 +2401,16 @@ export interface SlottingParams {
   velocityDays: number;
 }
 
+/** `PUT /admin/slotting/params?center=` 본문 — 센터는 쿼리, 여섯 값은 바디(라이브 대조).
+ * 비운 값은 서버가 지금 값을 그대로 둔다 — 편집 Dialog는 전부 채워 보내지만(더 단순),
+ * 타입은 부분 갱신도 표현할 수 있게 옵셔널로 둔다 */
+export type UpdateSlottingParamsRequest = Partial<Omit<SlottingParams, "center">>;
+
 /* ── 15.3 경로 평가기 ────────────────────────────────────────────────────── */
 
+/** `waveIds`·`batchIds` 를 비우면 최근 웨이브 20개(고정, 라이브 대조 — 개수를 고르는
+ * 매개변수는 없다). 상단 띠 "평가 대상" Select 는 그래서 지금 화면 표시용일 뿐 요청에
+ * 반영되지 않는다(`slotting-tab.tsx` 주석 참고, 백엔드 요청 후보) */
 export interface SlottingEvaluateRequest {
   center: string;
   waveIds?: number[];
@@ -2403,27 +2425,31 @@ export interface SlottingBatchEval {
   timeSec: number;
 }
 
-/** 평가 합계 — 정본 §15.3 "배치마다 결과와 합계"에 합계 필드 모양이 없어, 비교 API
- * (§15.7)의 `before`/`after` 모양(distanceM·timeSec·lines)과 같다고 가정 */
+/** `POST /admin/slotting/evaluate` 응답 — 라이브 대조: `totals` 에 `batches` 도 온다 */
 export interface SlottingEvaluateResponse {
-  batches: SlottingBatchEval[];
+  center: string;
   totals: {
+    batches: number;
+    lines: number;
+    aisles: number;
     distanceM: number;
     timeSec: number;
-    lines: number;
   };
+  byBatch: SlottingBatchEval[];
 }
 
 /* ── 15.4 회전율·ABC·히트맵 ──────────────────────────────────────────────── */
 
 export type SlottingGrade = "A" | "B" | "C";
 
+/** 라이브 대조: 칸마다 `qty` 도 온다 */
 export interface VelocityCurrentBin {
   locationCode: string;
+  qty: number;
   golden: boolean;
 }
 
-/** `GET /admin/slotting/velocity` 행 — 정본 §15.4 */
+/** `GET /admin/slotting/velocity` 행 */
 export interface VelocityRow {
   productId: number;
   gtin: string;
@@ -2436,18 +2462,47 @@ export interface VelocityRow {
   currentBins: VelocityCurrentBin[];
 }
 
+/** 등급 분포 — 전 상품을 센 값(라이브 대조, `rows` 는 `limit` 까지만 잘린다).
+ * `slotting-compare-panel.tsx` 가 이 값을 바로 쓴다(예전처럼 `rows` 를 순회해 세지 않는다) */
+export interface VelocityDistribution {
+  totalLines: number;
+  products: number;
+  aProducts: number;
+  bProducts: number;
+  cProducts: number;
+  aLineSharePct: number;
+}
+
+/** `GET /admin/slotting/velocity` 응답 — 라이브 대조: 배열이 아니라 `{distribution, rows}` */
+export interface VelocityResponse {
+  center: string;
+  days: number;
+  distribution: VelocityDistribution;
+  rows: VelocityRow[];
+}
+
 export interface VelocityQuery {
   center: string;
   days?: number;
+  limit?: number;
 }
 
-/** `GET /admin/slotting/heatmap` 행 — 베이별 PICK 라인 수(정본 §15.4) */
+/** `GET /admin/slotting/heatmap` 베이 행 — `bayId` 는 `GET /layout` 베이 식별자와 같다 */
 export interface HeatmapBayRow {
   bayId: number;
   zoneCode: string;
   aisleNo: number;
   bayNo: number;
   lines: number;
+}
+
+/** 라이브 대조: 배열이 아니라 `{maxLines, bays}` — `maxLines` 로 5단계 경계를 잡는다
+ * (프론트가 직접 최댓값을 계산할 필요가 없다) */
+export interface HeatmapResponse {
+  center: string;
+  days: number;
+  maxLines: number;
+  bays: HeatmapBayRow[];
 }
 
 export interface HeatmapQuery {
@@ -2457,14 +2512,23 @@ export interface HeatmapQuery {
 
 /* ── 15.5 골든존 ─────────────────────────────────────────────────────────── */
 
-/** `GET /admin/slotting/golden-zone` 행 — "베이 단위 골든 칸 수"(정본 §15.5). 저장하지
- * 않고 계산만 하므로 히트맵과 같은 베이 식별 필드를 쓴다고 가정 */
+/** `GET /admin/slotting/golden-zone` 베이 행 — 라이브 대조: `distanceM`(포장대까지 거리)도 온다 */
 export interface GoldenZoneBayRow {
   bayId: number;
   zoneCode: string;
   aisleNo: number;
   bayNo: number;
   goldenBinCount: number;
+  distanceM: number;
+}
+
+/** 라이브 대조: 배열이 아니라 `{candidateBins, goldenBins, bays}` */
+export interface GoldenZoneResponse {
+  center: string;
+  goldenShare: number;
+  candidateBins: number;
+  goldenBins: number;
+  bays: GoldenZoneBayRow[];
 }
 
 /* ── 15.6 재배치 제안기 ──────────────────────────────────────────────────── */
@@ -2472,43 +2536,53 @@ export interface GoldenZoneBayRow {
 export type RelocationProposalStatus = "DRAFT" | "APPLIED" | "DISCARDED";
 export type RelocationItemKind = "MOVE_IN" | "EVICT";
 export type RelocationItemStatus = "PROPOSED" | "OPEN" | "DONE" | "SKIPPED";
-export type RelocationItemReason = "A_OUTSIDE_GOLDEN" | "EVICT_C" | "HARD_ALLOCATED";
+export type RelocationItemReason = "A_OUTSIDE_GOLDEN" | "EVICT_C" | "HARD_ALLOCATED" | "NO_GOLDEN_BIN";
 
-/** `relocation_item` 한 행 — 정본 §15.6 표. 목록·표 렌더에 바로 쓰도록 상품명·칸 코드도
- * 함께 온다고 가정(진열·재고 화면의 다른 목록 API와 같은 관례 — id 만 오면 화면이 N+1) */
-export interface RelocationItem {
-  id: number;
-  proposalId: number;
+/** 제안 상세의 항목 한 행 — `POST /proposals`·`GET /proposals/{id}`·`POST …/apply` 가 같은
+ * 모양으로 준다(라이브 대조). 칸 id 는 안 오고 코드만 온다(`fromLocationId` 없음), 작업자는
+ * `worker`(문자열 코드, 시뮬레이터 전엔 null) — 재배치 태스크 목록(`RelocationTask`)의
+ * `workerId`(숫자)와 이름이 다르다, 두 DTO 가 분리돼 있다. */
+export interface ProposalItem {
+  itemId: number;
   seq: number;
   kind: RelocationItemKind;
   productId: number;
   gtin: string;
   productName: string;
-  sellerId: number;
-  sellerCode: string;
-  lotId: number | null;
-  qty: number;
   grade: SlottingGrade;
   lines: number;
-  fromLocationId: number | null;
-  fromLocationCode: string | null;
-  toLocationId: number | null;
-  toLocationCode: string | null;
+  sellerId: number;
+  sellerCode: string;
+  lotId: number;
+  lotNo: string;
+  qty: number;
+  fromLocationCode: string;
+  toLocationCode: string;
   reason: RelocationItemReason;
   selected: boolean;
   status: RelocationItemStatus;
-  workerId: string | null;
-  startedAt: string | null;
+  worker: string | null;
   completedAt: string | null;
 }
 
-/** `relocation_proposal` — 정본 §15.6 표 */
+/** 제안이 거른 후보 — 라이브 대조. 이유는 `NO_GOLDEN_BIN`(목적지가 없음)·`HARD_ALLOCATED`
+ * (정본 §15.6 규칙 4) 둘을 확인했다 */
+export interface ProposalSkipped {
+  productId: number;
+  gtin: string;
+  reason: string;
+  locationCode: string;
+}
+
+/** `relocation_proposal` 요약 — 목록·생성·적용·폐기 응답의 공통 모양(라이브 대조:
+ * `id` 가 아니라 `proposalId`, `params` 필드는 없고 대신 항목 수 세 값이 온다) */
 export interface RelocationProposal {
-  id: number;
-  centerId: number;
+  proposalId: number;
   center: string;
   status: RelocationProposalStatus;
-  params: SlottingParams;
+  itemCount: number;
+  moveInCount: number;
+  evictCount: number;
   beforeM: number | null;
   afterM: number | null;
   beforeSec: number | null;
@@ -2517,8 +2591,11 @@ export interface RelocationProposal {
   appliedAt: string | null;
 }
 
+/** 목록(`GET /proposals`)은 `items`·`skipped` 가 빈 배열, 상세(`GET /proposals/{id}`)·
+ * 생성·적용 응답은 채워서 온다(라이브 대조) */
 export interface RelocationProposalDetail extends RelocationProposal {
-  items: RelocationItem[];
+  items: ProposalItem[];
+  skipped: ProposalSkipped[];
 }
 
 export interface CreateProposalRequest {
@@ -2530,37 +2607,48 @@ export interface ProposalsQuery {
   status?: RelocationProposalStatus;
 }
 
+/** 비우면(또는 필드 생략) 그 제안의 항목 전부 적용(라이브 대조) */
 export interface ApplyProposalRequest {
-  itemIds: number[];
+  itemIds?: number[];
 }
 
-/** 적용 응답 — 선택 항목이 `OPEN` 으로 바뀐 뒤 모습이라고 가정(상세와 같은 모양) */
 export type ApplyProposalResponse = RelocationProposalDetail;
 
 /* ── 15.7 전후 비교 ──────────────────────────────────────────────────────── */
 
 export interface CompareProposalRequest {
-  waveIds: number[];
+  waveIds?: number[];
 }
 
+/** 평가·비교의 before/after 한 쪽 — 라이브 대조: `aisles` 도 포함 */
 export interface SlottingMetrics {
+  lines: number;
+  aisles: number;
   distanceM: number;
   timeSec: number;
-  lines: number;
 }
 
+/** 배치별 전후 — 라이브 대조: `before`/`after` 로 묶이지 않고 필드가 평평하게 온다 */
 export interface CompareByBatch {
   batchId: number;
-  before: SlottingMetrics;
-  after: SlottingMetrics;
+  lines: number;
+  beforeM: number;
+  afterM: number;
+  beforeSec: number;
+  afterSec: number;
   diffPct: number;
 }
 
-/** `POST /admin/slotting/proposals/{id}/compare` 응답 — 정본 §15.7 */
+/** `POST /admin/slotting/proposals/{id}/compare` 응답 — 라이브 대조: `diffPct` 는
+ * **거리가 줄어든 비율(%), 양수가 개선**이다(표본 만들 때 가정과 부호가 반대였다 —
+ * 표본은 "줄어든 쪽"을 음수로 뒀었다). `timeDiffPct` 가 시간 쪽 개선율로 따로 온다. */
 export interface CompareProposalResponse {
+  proposalId: number;
+  center: string;
   before: SlottingMetrics;
   after: SlottingMetrics;
   diffPct: number;
+  timeDiffPct: number;
   byBatch: CompareByBatch[];
 }
 
@@ -2570,10 +2658,33 @@ export interface SimulateRelocationRequest {
   worker: string;
 }
 
-/** `POST /admin/relocations/{itemId}/simulate` 응답 — 웨이브 탭 `SimulateResponse` 와
- * 같은 결과 뷰 관례(처리된 항목의 최종 모습)라고 가정 */
+/** 재배치 태스크 한 행 — `POST /relocations/{itemId}/simulate`·`GET /relocations` 가 같은
+ * 모양(라이브 대조). `ProposalItem` 과 달리 `grade`·`lines`·`selected` 가 없고, 작업자는
+ * `workerId`(숫자, 시뮬레이터가 배정한 내부 id)다. */
+export interface RelocationTask {
+  itemId: number;
+  proposalId: number;
+  seq: number;
+  kind: RelocationItemKind;
+  productId: number;
+  gtin: string;
+  productName: string;
+  sellerId: number;
+  sellerCode: string;
+  lotId: number;
+  lotNo: string;
+  qty: number;
+  fromLocationCode: string;
+  toLocationCode: string;
+  reason: RelocationItemReason;
+  status: RelocationItemStatus;
+  workerId: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
 export interface SimulateRelocationResponse {
-  item: RelocationItem;
+  item: RelocationTask;
 }
 
 export interface RelocationsQuery {

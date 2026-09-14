@@ -69,17 +69,10 @@ function GradeDistribution({ center }: { center: string }) {
   if (isLoading || !velocity) {
     return <p className={`${w98.small} text-[color:var(--muted-foreground)]`}>회전율 불러오는 중…</p>;
   }
-  const totalLines = velocity.reduce((sum, v) => sum + v.lines, 0);
-  const counts: Record<SlottingGrade, { count: number; lines: number }> = {
-    A: { count: 0, lines: 0 },
-    B: { count: 0, lines: 0 },
-    C: { count: 0, lines: 0 },
-  };
-  for (const row of velocity) {
-    counts[row.grade].count += 1;
-    counts[row.grade].lines += row.lines;
-  }
-  const aLineShare = totalLines > 0 ? (counts.A.lines / totalLines) * 100 : 0;
+  /* 라이브 대조 — 등급 분포는 `distribution` 이 이미 전 상품을 센 값으로 준다.
+   * `rows` 는 `limit` 까지만 잘려 오므로 그걸 순회해 다시 세면 값이 틀어진다. */
+  const { aProducts, bProducts, cProducts, aLineSharePct } = velocity.distribution;
+  const counts: Record<SlottingGrade, number> = { A: aProducts, B: bProducts, C: cProducts };
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -88,12 +81,12 @@ function GradeDistribution({ center }: { center: string }) {
         {(["A", "B", "C"] as const).map((grade) => (
           <Sunken key={grade} className="flex flex-col items-center gap-0.5 py-1.5">
             <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>{GRADE_LABEL[grade]}</span>
-            <span className={`${w98.mono} text-[16px] font-bold`}>{counts[grade].count}개</span>
+            <span className={`${w98.mono} text-[16px] font-bold`}>{counts[grade]}개</span>
           </Sunken>
         ))}
       </div>
       <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>
-        A등급이 전체 피킹 라인의 <b className={w98.mono}>{aLineShare.toFixed(1)}%</b> 차지
+        A등급이 전체 피킹 라인의 <b className={w98.mono}>{aLineSharePct.toFixed(1)}%</b> 차지
       </span>
     </div>
   );
@@ -101,12 +94,10 @@ function GradeDistribution({ center }: { center: string }) {
 
 export function SlottingCompareView({
   center,
-  waveWindow,
   activeProposalId,
   evaluateTotals,
 }: {
   center: string;
-  waveWindow: number;
   activeProposalId: number | null;
   evaluateTotals: SlottingEvaluateResponse["totals"] | null;
 }) {
@@ -121,7 +112,7 @@ export function SlottingCompareView({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
       <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>
-        최근 웨이브 {waveWindow}개 기준
+        최근 웨이브 20개 기준
         {activeProposalId === null ? " — 제안 없음, 현재 값만" : compare === null ? " — 제안 있음, 재평가 대기" : ""}
       </span>
 
@@ -132,9 +123,16 @@ export function SlottingCompareView({
           <BarPair label="이동 거리" unit="m" before={before.distanceM} after={after?.distanceM ?? null} />
           <BarPair label="처리 시간" unit="초" before={before.timeSec} after={after?.timeSec ?? null} />
           {compare !== null ? (
-            <span className={`${w98.mono} text-[13px] font-bold text-[color:var(--status-error)]`}>
+            /* 라이브 대조 — diffPct 는 거리가 줄어든 비율(%)이고 **양수가 개선**이다
+             * (표본 만들 때 가정과 부호가 반대였다). 개선이면 초록, 악화면 빨강. */
+            <span
+              className={`${w98.mono} text-[13px] font-bold ${
+                compare.diffPct >= 0 ? "text-[color:var(--status-success)]" : "text-[color:var(--status-error)]"
+              }`}
+            >
               차이 {compare.diffPct > 0 ? "+" : ""}
-              {compare.diffPct.toFixed(1)}%
+              {compare.diffPct.toFixed(1)}% 개선 (시간 {compare.timeDiffPct > 0 ? "+" : ""}
+              {compare.timeDiffPct.toFixed(1)}%)
             </span>
           ) : null}
         </>

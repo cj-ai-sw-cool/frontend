@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { useSimulateRelocation } from "../_data/use-slotting-mutations";
 import { Btn, Field, Sunken, w98 } from "./win98-ui";
-import type { RelocationItem } from "@/lib/types";
+import type { ProposalItem, RelocationTask } from "@/lib/types";
 
 export function SlottingRelocationDialog({
   open,
@@ -30,7 +30,7 @@ export function SlottingRelocationDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   proposalId: number | null;
-  items: RelocationItem[];
+  items: ProposalItem[];
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -61,13 +61,13 @@ function DialogBody({
   onClose,
 }: {
   proposalId: number;
-  items: RelocationItem[];
+  items: ProposalItem[];
   onClose: () => void;
 }) {
   const simulate = useSimulateRelocation(proposalId);
   const [worker, setWorker] = useState("W-C1-P03");
   const [running, setRunning] = useState(false);
-  const [done, setDone] = useState<RelocationItem[]>([]);
+  const [done, setDone] = useState<RelocationTask[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   /* `items`(부모의 OPEN 목록)는 처리될 때마다 줄어든다 — 시뮬레이터가 항목을 DONE
@@ -81,11 +81,11 @@ function DialogBody({
     if (!worker.trim() || sorted.length === 0) return;
     setRunning(true);
     setError(null);
-    const finished: RelocationItem[] = [];
+    const finished: RelocationTask[] = [];
     for (const item of sorted) {
       try {
         // seq 순서를 지켜야 EVICT → MOVE_IN 이 맞으므로 여기서는 일부러 순차로 await 한다
-        const result = await simulate.mutateAsync({ itemId: item.id, body: { worker: worker.trim() } });
+        const result = await simulate.mutateAsync({ itemId: item.itemId, body: { worker: worker.trim() } });
         finished.push(result.item);
         setDone([...finished]);
       } catch (e) {
@@ -104,9 +104,9 @@ function DialogBody({
           <Sunken className={`${w98.scroll} h-40 overflow-y-auto p-1.5`}>
             <ul className="flex flex-col gap-1">
               {done.map((item) => (
-                <li key={item.id} className={`${w98.mono} text-[12px]`}>
-                  #{item.seq} {item.productName} → {item.toLocationCode ?? "—"}{" "}
-                  <b className="text-[color:var(--status-success,#3D9E7A)]">DONE</b>
+                <li key={item.itemId} className={`${w98.mono} text-[12px]`}>
+                  #{item.seq} {item.productName} → {item.toLocationCode}{" "}
+                  <b className="text-[color:var(--status-success)]">DONE</b>
                 </li>
               ))}
             </ul>

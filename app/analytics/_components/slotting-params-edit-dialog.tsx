@@ -71,7 +71,11 @@ function DialogBody({
     setForm((f) => ({ ...f, [key]: Number(e.target.value) }));
   };
 
-  const submit = () => update.mutate(form, { onSuccess: onClose });
+  const submit = () => {
+    // 센터는 쿼리로 이미 보낸다 — 바디에는 여섯 값만(라이브 대조, `UpdateSlottingParamsRequest`)
+    const { walkSpeedMps, secPerLine, levelPenaltySec, goldenShare, heavyKg, velocityDays } = form;
+    update.mutate({ walkSpeedMps, secPerLine, levelPenaltySec, goldenShare, heavyKg, velocityDays }, { onSuccess: onClose });
+  };
 
   return (
     <>
