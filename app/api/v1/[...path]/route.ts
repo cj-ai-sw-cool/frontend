@@ -9,6 +9,12 @@
  */
 import { type NextRequest, NextResponse } from "next/server";
 
+// Stage 11A(정본 §13.3) — `/events/stream`(SSE)이 이 라우트를 거친다. 정적 최적화
+// 후보로 잡히면 스트리밍 응답이 끝까지 버퍼링된 뒤에야 브라우저로 가는 문제가
+// 라이브 검증에서 나왔다(curl 로 백엔드는 즉시 스트리밍, 이 라우트를 거치면 6초
+// 넘게 0바이트) — 항상 동적으로 처리해 응답 바디를 그대로 흘려보낸다.
+export const dynamic = "force-dynamic";
+
 const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN ?? "http://127.0.0.1:8000";
 const API_KEY = process.env.API_KEY ?? "";
 
