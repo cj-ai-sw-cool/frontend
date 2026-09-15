@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import type { SimulationLeadtimeResponse } from "@/lib/types";
-import { SEGMENT_COLOR_CLASS, SEGMENT_FILL, SEGMENT_LABEL } from "./simulation-labels";
+import { SEGMENT_COLOR_CLASS, SEGMENT_FILL, segmentKindOf } from "./simulation-labels";
 import { Sunken, w98 } from "./win98-ui";
 
 const W = 620;
@@ -76,10 +76,10 @@ export function SimulationLeadtimeChart({ data }: { data: SimulationLeadtimeResp
               y={0}
               width={Math.max(0, width - 1)}
               height={H}
-              fill={SEGMENT_FILL[row.kind]}
+              fill={SEGMENT_FILL[segmentKindOf(row.segment)]}
             >
               <title>
-                {SEGMENT_LABEL[row.segment]} — {row[metric]}초
+                {row.label} — {row[metric]}초
               </title>
             </rect>
           ))}
@@ -89,8 +89,8 @@ export function SimulationLeadtimeChart({ data }: { data: SimulationLeadtimeResp
       <div className="grid grid-cols-3 gap-x-3 gap-y-1">
         {data.rows.map((row) => (
           <div key={row.segment} className={`${w98.small} flex items-center gap-1.5`}>
-            <span className={`size-2.5 shrink-0 ${SEGMENT_COLOR_CLASS[row.kind]}`} aria-hidden />
-            <span className="flex-1 truncate">{SEGMENT_LABEL[row.segment]}</span>
+            <span className={`size-2.5 shrink-0 ${SEGMENT_COLOR_CLASS[segmentKindOf(row.segment)]}`} aria-hidden />
+            <span className="flex-1 truncate">{row.label}</span>
             <span className={`${w98.mono} text-[11px]`}>{row[metric]}s</span>
           </div>
         ))}

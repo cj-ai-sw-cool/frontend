@@ -8,8 +8,11 @@
 
 import { useSimulationCompare, useSimulationRuns, useSimulationScenarios } from "../_data/use-simulation";
 import { RESOURCE_LABEL, SEGMENT_LABEL } from "./simulation-labels";
+// ⚠️ `SEGMENT_LABEL` 은 비교 구간 표에만 남겨 둔다 — `SimulationCompareSegmentRow` 는
+// 자체 `label` 을 안 준다(백엔드 노트가 label 추가를 알려온 자리는 leadtime·bottleneck
+// 뿐이다), 그래서 여기만 클라이언트 폴백 맵을 그대로 쓴다.
 import { Select, Sunken, w98 } from "./win98-ui";
-import type { SimulationRun } from "@/lib/types";
+import { simulationRunId, type SimulationRun } from "@/lib/types";
 
 export function SimulationComparePanel({
   center,
@@ -79,8 +82,8 @@ function RunSelect({
       >
         <option value="">선택</option>
         {runs.map((run) => (
-          <option key={run.id} value={run.id}>
-            #{run.id} {nameOf(run)}
+          <option key={simulationRunId(run)} value={simulationRunId(run)}>
+            #{simulationRunId(run)} {nameOf(run)}
           </option>
         ))}
       </Select>
@@ -97,7 +100,7 @@ function CompareBody({ data }: { data: NonNullable<ReturnType<typeof useSimulati
           <span>완료율 {data.completionRatePctA.toFixed(1)}%</span>
           <span>피크 출고 지연 {data.peakShipDelaySecA}초</span>
           <span>
-            병목 {SEGMENT_LABEL[data.bottleneckA.segment]} · {RESOURCE_LABEL[data.bottleneckA.saturatedResource]}
+            병목 {data.bottleneckA.label} · {data.bottleneckA.saturated.map((r) => RESOURCE_LABEL[r]).join("·")}
           </span>
         </Sunken>
         <Sunken className={`${w98.mono} flex flex-col gap-1 px-3 py-2 text-[12px]`}>
@@ -105,7 +108,7 @@ function CompareBody({ data }: { data: NonNullable<ReturnType<typeof useSimulati
           <span>완료율 {data.completionRatePctB.toFixed(1)}%</span>
           <span>피크 출고 지연 {data.peakShipDelaySecB}초</span>
           <span>
-            병목 {SEGMENT_LABEL[data.bottleneckB.segment]} · {RESOURCE_LABEL[data.bottleneckB.saturatedResource]}
+            병목 {data.bottleneckB.label} · {data.bottleneckB.saturated.map((r) => RESOURCE_LABEL[r]).join("·")}
           </span>
         </Sunken>
       </div>

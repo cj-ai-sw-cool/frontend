@@ -10,13 +10,14 @@
  * 진행 → 완료 → 리드타임·비교" 흐름을 재현한다.
  */
 
-import type {
-  SimulationParams,
-  SimulationRun,
-  SimulationRunProgress,
-  SimulationRunStatus,
-  SimulationScenario,
-  SimulationScenarioParams,
+import {
+  simulationRunId,
+  type SimulationParams,
+  type SimulationRun,
+  type SimulationRunProgress,
+  type SimulationRunStatus,
+  type SimulationScenario,
+  type SimulationScenarioParams,
 } from "../types";
 
 export const mockSimulationParams: SimulationParams = {
@@ -154,7 +155,7 @@ let nextRunId = 1000;
 const runParamsById = new Map<number, SimulationScenarioParams>();
 for (const run of mockRuns) {
   const scenario = mockScenarioById(run.scenarioId);
-  if (scenario) runParamsById.set(run.id, scenario.params);
+  if (scenario) runParamsById.set(simulationRunId(run), scenario.params);
 }
 
 /** 실행마다 호출될 때(2초 폴링)마다 조금씩 나아간다 — 실시간 Date.now() 대신 **호출
@@ -162,10 +163,10 @@ for (const run of mockRuns) {
  * 무리 없이 나눠 찍을 수 있는 속도다. */
 const PROGRESS_STEP_PCT = 13;
 const progressState = new Map<number, { pct: number; status: SimulationRunStatus }>();
-for (const run of mockRuns) progressState.set(run.id, { pct: 100, status: run.status });
+for (const run of mockRuns) progressState.set(simulationRunId(run), { pct: 100, status: run.status });
 
 export function mockRunById(id: number): SimulationRun | null {
-  return allRuns.find((r) => r.id === id) ?? null;
+  return allRuns.find((r) => simulationRunId(r) === id) ?? null;
 }
 
 export function mockListRuns(center: string, scenarioId?: number): SimulationRun[] {
@@ -191,8 +192,8 @@ export function mockCreateRun(scenario: SimulationScenario): SimulationRun {
     error: null,
   };
   allRuns.unshift(run);
-  runParamsById.set(run.id, scenario.params);
-  progressState.set(run.id, { pct: 0, status: "RUNNING" });
+  runParamsById.set(simulationRunId(run), scenario.params);
+  progressState.set(simulationRunId(run), { pct: 0, status: "RUNNING" });
   return run;
 }
 
@@ -201,7 +202,7 @@ export function mockCreateRun(scenario: SimulationScenario): SimulationRun {
 export function mockStopRun(runId: number): SimulationRun | null {
   const state = progressState.get(runId);
   if (state && state.status === "RUNNING") state.status = "STOPPED";
-  const idx = allRuns.findIndex((r) => r.id === runId);
+  const idx = allRuns.findIndex((r) => simulationRunId(r) === runId);
   if (idx === -1) return null;
   const updated: SimulationRun = { ...allRuns[idx], status: "STOPPED", realFinishedAt: new Date().toISOString() };
   allRuns[idx] = updated;
@@ -216,7 +217,7 @@ export function mockRunProgress(runId: number): SimulationRunProgress {
     state.pct = Math.min(100, state.pct + PROGRESS_STEP_PCT);
     if (state.pct >= 100) {
       state.status = "DONE";
-      const idx = allRuns.findIndex((r) => r.id === runId);
+      const idx = allRuns.findIndex((r) => simulationRunId(r) === runId);
       if (idx !== -1) {
         allRuns[idx] = {
           ...allRuns[idx],

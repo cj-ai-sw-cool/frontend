@@ -967,6 +967,12 @@ export const simulation = {
   createScenario: (body: CreateSimulationScenarioRequest) =>
     api.post<SimulationScenario>("/admin/simulation/scenarios", body),
 
+  /** 기본 시나리오 4개 — 멱등, 목록이 비었을 때 "기본 시나리오 만들기" 버튼이 부른다
+   * (정본은 "시드가 만든다"지만 라이브에서는 이 호출이 시드를 대신한다, 2026-09-15
+   * 백엔드 노트) */
+  createDefaultScenarios: (center: string) =>
+    api.post<SimulationScenario[]>(`/admin/simulation/scenarios/defaults?center=${center}`),
+
   runs: (params: SimulationRunsQuery) =>
     api.get<SimulationRun[]>(`/admin/simulation/runs${toSimulationRunsQuery(params)}`),
 

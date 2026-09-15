@@ -2754,12 +2754,27 @@ export interface CreateSimulationScenarioRequest {
   params: SimulationScenarioParams;
 }
 
+/** `POST /admin/simulation/scenarios/defaults?center=` — 기본 시나리오 4개(baseline·
+ * pickers+5·batch30·slotting)를 만든다(멱등). 정본 §16.5 "시드가 만든다"와 달리
+ * 라이브에서는 시드가 이 호출을 대신한다(2026-09-15 백엔드 노트) — 목록이 비어 있을 때
+ * "기본 시나리오 만들기" 버튼이 이 엔드포인트를 부른다. */
+export interface CreateDefaultScenariosRequest {
+  center: string;
+}
+
 export type SimulationRunStatus = "QUEUED" | "RUNNING" | "STOPPED" | "DONE" | "FAILED";
 
-/** `simulation_run`(정본 §16.3 표) 요약 — 목록·비교 Select 가 쓴다 */
+/** `simulation_run`(정본 §16.3 표) 요약 — 목록·비교 Select 가 쓴다.
+ * ⚠️ 라이브 대조 대기 — 백엔드 노트가 "run row has `runId`, `scenarioId`, `virtualHours`"
+ * 라고 알려왔다(`id` 는 목록에 없다) — `id` 를 아예 안 줄 가능성이 있어 `id`·`runId`
+ * 둘 다 옵셔널로 두고, 실제 식별자를 읽을 때는 `simulationRunId(run)` 헬퍼로만 읽는다
+ * (컴포넌트에서 `run.id` 를 직접 쓰지 않는다). 실제 JSON 을 보고 한쪽이 확실해지면
+ * 그때 옵셔널을 걷어낸다. */
 export interface SimulationRun {
-  id: number;
+  id?: number;
+  runId?: number;
   scenarioId: number;
+  virtualHours?: number;
   status: SimulationRunStatus;
   compression: number;
   virtualStart: string | null;
@@ -2769,6 +2784,12 @@ export interface SimulationRun {
   outboxSeqFrom: number | null;
   outboxSeqTo: number | null;
   error: string | null;
+}
+
+/** `run.id`/`run.runId` 어느 쪽이 진짜인지 확정되기 전까지 이 함수로만 읽는다
+ * (`SimulationRun` 머리말 참고) — 둘 다 옵셔널로 둔 이유이기도 하다. */
+export function simulationRunId(run: SimulationRun): number {
+  return (run.runId ?? run.id) as number;
 }
 
 export interface StartSimulationRunRequest {
@@ -2795,54 +2816,76 @@ export interface SimulationRunProgress {
 }
 
 /** 리드타임 구간 9개(정본 §16.4 표) — `WAIT`(대기)·`WORK`(작업) 성격 구분이 누적 막대의
- * 색을 가른다 */
+ * 색을 가른다. 2026-09-15 백엔드 노트(`stage11e-backend-notes.md` "프론트 계약")로 라이브
+ * 대조: 키 이름이 가정과 달랐다 — `RECEIVING_WAIT`→`RECEIVE_WAIT`, `PICKING`→`PICK`,
+ * `PACKING`→`PACK`(나머지 6개는 그대로 맞았다). 구간마다 한글 `label` 이 같이 온다 —
+ * 로직·색은 이 키로, 화면 표시는 `label` 로 한다(`SEGMENT_LABEL` 하드코딩 맵 대신). */
 export type LeadtimeSegment =
-  | "RECEIVING_WAIT"
+  | "RECEIVE_WAIT"
   | "WAVE_WAIT"
   | "PICK_WAIT"
-  | "PICKING"
+  | "PICK"
   | "REBIN_WAIT"
   | "REBIN"
   | "PACK_WAIT"
-  | "PACKING"
+  | "PACK"
   | "SHIP_WAIT";
 
 export const LEADTIME_SEGMENTS: readonly LeadtimeSegment[] = [
-  "RECEIVING_WAIT",
+  "RECEIVE_WAIT",
   "WAVE_WAIT",
   "PICK_WAIT",
-  "PICKING",
+  "PICK",
   "REBIN_WAIT",
   "REBIN",
   "PACK_WAIT",
-  "PACKING",
+  "PACK",
   "SHIP_WAIT",
 ] as const;
 
+/** `kind` 는 라이브 응답에 없다 — 위 키 목록에서 `_WAIT` 로 끝나는지로 클라이언트가
+ * 판정한다(`simulation-labels.ts` `SEGMENT_KIND`). `SHIP_WAIT` 는 늘 0(정본 — 시뮬레이션에
+ * 상차 단계가 없다), 알람이 아니라 정상값으로 그린다. */
 export interface SimulationLeadtimeRow {
   segment: LeadtimeSegment;
-  kind: "WAIT" | "WORK";
+  label: string;
   avgSec: number;
   p50Sec: number;
   p95Sec: number;
   share: number;
-  orderCount: number;
+  orders: number;
 }
 
-/** `GET /admin/simulation/runs/{id}/leadtime` — 저장된 집계(정본 "실행 종료 시 한 번 계산") */
+/** `GET /admin/simulation/runs/{id}/leadtime` — 저장된 집계(정본 "실행 종료 시 한 번 계산").
+ * 라이브 대조: `totalLeadtime` 에 `p99Sec`·`minSec`·`maxSec`·`orders` 도 온다. */
 export interface SimulationLeadtimeResponse {
   runId: number;
   rows: SimulationLeadtimeRow[];
   totalOrders: number;
-  totalLeadtime: { avgSec: number; p50Sec: number; p95Sec: number };
+  totalLeadtime: {
+    avgSec: number;
+    p50Sec: number;
+    p95Sec: number;
+    p99Sec: number;
+    minSec: number;
+    maxSec: number;
+    orders: number;
+  };
 }
 
-/** `GET /admin/simulation/runs/{id}/timeline?bucket=1h` 시간대별 한 칸(정본 §16.4) */
+/** `GET /admin/simulation/runs/{id}/timeline?bucket=1h` 시간대별 한 칸(정본 §16.4).
+ * 라이브 대조 대기 — 백엔드 노트가 `hourOfDay`·`waitOrders{key}`(구간별 대기 "건수",
+ * 내 `avgWaitSecBySegment` 의 대기 "초"와는 다른 지표로 보인다)·`openBatches` 를
+ * "추가로 쓸 수 있는 필드"라고 알려왔다 — 애매해서(실제 JSON 미확인) 내 원래 필드는
+ * 그대로 두고 옵셔널로 얹기만 했다. 실제 응답을 보고 어느 쪽을 쓸지 정리해야 한다. */
 export interface SimulationTimelineBucket {
   bucketStart: string;
+  hourOfDay?: number;
   ordersReceived: number;
   ordersShipped: number;
   avgWaitSecBySegment: Partial<Record<LeadtimeSegment, number>>;
+  waitOrders?: Partial<Record<LeadtimeSegment, number>>;
+  openBatches?: number;
   idleTotesPct: number;
   packStationOccupancyPct: number;
   pickerOccupancyPct: number;
@@ -2857,12 +2900,26 @@ export interface SimulationTimelineResponse {
 
 export type SaturatedResource = "TOTES" | "REBIN_SLOTS" | "PACK_STATIONS" | "PICKERS" | "REBINNERS";
 
-/** `GET /admin/simulation/runs/{id}/bottleneck` — 대기 시간이 가장 긴 구간 하나(정본 §16.4) */
+/** `GET /admin/simulation/runs/{id}/bottleneck` — 대기 시간이 가장 긴 구간(정본 §16.4).
+ * ⚠️ 라이브 대조 대기 — 백엔드 노트 실제 모양: `label`·`share`·`peakWaitSec`·`saturated[]`
+ * (자원이 배열, 하나가 아니다)·`waits[]`(구간별 대기 목록)·`cost`. 가정했던 8개 계약 중
+ * 이 자리가 가장 크게 갈렸다고 보고 새 모양으로 다시 짰다 — 실제 JSON 을 못 봐서
+ * `waits[]`·`saturated[]` 항목 필드는 추정이다, 라이브 대조 시 정정 필요. */
+export interface SimulationBottleneckWait {
+  segment: LeadtimeSegment;
+  label: string;
+  waitSec: number;
+  share: number;
+}
+
 export interface SimulationBottleneck {
   segment: LeadtimeSegment;
-  bucketStart: string;
-  waitSec: number;
-  saturatedResource: SaturatedResource;
+  label: string;
+  share: number;
+  peakWaitSec: number;
+  saturated: SaturatedResource[];
+  waits: SimulationBottleneckWait[];
+  cost: number;
 }
 
 export interface SimulationCompareSegmentRow {
@@ -2873,7 +2930,9 @@ export interface SimulationCompareSegmentRow {
   diffPct: number;
 }
 
-/** `GET /admin/simulation/compare?runA=&runB=`(정본 §16.5) */
+/** `GET /admin/simulation/compare?runA=&runB=`(정본 §16.5). `diffPct` 는 양수가 B 개선
+ * (백엔드 노트로 확인 — 가정과 일치). 백엔드 노트가 "추가로 쓸 수 있다"고 알려온
+ * `p50{…}`·`peakHour{a,b}`·`sameInput` 은 실제 JSON 을 못 봐서 옵셔널로만 얹는다. */
 export interface SimulationCompareResponse {
   runA: number;
   runB: number;
@@ -2884,4 +2943,8 @@ export interface SimulationCompareResponse {
   peakShipDelaySecB: number;
   bottleneckA: SimulationBottleneck;
   bottleneckB: SimulationBottleneck;
+  p50?: { a: number; b: number };
+  peakHour?: { a: string; b: string };
+  /** 같은 seed·유입 프로파일이라 유입이 같은지(정본 §16.5 "자원 조건만의 차이") */
+  sameInput?: boolean;
 }

@@ -10,17 +10,26 @@
 
 import type { LeadtimeSegment, SaturatedResource, SimulationRunStatus } from "@/lib/types";
 
+/** 라이브 응답이 구간마다 한글 `label` 을 같이 준다(백엔드 노트 "프론트 계약") — 이 맵은
+ * 그 값이 없을 때(표본·구버전 캐시)만 쓰는 폴백이다. 화면은 `row.label ?? SEGMENT_LABEL[row.segment]`
+ * 순서로 읽는다. */
 export const SEGMENT_LABEL: Record<LeadtimeSegment, string> = {
-  RECEIVING_WAIT: "접수 대기",
+  RECEIVE_WAIT: "접수 대기",
   WAVE_WAIT: "웨이브 대기",
   PICK_WAIT: "피킹 대기",
-  PICKING: "피킹",
+  PICK: "피킹",
   REBIN_WAIT: "리빈 대기",
   REBIN: "리빈",
   PACK_WAIT: "포장 대기",
-  PACKING: "포장",
+  PACK: "포장",
   SHIP_WAIT: "출고 대기",
 };
+
+/** 작업/대기 구분 — 라이브 응답에는 `kind` 가 없다(백엔드 노트), `_WAIT` 로 끝나는
+ * 키인지로 클라이언트가 판정한다. */
+export function segmentKindOf(segment: LeadtimeSegment): "WAIT" | "WORK" {
+  return segment.endsWith("_WAIT") ? "WAIT" : "WORK";
+}
 
 /** 작업(WORK) = 파랑, 대기(WAIT) = 주황 — 11B 전후 비교 막대(파랑/초록)와 같은 문법으로
  * "색이 뜻을 나른다"를 유지하되, 여기서는 전후가 아니라 작업/대기를 가른다 */

@@ -5,8 +5,13 @@
  *
  * ⚠️ 난수가 아니라 시나리오 params 로 결정되는 식이다 — 사람 수·배치 크기 같은 자원이
  * 늘면 그 구간 대기가 줄어드는 방향으로만 계산한다. 정본 §16.2 표준시간 값 근처
- * 자릿수를 쓰지만 출처가 있는 실측이 아니라 **화면 시연용 가정**이다(라이브 붙으면
- * 전부 버린다).
+ * 자릿수를 쓰지만 출처가 있는 실측이 아니라 **화면 시연용 가정**이다.
+ *
+ * 2026-09-15 백엔드가 라이브로 붙어 `use-simulation*.ts` 는 더 이상 이 파일을 참조하지
+ * 않는다(백엔드 노트 "프론트 계약") — 이 파일은 수동 테스트·스토리북용 표본으로만
+ * 남긴다(`lib/mocks/slotting.ts` 와 같은 처지). 구간 키·필드 이름은 그 노트에 맞춰
+ * 고쳤다(`RECEIVING_WAIT`→`RECEIVE_WAIT`, `PICKING`→`PICK`, `PACKING`→`PACK`,
+ * `orderCount`→`orders`, `SimulationLeadtimeRow.kind` 제거(`label` 로 대체) 등).
  */
 
 import type {
@@ -27,20 +32,33 @@ import { BASELINE_PARAMS, DAILY_ORDERS_DEFAULT } from "./simulation";
 /* ── 리드타임 분해 — 시나리오 params 로 결정되는 식 ─────────────────────────────── */
 
 const SEGMENT_KIND: Record<LeadtimeSegment, "WAIT" | "WORK"> = {
-  RECEIVING_WAIT: "WAIT",
+  RECEIVE_WAIT: "WAIT",
   WAVE_WAIT: "WAIT",
   PICK_WAIT: "WAIT",
-  PICKING: "WORK",
+  PICK: "WORK",
   REBIN_WAIT: "WAIT",
   REBIN: "WORK",
   PACK_WAIT: "WAIT",
-  PACKING: "WORK",
+  PACK: "WORK",
   SHIP_WAIT: "WAIT",
+};
+
+const SEGMENT_LABEL: Record<LeadtimeSegment, string> = {
+  RECEIVE_WAIT: "접수 대기",
+  WAVE_WAIT: "웨이브 대기",
+  PICK_WAIT: "피킹 대기",
+  PICK: "피킹",
+  REBIN_WAIT: "리빈 대기",
+  REBIN: "리빈",
+  PACK_WAIT: "포장 대기",
+  PACK: "포장",
+  SHIP_WAIT: "출고 대기",
 };
 
 /** 구간별 평균 초 — 자원이 기준(baseline)보다 많으면 그 구간 대기가 줄어드는 방향으로만
  * 계산한다(정본 §16.1 "병목은 대기 시간이 말한다"). 작업 시간은 조건에 거의 무관 —
- * `applySlotting` 만 피킹 작업 시간을 §15 정적 결과(5.31%)만큼 줄인다. */
+ * `applySlotting` 만 피킹 작업 시간을 §15 정적 결과(5.31%)만큼 줄인다. `SHIP_WAIT` 는
+ * 늘 0(백엔드 노트 — 시뮬레이션에 상차 단계가 없다). */
 function segmentAvgSec(segment: LeadtimeSegment, params: SimulationScenarioParams): number {
   const pickerRatio = BASELINE_PARAMS.pickers / params.pickers;
   const rebinnerRatio = BASELINE_PARAMS.rebinners / params.rebinners;
@@ -50,13 +68,13 @@ function segmentAvgSec(segment: LeadtimeSegment, params: SimulationScenarioParam
   const batchRatio = params.batchSize / BASELINE_PARAMS.batchSize;
 
   switch (segment) {
-    case "RECEIVING_WAIT":
+    case "RECEIVE_WAIT":
       return 3;
     case "WAVE_WAIT":
       return Math.round(params.waveIntervalMin * 60 * 0.6 * toteRatio);
     case "PICK_WAIT":
       return Math.round(820 * pickerRatio * batchRatio);
-    case "PICKING": {
+    case "PICK": {
       // 1.3 라인/주문(§11.2) × (12초/라인 + 최상·최하단 페널티 3초 + 평균 이동 10m ÷ 1.0m/s)
       const withMove = 1.3 * (12 + 3 + 10);
       return Math.round(params.applySlotting ? withMove * (1 - 0.0531) : withMove);
@@ -67,10 +85,10 @@ function segmentAvgSec(segment: LeadtimeSegment, params: SimulationScenarioParam
       return Math.round(1.3 * 9);
     case "PACK_WAIT":
       return Math.round(540 * packerRatio * packStationRatio);
-    case "PACKING":
+    case "PACK":
       return Math.round(45 + 1.3 * 5);
     case "SHIP_WAIT":
-      return 55;
+      return 0;
   }
 }
 
@@ -86,12 +104,12 @@ export function deriveLeadtimeRows(params: SimulationScenarioParams, fraction = 
     const avgSec = avgSecs[i];
     return {
       segment,
-      kind: SEGMENT_KIND[segment],
+      label: SEGMENT_LABEL[segment],
       avgSec,
       p50Sec: Math.round(avgSec * 0.9),
       p95Sec: Math.round(avgSec * 1.8),
       share: totalAvg > 0 ? avgSec / totalAvg : 0,
-      orderCount: totalOrders,
+      orders: totalOrders,
     };
   });
 }
@@ -102,12 +120,21 @@ export function deriveLeadtimeResponse(
   fraction = 1,
 ): SimulationLeadtimeResponse {
   const rows = deriveLeadtimeRows(params, fraction);
-  const totalAvg = rows.reduce((sum, r) => sum + r.avgSec, 0);
+  const secs = rows.map((r) => r.avgSec);
+  const totalAvg = secs.reduce((sum, v) => sum + v, 0);
   return {
     runId,
     rows,
-    totalOrders: rows[0]?.orderCount ?? 0,
-    totalLeadtime: { avgSec: totalAvg, p50Sec: Math.round(totalAvg * 0.88), p95Sec: Math.round(totalAvg * 1.7) },
+    totalOrders: rows[0]?.orders ?? 0,
+    totalLeadtime: {
+      avgSec: totalAvg,
+      p50Sec: Math.round(totalAvg * 0.88),
+      p95Sec: Math.round(totalAvg * 1.7),
+      p99Sec: Math.round(totalAvg * 2.1),
+      minSec: Math.round(totalAvg * 0.6),
+      maxSec: Math.round(totalAvg * 2.6),
+      orders: rows[0]?.orders ?? 0,
+    },
   };
 }
 
@@ -137,7 +164,9 @@ export function deriveTimeline(runId: number, params: SimulationScenarioParams, 
   const totalOrders = Math.round(DAILY_ORDERS_DEFAULT * (params.durationHours / 24));
   const elapsedHours = Math.round(Math.min(24, params.durationHours) * fraction);
   const rows = deriveLeadtimeRows(params);
-  const waitBySegment = Object.fromEntries(rows.filter((r) => r.kind === "WAIT").map((r) => [r.segment, r.avgSec]));
+  const waitBySegment = Object.fromEntries(
+    rows.filter((r) => SEGMENT_KIND[r.segment] === "WAIT").map((r) => [r.segment, r.avgSec]),
+  );
 
   const buckets: SimulationTimelineBucket[] = weights.slice(0, Math.min(24, params.durationHours)).map((w, h) => {
     const reached = h < elapsedHours;
@@ -147,6 +176,7 @@ export function deriveTimeline(runId: number, params: SimulationScenarioParams, 
     const load = isPeak ? 1.25 : 0.85;
     return {
       bucketStart: `${String(h).padStart(2, "0")}:00`,
+      hourOfDay: h,
       ordersReceived: received,
       ordersShipped: shipped,
       avgWaitSecBySegment: Object.fromEntries(
@@ -162,7 +192,7 @@ export function deriveTimeline(runId: number, params: SimulationScenarioParams, 
   return { runId, bucket: "1h", buckets };
 }
 
-/* ── 병목 — 대기가 가장 긴 구간 + 그 시간대 + 포화 자원 ─────────────────────────── */
+/* ── 병목 — 대기가 가장 긴 구간 + 포화 자원 ────────────────────────────────────── */
 
 const SEGMENT_RESOURCE: Partial<Record<LeadtimeSegment, SaturatedResource>> = {
   WAVE_WAIT: "TOTES",
@@ -172,13 +202,17 @@ const SEGMENT_RESOURCE: Partial<Record<LeadtimeSegment, SaturatedResource>> = {
 };
 
 export function deriveBottleneck(params: SimulationScenarioParams): SimulationBottleneck {
-  const rows = deriveLeadtimeRows(params).filter((r) => r.kind === "WAIT");
+  const rows = deriveLeadtimeRows(params).filter((r) => SEGMENT_KIND[r.segment] === "WAIT");
+  const totalWait = rows.reduce((sum, r) => sum + r.avgSec, 0) || 1;
   const worst = rows.reduce((max, r) => (r.avgSec > max.avgSec ? r : max), rows[0]);
   return {
     segment: worst.segment,
-    bucketStart: "20:00",
-    waitSec: worst.avgSec,
-    saturatedResource: SEGMENT_RESOURCE[worst.segment] ?? "PICKERS",
+    label: worst.label,
+    share: worst.avgSec / totalWait,
+    peakWaitSec: worst.avgSec,
+    saturated: [SEGMENT_RESOURCE[worst.segment] ?? "PICKERS"],
+    waits: rows.map((r) => ({ segment: r.segment, label: r.label, waitSec: r.avgSec, share: r.avgSec / totalWait })),
+    cost: worst.avgSec * (params.durationHours >= 24 ? 15000 : Math.round(15000 * (params.durationHours / 24))),
   };
 }
 
@@ -207,5 +241,6 @@ export function deriveCompare(
     peakShipDelaySecB: segmentAvgSec("PACK_WAIT", paramsB) + segmentAvgSec("PICK_WAIT", paramsB),
     bottleneckA: deriveBottleneck(paramsA),
     bottleneckB: deriveBottleneck(paramsB),
+    sameInput: paramsA.seed === paramsB.seed && paramsA.orderProfile === paramsB.orderProfile,
   };
 }

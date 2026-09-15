@@ -6,7 +6,7 @@
  */
 
 import { useSimulationBottleneck, useSimulationLeadtime, useSimulationTimeline } from "../_data/use-simulation";
-import { RESOURCE_LABEL, SEGMENT_LABEL } from "./simulation-labels";
+import { RESOURCE_LABEL } from "./simulation-labels";
 import { SimulationLeadtimeChart } from "./simulation-leadtime-chart";
 import { SimulationOccupancyChart } from "./simulation-occupancy-chart";
 import { SimulationTimelineChart } from "./simulation-timeline-chart";
@@ -49,8 +49,8 @@ function BottleneckCard({ bottleneck }: { bottleneck: ReturnType<typeof useSimul
     <Sunken className="flex items-center gap-4 px-3 py-2">
       <span className={`${w98.small} font-bold`}>병목</span>
       <span className={`${w98.mono} text-[13px]`}>
-        {SEGMENT_LABEL[bottleneck.segment]} · {bottleneck.bucketStart} · 대기 {bottleneck.waitSec}초 · 포화{" "}
-        {RESOURCE_LABEL[bottleneck.saturatedResource]}
+        {bottleneck.label} · 대기 비중 {(bottleneck.share * 100).toFixed(0)}% · 최대 대기 {bottleneck.peakWaitSec}초
+        · 포화 {bottleneck.saturated.map((r) => RESOURCE_LABEL[r]).join("·")}
       </span>
     </Sunken>
   );
