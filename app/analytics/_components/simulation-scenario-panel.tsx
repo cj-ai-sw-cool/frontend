@@ -132,7 +132,11 @@ export function SimulationScenarioPanel({
         </Btn>
       </div>
 
-      <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto`}>
+      {/* 시나리오가 4개면(데모 시드) 표 높이(122px)가 4행(146px)보다 작아 안쪽 스크롤이
+       * 필요하다 — `min-h-0`(flex 자식이 내용만큼 안 늘어나게) 만으로는 의도가 코드에
+       * 안 드러나 `max-h` 를 명시했다(11B `slotting-proposal-panel.tsx` 와 같은 패턴,
+       * 실측은 이미 `overflow-y:auto` 로 동작 확인 — `s11e-live-6-list-scroll.png`). */}
+      <Sunken className={`${w98.scroll} min-h-0 max-h-[150px] flex-1 overflow-y-auto`}>
         <table className="w-full border-separate border-spacing-0 text-left text-[12px]">
           <thead className="sticky top-0 z-10 bg-[color:var(--surface)]">
             <tr>

@@ -110,7 +110,7 @@ export function deriveCompare(
     status: "DONE" as const,
     compression: 100,
     seed: params.seed,
-    orderProfile: params.orderProfile,
+    orderProfile: typeof params.orderProfile === "string" ? params.orderProfile : params.orderProfile.kind,
     pickers: params.pickers,
     batchSize: params.batchSize,
     applySlotting: params.applySlotting,

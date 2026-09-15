@@ -13,7 +13,7 @@
 
 import {
   simulationRunId,
-  type OrderProfileKind,
+  type SimulationOrderProfileRequest,
   type SimulationParams,
   type SimulationRun,
   type SimulationRunProgress,
@@ -49,7 +49,7 @@ export const mockSimulationParams: SimulationParams = {
 /** 표본 계산 전용 — 라이브 시나리오의 `params`(전부 null 허용)와 달리 항상 다 채운다 */
 export interface MockResolvedParams {
   durationHours: number;
-  orderProfile: OrderProfileKind;
+  orderProfile: SimulationOrderProfileRequest;
   pickers: number;
   rebinners: number;
   packers: number;

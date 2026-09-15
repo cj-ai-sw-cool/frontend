@@ -2735,22 +2735,24 @@ export interface SimulationParams {
 export type UpdateSimulationParamsRequest = Partial<SimulationCenterParams>;
 
 /** 시간대별 유입 프로파일 — `default`(정본 §16.3 "일 1.5만·피크 20~23시 33%·정점 1.8배"),
- * `flat`(균등), `custom`(24칸 직접 입력) */
+ * `flat`(균등), `custom`(24칸 직접 입력) — Dialog 폼의 선택값(UI 전용). 서버로 보낼 때는
+ * `SimulationOrderProfileRequest` 로 바꾼다. */
 export type OrderProfileKind = "default" | "flat" | "custom";
+
+/** `params.orderProfile` 로 서버에 보내는 실제 모양(백엔드 최종 계약, 2026-09-16 정정) —
+ * `default`·`flat` 은 문자열 그대로, `custom` 은 `customProfile` 같은 별도 필드가 아니라
+ * 이 필드 자체가 `{kind:"custom", hourly:[24개]}` 객체가 된다. */
+export type SimulationOrderProfileRequest = "default" | "flat" | { kind: "custom"; hourly: number[] };
 
 /** `simulation_scenario.params`(정본 §16.3 표) — 새 시나리오 Dialog 폼과 1:1.
  * ⚠️ 라이브 대조: 실제 시나리오 응답의 `params` 는 **전부 null 허용**이다 — null 이면
  * `SimulationCenterParams` 값을 상속한다(시드 4개 중 `pickers+5` 는 `pickers`만,
  * `batch30` 은 `batchSize`만, `slotting` 은 `applySlotting`만 채워져 있고 나머지는
  * null). 화면 표시는 `mergeScenarioParams()` 로 상속까지 계산한 값을 쓴다. `compression`·
- * `ordersPerDay` 도 시나리오 단위로 얹을 수 있다(라이브 대조로 발견, 정본에는 없던 필드).
- * `customProfile`(24칸 직접 입력) 은 실제 필드명을 확인 못 했다 — 그대로 두되 서버가
- * 받는지 라이브 검증 대기. */
+ * `ordersPerDay` 도 시나리오 단위로 얹을 수 있다(라이브 대조로 발견, 정본에는 없던 필드). */
 export interface SimulationScenarioParams {
   durationHours: number | null;
-  orderProfile: OrderProfileKind | null;
-  /** `orderProfile === "custom"` 일 때만 24칸(시간대별 건수). 실제 필드명 라이브 대조 대기 */
-  customProfile?: number[] | null;
+  orderProfile: SimulationOrderProfileRequest | null;
   pickers: number | null;
   rebinners: number | null;
   packers: number | null;

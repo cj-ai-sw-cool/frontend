@@ -14,9 +14,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { simulationScenarioId, type CreateSimulationScenarioRequest, type OrderProfileKind } from "@/lib/types";
+import {
+  simulationScenarioId,
+  type CreateSimulationScenarioRequest,
+  type OrderProfileKind,
+  type SimulationOrderProfileRequest,
+} from "@/lib/types";
 import { useCreateScenario } from "../_data/use-simulation-mutations";
 import { Btn, Checkbox, Field, Select, w98 } from "./win98-ui";
+
+/** 사용자 정의 24칸 기본값 — 하루 1.5만건을 24시간 균등 분배(625건/시). 입력 칸은
+ * 쉼표 구분 문자열로 받고 제출할 때만 숫자 배열로 바꾼다(24칸 입력 UI를 그리드로 만들면
+ * 파일이 300줄을 넘는다 — `coding-style.md` 파일 크기 제한). */
+const DEFAULT_HOURLY = Array(24).fill(625).join(", ");
+
+/** "1,2,3" 같은 24칸 쉼표 구분 문자열을 파싱한다. 24개가 아니거나 숫자가 아니면 null —
+ * 백엔드 계약(`docs/tasks/2026-09-15-stage11e-backend-notes.md` "프론트 계약")이 정확히
+ * 24칸을 요구한다. */
+function parseHourly(raw: string): number[] | null {
+  const parts = raw.split(",").map((s) => s.trim());
+  if (parts.length !== 24) return null;
+  const nums = parts.map(Number);
+  if (nums.some((n) => !Number.isFinite(n) || n < 0)) return null;
+  return nums;
+}
 
 /** 폼 전용 값 — 전부 채워서 보낸다(라이브 시나리오의 `params` 는 전부 null 허용이라
  * "비우면 센터 기본값 상속"이 뜻이지만(`lib/types.ts` `SimulationScenarioParams` 머리말),
@@ -101,6 +122,8 @@ function DialogBody({
   const createScenario = useCreateScenario(center);
   const [name, setName] = useState("");
   const [params, setParams] = useState<ScenarioFormParams>(DEFAULT_PARAMS);
+  const [hourly, setHourly] = useState(DEFAULT_HOURLY);
+  const [hourlyError, setHourlyError] = useState<string | null>(null);
 
   const setField = <K extends keyof ScenarioFormParams>(key: K) => (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -111,7 +134,23 @@ function DialogBody({
 
   const submit = () => {
     if (!name.trim()) return;
-    const body: CreateSimulationScenarioRequest = { center, name: name.trim(), params };
+    let orderProfile: SimulationOrderProfileRequest;
+    if (params.orderProfile === "custom") {
+      const hourlyNums = parseHourly(hourly);
+      if (!hourlyNums) {
+        setHourlyError("시간대별 건수는 24개, 쉼표로 구분한 0 이상 숫자여야 합니다.");
+        return;
+      }
+      orderProfile = { kind: "custom", hourly: hourlyNums };
+    } else {
+      orderProfile = params.orderProfile;
+    }
+    setHourlyError(null);
+    const body: CreateSimulationScenarioRequest = {
+      center,
+      name: name.trim(),
+      params: { ...params, orderProfile },
+    };
     createScenario.mutate(body, {
       onSuccess: (data) => onCreated(simulationScenarioId(data)),
       onSettled: () => onClose(),
@@ -142,6 +181,18 @@ function DialogBody({
               ))}
             </Select>
           </label>
+          {params.orderProfile === "custom" ? (
+            <label className="col-span-2 flex flex-col gap-0.5">
+              <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>
+                시간대별 건수(0~23시, 24개 쉼표 구분)
+              </span>
+              <Field
+                value={hourly}
+                onChange={(e) => setHourly(e.target.value)}
+                className={`${w98.mono} h-8 text-[12px]`}
+              />
+            </label>
+          ) : null}
           <NumField label="피커 수" value={params.pickers} onChange={setField("pickers")} />
           <NumField label="리빈 작업자 수" value={params.rebinners} onChange={setField("rebinners")} />
           <NumField label="포장 작업자 수" value={params.packers} onChange={setField("packers")} />
@@ -159,6 +210,12 @@ function DialogBody({
           onToggle={() => setParams((p) => ({ ...p, applySlotting: !p.applySlotting }))}
         />
       </div>
+
+      {hourlyError ? (
+        <p role="alert" className={`${w98.small} mx-3 mb-2 bg-[#ffdad6] p-2 font-bold text-[color:var(--status-error)]`}>
+          {hourlyError}
+        </p>
+      ) : null}
 
       {createScenario.error ? (
         <p role="alert" className={`${w98.small} mx-3 mb-2 bg-[#ffdad6] p-2 font-bold text-[color:var(--status-error)]`}>
