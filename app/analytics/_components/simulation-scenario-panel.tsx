@@ -10,11 +10,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, simulation } from "@/lib/endpoints";
 import { useCreateDefaultScenarios, useCreateRun, useStopRun } from "../_data/use-simulation-mutations";
-import { useSimulationRunProgress, useSimulationRuns, useSimulationScenarios } from "../_data/use-simulation";
+import {
+  useSimulationParams,
+  useSimulationRunProgress,
+  useSimulationRuns,
+  useSimulationScenarios,
+} from "../_data/use-simulation";
 import { RUN_STATUS_LABEL } from "./simulation-labels";
 import { SimulationScenarioCreateDialog } from "./simulation-scenario-create-dialog";
 import { Btn, Sunken, w98 } from "./win98-ui";
-import { simulationRunId, type SimulationRun, type SimulationRunStatus, type SimulationScenario } from "@/lib/types";
+import {
+  mergeScenarioParams,
+  simulationRunId,
+  simulationScenarioId,
+  type SimulationRun,
+  type SimulationRunStatus,
+  type SimulationScenario,
+} from "@/lib/types";
 
 const TERMINAL_STATUSES: SimulationRunStatus[] = ["DONE", "STOPPED", "FAILED"];
 
@@ -35,6 +47,7 @@ export function SimulationScenarioPanel({
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const scenarios = useSimulationScenarios(center);
+  const centerParams = useSimulationParams(center);
   const runs = useSimulationRuns(center);
   const progress = useSimulationRunProgress(selectedRunId);
   const createRun = useCreateRun(center);
@@ -79,8 +92,9 @@ export function SimulationScenarioPanel({
   const anyRunning = (runs.data ?? []).some((r) => r.status === "RUNNING");
 
   const handleSelectScenario = (scenario: SimulationScenario) => {
-    onSelectScenario(scenario.id);
-    const latest = latestRunByScenario.get(scenario.id);
+    const scenarioId = simulationScenarioId(scenario);
+    onSelectScenario(scenarioId);
+    const latest = latestRunByScenario.get(scenarioId);
     if (latest) onSelectRun(simulationRunId(latest));
   };
 
@@ -132,21 +146,25 @@ export function SimulationScenarioPanel({
           </thead>
           <tbody>
             {(scenarios.data ?? []).map((scenario) => {
-              const latest = latestRunByScenario.get(scenario.id);
-              const selected = scenario.id === selectedScenarioId;
+              const scenarioId = simulationScenarioId(scenario);
+              const latest = latestRunByScenario.get(scenarioId);
+              const selected = scenarioId === selectedScenarioId;
+              // 시나리오 params 는 null 이면 센터 기본값을 상속한다(라이브 대조,
+              // `mergeScenarioParams` 참고) — 그대로 찍으면 "null/null/null" 이 보인다.
+              const merged = mergeScenarioParams(scenario.params, centerParams.data?.params);
               return (
                 <tr
-                  key={scenario.id}
+                  key={scenarioId}
                   onClick={() => handleSelectScenario(scenario)}
                   className={`cursor-pointer ${selected ? "bg-[color:var(--surface-variant)]" : ""}`}
                 >
                   <Td className="font-bold">{scenario.name}</Td>
                   <Td mono>
-                    {scenario.params.pickers}/{scenario.params.rebinners}/{scenario.params.packers}
+                    {merged.pickers}/{merged.rebinners}/{merged.packers}
                   </Td>
-                  <Td mono>{scenario.params.batchSize}</Td>
-                  <Td mono>{scenario.params.totes}</Td>
-                  <Td>{scenario.params.applySlotting ? "적용" : "—"}</Td>
+                  <Td mono>{merged.batchSize}</Td>
+                  <Td mono>{merged.totes}</Td>
+                  <Td>{merged.applySlotting ? "적용" : "—"}</Td>
                   <Td className="font-bold">{latest ? RUN_STATUS_LABEL[latest.status] : "실행 없음"}</Td>
                 </tr>
               );
@@ -196,11 +214,11 @@ function ProgressBar({ progress }: { progress: ReturnType<typeof useSimulationRu
   return (
     <Sunken className={`${w98.mono} flex shrink-0 items-center gap-4 px-3 py-2 text-[12px]`}>
       <span className="font-bold">{RUN_STATUS_LABEL[progress.status]}</span>
-      <span>가상 시각 {progress.virtualNow}</span>
-      <span>진행 {progress.progressPct}%</span>
+      <span>가상 시각 {progress.virtualHours.toFixed(1)}h</span>
+      <span>진행 {progress.progressPct.toFixed(1)}%</span>
       <span>유입 {progress.ordersReceived.toLocaleString()}</span>
       <span>출고 {progress.ordersShipped.toLocaleString()}</span>
-      <span>유휴 토트 {progress.idleTotes.toLocaleString()}</span>
+      <span>유휴 토트 {progress.idleTotes?.toLocaleString() ?? "—"}</span>
       <span>포장대 가동 {progress.busyPackStations}</span>
       <span>{progress.eventsPerSec}건/s</span>
     </Sunken>

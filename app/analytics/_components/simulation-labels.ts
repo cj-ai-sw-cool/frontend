@@ -10,9 +10,8 @@
 
 import type { LeadtimeSegment, SaturatedResource, SimulationRunStatus } from "@/lib/types";
 
-/** 라이브 응답이 구간마다 한글 `label` 을 같이 준다(백엔드 노트 "프론트 계약") — 이 맵은
- * 그 값이 없을 때(표본·구버전 캐시)만 쓰는 폴백이다. 화면은 `row.label ?? SEGMENT_LABEL[row.segment]`
- * 순서로 읽는다. */
+/** 라이브 응답이 구간마다 한글 `label` 을 같이 준다 — 이 맵은 그 값이 없을 때(표본·
+ * 비교 구간 표처럼 label 을 안 주는 자리)만 쓰는 폴백이다. */
 export const SEGMENT_LABEL: Record<LeadtimeSegment, string> = {
   RECEIVE_WAIT: "접수 대기",
   WAVE_WAIT: "웨이브 대기",
@@ -25,8 +24,8 @@ export const SEGMENT_LABEL: Record<LeadtimeSegment, string> = {
   SHIP_WAIT: "출고 대기",
 };
 
-/** 작업/대기 구분 — 라이브 응답에는 `kind` 가 없다(백엔드 노트), `_WAIT` 로 끝나는
- * 키인지로 클라이언트가 판정한다. */
+/** 작업/대기 구분 — 라이브 응답(`SimulationLeadtimeRow.kind`)에 실제로 있다(2026-09-16
+ * 확인, 처음엔 없다고 들었다) — 이 함수는 그 값이 없는 자리(비교 구간 표 등)의 폴백이다. */
 export function segmentKindOf(segment: LeadtimeSegment): "WAIT" | "WORK" {
   return segment.endsWith("_WAIT") ? "WAIT" : "WORK";
 }
@@ -55,10 +54,13 @@ export const RUN_STATUS_LABEL: Record<SimulationRunStatus, string> = {
   FAILED: "실패",
 };
 
+/** 라이브 대조: 단수형(`PACK_STATION`·`PICKER`·`REBINNER` 확인, `TOTE`·`REBIN_SLOT`
+ * 은 같은 규칙으로 미룬 추정) */
 export const RESOURCE_LABEL: Record<SaturatedResource, string> = {
-  TOTES: "토트",
-  REBIN_SLOTS: "리빈 슬롯",
-  PACK_STATIONS: "포장대",
-  PICKERS: "피커",
-  REBINNERS: "리빈 작업자",
+  TOTE: "토트",
+  REBIN_SLOT: "리빈 슬롯",
+  PACK_STATION: "포장대",
+  PICKER: "피커",
+  REBINNER: "리빈 작업자",
+  NONE: "없음",
 };

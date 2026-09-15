@@ -31,8 +31,10 @@ export function SimulationTimelineChart({ data }: { data: SimulationTimelineResp
     return <p className={`${w98.small} text-[color:var(--muted-foreground)]`}>타임라인 불러오는 중…</p>;
   }
 
-  const received = data.buckets.map((b) => b.ordersReceived);
-  const shipped = data.buckets.map((b) => b.ordersShipped);
+  // 라이브 대조: `{runId,bucket,buckets}` 래퍼가 아니라 배열을 그대로 준다, 필드는
+  // `ordersReceived`/`ordersShipped` 가 아니라 `received`/`shipped`.
+  const received = data.map((b) => b.received);
+  const shipped = data.map((b) => b.shipped);
   const max = Math.max(1, ...received, ...shipped);
 
   return (
@@ -70,17 +72,17 @@ export function SimulationTimelineChart({ data }: { data: SimulationTimelineResp
           ))}
           <polyline points={toPoints(received, max)} fill="none" stroke="#3D6FA3" strokeWidth={2} />
           <polyline points={toPoints(shipped, max)} fill="none" stroke="#D98A3D" strokeWidth={2} />
-          {data.buckets.map((b, i) =>
+          {data.map((b, i) =>
             i % 4 === 0 ? (
               <text
-                key={b.bucketStart}
-                x={(i / Math.max(1, data.buckets.length - 1)) * W}
+                key={b.hour}
+                x={(i / Math.max(1, data.length - 1)) * W}
                 y={H - 2}
                 fontSize={9}
                 textAnchor="middle"
                 fill="var(--muted-foreground)"
               >
-                {b.bucketStart}
+                {String(b.hourOfDay).padStart(2, "0")}:00
               </text>
             ) : null,
           )}

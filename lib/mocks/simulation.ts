@@ -3,39 +3,68 @@
  * 계산식(리드타임·타임라인·병목·비교)은 `simulation-metrics.ts` 로 뺐다(파일 300줄
  * 상한, `use-slotting.ts`/`use-slotting-mutations.ts` 와 같은 이유).
  *
- * 2026-09-15 시점 백엔드는 같은 브랜치에서 동시 작업 중이라(브리프 머리말) 전부 404다.
- * `use-simulation.ts`·`use-simulation-mutations.ts`가 `use-slotting.ts`(11B, 백엔드
- * 붙기 전)와 같은 관례로 이 표본을 쓴다 — 조회는 실패 시 대신 그리고, 뮤테이션은
- * route-not-found(404)에 한해 이 파일의 가변 상태를 직접 써서 "시나리오 생성 → 실행 →
- * 진행 → 완료 → 리드타임·비교" 흐름을 재현한다.
+ * 2026-09-16 백엔드가 라이브로 붙어 `use-simulation*.ts` 는 더 이상 이 파일을 참조하지
+ * 않는다 — 수동 테스트·스토리북용 표본으로만 남긴다(`lib/mocks/slotting.ts` 와 같은
+ * 처지). 시나리오·실행의 `params` 필드는 라이브에서 전부 null 허용(센터 기본값 상속,
+ * `lib/types.ts` `SimulationScenarioParams` 머리말)이지만, 이 표본은 항상 다 채운
+ * `MockResolvedParams`(로컬 전용, 비-null) 로 계산한다 — 표본이 스스로 상속 규칙까지
+ * 흉내 낼 필요는 없다.
  */
 
 import {
   simulationRunId,
+  type OrderProfileKind,
   type SimulationParams,
   type SimulationRun,
   type SimulationRunProgress,
   type SimulationRunStatus,
   type SimulationScenario,
-  type SimulationScenarioParams,
 } from "../types";
 
 export const mockSimulationParams: SimulationParams = {
   center: "C1",
-  walkSpeedMps: 1.0,
-  pickLineSec: 12,
-  levelPenaltySec: 3,
-  rebinSecPerItem: 9,
-  packBaseSec: 45,
-  packSecPerItem: 5,
-  batchPrepSec: 30,
-  compression: 100,
+  params: {
+    compression: 100,
+    walkSpeedMps: 1.0,
+    secPerLine: 12,
+    levelPenaltySec: 3,
+    rebinSecPerUnit: 9,
+    packFixedSec: 45,
+    packSecPerItem: 5,
+    batchSetupSec: 30,
+    pickers: 22,
+    rebinners: 8,
+    packers: 45,
+    batchSize: 50,
+    totes: 600,
+    packStations: 45,
+    rebinSlots: 1200,
+    waveIntervalMin: 15,
+    ordersPerDay: 15000,
+    durationHours: 24,
+  },
+  sources: {},
 };
 
-export const BASELINE_PARAMS: SimulationScenarioParams = {
+/** 표본 계산 전용 — 라이브 시나리오의 `params`(전부 null 허용)와 달리 항상 다 채운다 */
+export interface MockResolvedParams {
+  durationHours: number;
+  orderProfile: OrderProfileKind;
+  pickers: number;
+  rebinners: number;
+  packers: number;
+  batchSize: number;
+  totes: number;
+  packStations: number;
+  rebinSlots: number;
+  waveIntervalMin: number;
+  applySlotting: boolean;
+  seed: number;
+}
+
+export const BASELINE_PARAMS: MockResolvedParams = {
   durationHours: 24,
   orderProfile: "default",
-  customProfile: null,
   pickers: 22,
   rebinners: 8,
   packers: 45,
@@ -50,23 +79,23 @@ export const BASELINE_PARAMS: SimulationScenarioParams = {
 
 /** 데모 시드 기본 시나리오 4개(정본 §16.5 "시드가 만든다") */
 export const mockScenarios: SimulationScenario[] = [
-  { id: 1, center: "C1", name: "baseline", params: BASELINE_PARAMS, createdAt: "2026-09-15T00:00:00Z" },
+  { scenarioId: 1, center: "C1", name: "baseline", params: BASELINE_PARAMS, createdAt: "2026-09-15T00:00:00Z" },
   {
-    id: 2,
+    scenarioId: 2,
     center: "C1",
     name: "pickers+5",
     params: { ...BASELINE_PARAMS, pickers: 27, seed: 20260916 },
     createdAt: "2026-09-15T00:05:00Z",
   },
   {
-    id: 3,
+    scenarioId: 3,
     center: "C1",
     name: "batch30",
     params: { ...BASELINE_PARAMS, batchSize: 30, seed: 20260917 },
     createdAt: "2026-09-15T00:10:00Z",
   },
   {
-    id: 4,
+    scenarioId: 4,
     center: "C1",
     name: "slotting",
     params: { ...BASELINE_PARAMS, applySlotting: true, seed: 20260918 },
@@ -78,7 +107,7 @@ export const mockScenarios: SimulationScenario[] = [
  * 3") — "새 시나리오 → 실행" 화면 체크가 빈 상태에서 시작하는 흐름도 보여준다 */
 export const mockRuns: SimulationRun[] = [
   {
-    id: 101,
+    runId: 101,
     scenarioId: 1,
     status: "DONE",
     compression: 100,
@@ -91,7 +120,7 @@ export const mockRuns: SimulationRun[] = [
     error: null,
   },
   {
-    id: 102,
+    runId: 102,
     scenarioId: 2,
     status: "DONE",
     compression: 100,
@@ -104,7 +133,7 @@ export const mockRuns: SimulationRun[] = [
     error: null,
   },
   {
-    id: 103,
+    runId: 103,
     scenarioId: 3,
     status: "STOPPED",
     compression: 100,
@@ -118,15 +147,20 @@ export const mockRuns: SimulationRun[] = [
   },
 ];
 
-/** 화면에서 만든 시나리오(`mockCreateScenario`) — 시드 4개와 분리해 둔다. `mockScenarioById`
- * 가 둘 다 찾아야 새로 만든 시나리오의 실행도 리드타임·타임라인·병목을 낼 수 있다(이걸
- * 놓쳐서 "결과" 패널이 "불러오는 중…"에 멈춰 있던 결함을 2026-09-15 화면 체크에서
- * 발견 — `use-simulation-mutations.ts` 가 이 배열을 몰라 자기 모듈에 따로 들고 있었다). */
+/** 화면에서 만든 시나리오(`mockCreateScenario`) — 시드 4개와 분리해 둔다. */
 const createdScenarios: SimulationScenario[] = [];
 let nextScenarioId = 900;
 
 export function mockScenarioById(id: number): SimulationScenario | null {
-  return mockScenarios.find((s) => s.id === id) ?? createdScenarios.find((s) => s.id === id) ?? null;
+  return (
+    mockScenarios.find((s) => simulationScenarioIdOf(s) === id) ??
+    createdScenarios.find((s) => simulationScenarioIdOf(s) === id) ??
+    null
+  );
+}
+
+function simulationScenarioIdOf(s: SimulationScenario): number {
+  return (s.scenarioId ?? s.id) as number;
 }
 
 export function mockListScenarios(center: string): SimulationScenario[] {
@@ -134,9 +168,9 @@ export function mockListScenarios(center: string): SimulationScenario[] {
 }
 
 /** "생성" 버튼의 404 폴백 */
-export function mockCreateScenario(body: { center: string; name: string; params: SimulationScenarioParams }): SimulationScenario {
+export function mockCreateScenario(body: { center: string; name: string; params: MockResolvedParams }): SimulationScenario {
   const scenario: SimulationScenario = {
-    id: nextScenarioId++,
+    scenarioId: nextScenarioId++,
     center: body.center,
     name: body.name,
     params: body.params,
@@ -152,10 +186,10 @@ export function mockCreateScenario(body: { center: string; name: string; params:
 const allRuns: SimulationRun[] = [...mockRuns];
 let nextRunId = 1000;
 
-const runParamsById = new Map<number, SimulationScenarioParams>();
+const runParamsById = new Map<number, MockResolvedParams>();
 for (const run of mockRuns) {
   const scenario = mockScenarioById(run.scenarioId);
-  if (scenario) runParamsById.set(simulationRunId(run), scenario.params);
+  if (scenario) runParamsById.set(simulationRunId(run), scenario.params as MockResolvedParams);
 }
 
 /** 실행마다 호출될 때(2초 폴링)마다 조금씩 나아간다 — 실시간 Date.now() 대신 **호출
@@ -179,10 +213,10 @@ export function mockListRuns(center: string, scenarioId?: number): SimulationRun
 /** "실행" 버튼의 404 폴백 — 정본 §16.3 "비동기 1개만 동시 실행/센터" */
 export function mockCreateRun(scenario: SimulationScenario): SimulationRun {
   const run: SimulationRun = {
-    id: nextRunId++,
-    scenarioId: scenario.id,
+    runId: nextRunId++,
+    scenarioId: simulationScenarioIdOf(scenario),
     status: "RUNNING",
-    compression: mockSimulationParams.compression,
+    compression: mockSimulationParams.params.compression,
     virtualStart: "2026-09-15T00:00:00",
     virtualEnd: null,
     realStartedAt: new Date().toISOString(),
@@ -192,7 +226,7 @@ export function mockCreateRun(scenario: SimulationScenario): SimulationRun {
     error: null,
   };
   allRuns.unshift(run);
-  runParamsById.set(simulationRunId(run), scenario.params);
+  runParamsById.set(simulationRunId(run), scenario.params as MockResolvedParams);
   progressState.set(simulationRunId(run), { pct: 0, status: "RUNNING" });
   return run;
 }
@@ -234,13 +268,13 @@ export function mockRunProgress(runId: number): SimulationRunProgress {
   const frac = state.pct / 100;
   const ordersReceived = Math.round(DAILY_ORDERS_DEFAULT * frac);
   const ordersShipped = Math.round(ordersReceived * Math.max(0, frac - 0.08));
-  const virtualElapsedMs = Math.round(params.durationHours * 3600_000 * frac);
-  const virtualNow = new Date(virtualElapsedMs).toISOString().slice(11, 19);
+  const virtualHours = params.durationHours * frac;
 
   return {
-    id: runId,
+    runId,
     status: state.status,
-    virtualNow: `${Math.floor(virtualElapsedMs / 3_600_000)}h ${virtualNow.slice(3, 5)}m`,
+    virtualNow: new Date(Math.round(virtualHours * 3_600_000)).toISOString(),
+    virtualHours,
     progressPct: Math.round(state.pct),
     ordersReceived,
     ordersShipped,
@@ -260,6 +294,6 @@ export function mockRunProgressFraction(runId: number): number {
   return state ? state.pct / 100 : 1;
 }
 
-export function mockRunParams(runId: number): SimulationScenarioParams {
+export function mockRunParams(runId: number): MockResolvedParams {
   return runParamsById.get(runId) ?? BASELINE_PARAMS;
 }

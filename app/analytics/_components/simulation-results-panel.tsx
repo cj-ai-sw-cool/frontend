@@ -49,8 +49,8 @@ function BottleneckCard({ bottleneck }: { bottleneck: ReturnType<typeof useSimul
     <Sunken className="flex items-center gap-4 px-3 py-2">
       <span className={`${w98.small} font-bold`}>병목</span>
       <span className={`${w98.mono} text-[13px]`}>
-        {bottleneck.label} · 대기 비중 {(bottleneck.share * 100).toFixed(0)}% · 최대 대기 {bottleneck.peakWaitSec}초
-        · 포화 {bottleneck.saturated.map((r) => RESOURCE_LABEL[r]).join("·")}
+        {bottleneck.label} · 대기 비중 {bottleneck.share.toFixed(1)}% · 최대 대기 {bottleneck.peakWaitSec}초 · 포화{" "}
+        {bottleneck.saturated.length > 0 ? bottleneck.saturated.map((r) => RESOURCE_LABEL[r]).join("·") : "없음"}
       </span>
     </Sunken>
   );

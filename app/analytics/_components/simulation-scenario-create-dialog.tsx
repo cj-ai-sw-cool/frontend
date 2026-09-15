@@ -14,15 +14,32 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { CreateSimulationScenarioRequest, OrderProfileKind, SimulationScenarioParams } from "@/lib/types";
+import { simulationScenarioId, type CreateSimulationScenarioRequest, type OrderProfileKind } from "@/lib/types";
 import { useCreateScenario } from "../_data/use-simulation-mutations";
 import { Btn, Checkbox, Field, Select, w98 } from "./win98-ui";
 
+/** 폼 전용 값 — 전부 채워서 보낸다(라이브 시나리오의 `params` 는 전부 null 허용이라
+ * "비우면 센터 기본값 상속"이 뜻이지만(`lib/types.ts` `SimulationScenarioParams` 머리말),
+ * 이 폼에는 "비워 두기" UI 가 없어 항상 값을 다 채운 요청을 보낸다). */
+interface ScenarioFormParams {
+  durationHours: number;
+  orderProfile: OrderProfileKind;
+  pickers: number;
+  rebinners: number;
+  packers: number;
+  batchSize: number;
+  totes: number;
+  packStations: number;
+  rebinSlots: number;
+  waveIntervalMin: number;
+  applySlotting: boolean;
+  seed: number;
+}
+
 /** 정본 §16.3 params 표 기본값 */
-const DEFAULT_PARAMS: SimulationScenarioParams = {
+const DEFAULT_PARAMS: ScenarioFormParams = {
   durationHours: 24,
   orderProfile: "default",
-  customProfile: null,
   pickers: 22,
   rebinners: 8,
   packers: 45,
@@ -83,9 +100,9 @@ function DialogBody({
 }) {
   const createScenario = useCreateScenario(center);
   const [name, setName] = useState("");
-  const [params, setParams] = useState<SimulationScenarioParams>(DEFAULT_PARAMS);
+  const [params, setParams] = useState<ScenarioFormParams>(DEFAULT_PARAMS);
 
-  const setField = <K extends keyof SimulationScenarioParams>(key: K) => (
+  const setField = <K extends keyof ScenarioFormParams>(key: K) => (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const value = e.target.type === "number" ? Number(e.target.value) : e.target.value;
@@ -95,7 +112,10 @@ function DialogBody({
   const submit = () => {
     if (!name.trim()) return;
     const body: CreateSimulationScenarioRequest = { center, name: name.trim(), params };
-    createScenario.mutate(body, { onSuccess: (data) => onCreated(data.id), onSettled: () => onClose() });
+    createScenario.mutate(body, {
+      onSuccess: (data) => onCreated(simulationScenarioId(data)),
+      onSettled: () => onClose(),
+    });
   };
 
   return (

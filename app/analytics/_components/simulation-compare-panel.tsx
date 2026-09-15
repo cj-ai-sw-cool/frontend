@@ -1,18 +1,17 @@
 "use client";
 
 /**
- * 시뮬레이션 탭 하단 — 실행 A·B 비교(정본 §16.5·§16.6). 완료(`DONE`) 실행만 고를 수
- * 있다 — 진행 중인 실행은 리드타임 집계가 아직 저장되지 않는다(정본 §16.4 "실행 종료
- * 시 한 번 계산").
+ * 시뮬레이션 탭 하단 — 실행 A·B 비교(정본 §16.5·§16.6). 끝난 실행(`DONE`·`STOPPED`)만
+ * 고를 수 있다 — 진행 중인 실행은 리드타임 집계가 아직 저장되지 않아 결과 조회가
+ * 409(Conflict)로 막힌다(정본 §16.4 "실행 종료 시 한 번 계산", 라이브 대조로 확인).
+ * ⚠️ 처음엔 `DONE` 만 걸렀는데, 라이브 화면 체크에서 "정지" 로 끝낸 실행(STOPPED)도
+ * 리드타임·병목이 정상적으로 나오는 걸 확인했다 — 둘 다 비교 대상에 넣는다.
  */
 
 import { useSimulationCompare, useSimulationRuns, useSimulationScenarios } from "../_data/use-simulation";
-import { RESOURCE_LABEL, SEGMENT_LABEL } from "./simulation-labels";
-// ⚠️ `SEGMENT_LABEL` 은 비교 구간 표에만 남겨 둔다 — `SimulationCompareSegmentRow` 는
-// 자체 `label` 을 안 준다(백엔드 노트가 label 추가를 알려온 자리는 leadtime·bottleneck
-// 뿐이다), 그래서 여기만 클라이언트 폴백 맵을 그대로 쓴다.
+import { RESOURCE_LABEL } from "./simulation-labels";
 import { Select, Sunken, w98 } from "./win98-ui";
-import { simulationRunId, type SimulationRun } from "@/lib/types";
+import { simulationRunId, simulationScenarioId, type SimulationRun } from "@/lib/types";
 
 export function SimulationComparePanel({
   center,
@@ -29,7 +28,7 @@ export function SimulationComparePanel({
 }) {
   const scenarios = useSimulationScenarios(center);
   const runs = useSimulationRuns(center);
-  const doneRuns = (runs.data ?? []).filter((r) => r.status === "DONE");
+  const doneRuns = (runs.data ?? []).filter((r) => r.status === "DONE" || r.status === "STOPPED");
   const compare = useSimulationCompare(runA, runB);
   /** 부모(`simulation-tab.tsx`)가 이 값으로 패널 높이를 84px/280px 로 접었다 편다
    * (872px 고정 예산, 위 세로 예산 주석) — 여기서도 접혔을 때는 셀렉트 두 줄만 남기고
@@ -38,7 +37,7 @@ export function SimulationComparePanel({
   const compact = !(runA !== null && runB !== null);
 
   const nameOf = (run: SimulationRun) =>
-    scenarios.data?.find((s) => s.id === run.scenarioId)?.name ?? `#${run.scenarioId}`;
+    scenarios.data?.find((s) => simulationScenarioId(s) === run.scenarioId)?.name ?? `#${run.scenarioId}`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -46,7 +45,7 @@ export function SimulationComparePanel({
         <RunSelect label="실행 A" runs={doneRuns} value={runA} onChange={onSelectRunA} nameOf={nameOf} />
         <RunSelect label="실행 B" runs={doneRuns} value={runB} onChange={onSelectRunB} nameOf={nameOf} />
         {!compact && doneRuns.length < 2 ? (
-          <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>완료된 실행이 2개 이상이어야 비교할 수 있습니다.</span>
+          <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>끝난(완료·정지) 실행이 2개 이상이어야 비교할 수 있습니다.</span>
         ) : null}
       </div>
 
@@ -91,27 +90,27 @@ function RunSelect({
   );
 }
 
+/** 라이브 대조(2026-09-16) — 응답이 `{runA,runB,completionRatePctA/B,...}` 플랫 구조가
+ * 아니라 `a`/`b`(실행 요약 전체) + `segments` + `p50`/`p95` + `bottleneck.{a,b}` +
+ * `peakHour.{a,b}` 였다. `SEGMENT_LABEL` 폴백 없이 `row.label`(구간 표)을 바로 쓴다 —
+ * 비교 구간도 leadtime 과 같이 `label`을 준다. */
 function CompareBody({ data }: { data: NonNullable<ReturnType<typeof useSimulationCompare>["data"]> }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
       <div className="grid grid-cols-2 gap-2">
-        <Sunken className={`${w98.mono} flex flex-col gap-1 px-3 py-2 text-[12px]`}>
-          <span className="font-bold">A · #{data.runA}</span>
-          <span>완료율 {data.completionRatePctA.toFixed(1)}%</span>
-          <span>피크 출고 지연 {data.peakShipDelaySecA}초</span>
-          <span>
-            병목 {data.bottleneckA.label} · {data.bottleneckA.saturated.map((r) => RESOURCE_LABEL[r]).join("·")}
-          </span>
-        </Sunken>
-        <Sunken className={`${w98.mono} flex flex-col gap-1 px-3 py-2 text-[12px]`}>
-          <span className="font-bold">B · #{data.runB}</span>
-          <span>완료율 {data.completionRatePctB.toFixed(1)}%</span>
-          <span>피크 출고 지연 {data.peakShipDelaySecB}초</span>
-          <span>
-            병목 {data.bottleneckB.label} · {data.bottleneckB.saturated.map((r) => RESOURCE_LABEL[r]).join("·")}
-          </span>
-        </Sunken>
+        <SideCard label="A" side={data.a} bottleneck={data.bottleneck.a} />
+        <SideCard label="B" side={data.b} bottleneck={data.bottleneck.b} />
       </div>
+
+      <Sunken className={`${w98.mono} flex items-center gap-4 px-3 py-1.5 text-[12px]`}>
+        <span>
+          총 리드타임 p50 A {data.p50.a.toFixed(0)}s · B {data.p50.b.toFixed(0)}s
+        </span>
+        <span>
+          p95 A {data.p95.a.toFixed(0)}s · B {data.p95.b.toFixed(0)}s
+        </span>
+        <span>{data.sameInput ? "같은 유입(자원 조건만 차이)" : "유입 조건 다름"}</span>
+      </Sunken>
 
       <Sunken className={`${w98.scroll} min-h-0 flex-1 overflow-y-auto`}>
         <table className="w-full border-separate border-spacing-0 text-left text-[12px]">
@@ -126,18 +125,24 @@ function CompareBody({ data }: { data: NonNullable<ReturnType<typeof useSimulati
           </thead>
           <tbody>
             {data.segments.map((row) => (
-              <tr key={row.segment}>
-                <td className="border-t border-[color:var(--border)] p-1.5">{SEGMENT_LABEL[row.segment]}</td>
+              <tr key={row.key}>
+                <td className="border-t border-[color:var(--border)] p-1.5">{row.label}</td>
                 <td className={`${w98.mono} border-t border-[color:var(--border)] p-1.5`}>{row.aSec}</td>
                 <td className={`${w98.mono} border-t border-[color:var(--border)] p-1.5`}>{row.bSec}</td>
                 <td className={`${w98.mono} border-t border-[color:var(--border)] p-1.5`}>{row.diffSec}</td>
+                {/* `diffPct` 는 A 가 0(그 구간을 아무도 안 거침, 주로 출고 대기)이면 null —
+                 * 라이브 대조 전에는 늘 값이 있다고 가정해 `.toFixed` 가 죽었다(2026-09-16
+                 * 화면 체크에서 발견). */}
                 <td
                   className={`${w98.mono} border-t border-[color:var(--border)] p-1.5 font-bold ${
-                    row.diffPct >= 0 ? "text-[color:var(--status-success)]" : "text-[color:var(--status-error)]"
+                    row.diffPct === null
+                      ? ""
+                      : row.diffPct >= 0
+                        ? "text-[color:var(--status-success)]"
+                        : "text-[color:var(--status-error)]"
                   }`}
                 >
-                  {row.diffPct > 0 ? "+" : ""}
-                  {row.diffPct.toFixed(1)}%
+                  {row.diffPct === null ? "—" : `${row.diffPct > 0 ? "+" : ""}${row.diffPct.toFixed(1)}%`}
                 </td>
               </tr>
             ))}
@@ -145,6 +150,29 @@ function CompareBody({ data }: { data: NonNullable<ReturnType<typeof useSimulati
         </table>
       </Sunken>
     </div>
+  );
+}
+
+function SideCard({
+  label,
+  side,
+  bottleneck,
+}: {
+  label: string;
+  side: NonNullable<ReturnType<typeof useSimulationCompare>["data"]>["a"];
+  bottleneck: NonNullable<ReturnType<typeof useSimulationCompare>["data"]>["bottleneck"]["a"];
+}) {
+  return (
+    <Sunken className={`${w98.mono} flex flex-col gap-1 px-3 py-2 text-[12px]`}>
+      <span className="font-bold">
+        {label} · #{side.runId} {side.name}
+      </span>
+      <span>완료율 {side.orders.completionPct.toFixed(1)}% (출고 {side.orders.shipped.toLocaleString()}건)</span>
+      <span>
+        병목 {bottleneck.label} ·{" "}
+        {bottleneck.saturated.length > 0 ? bottleneck.saturated.map((r) => RESOURCE_LABEL[r]).join("·") : "없음"}
+      </span>
+    </Sunken>
   );
 }
 

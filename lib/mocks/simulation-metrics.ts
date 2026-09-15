@@ -7,31 +7,25 @@
  * 늘면 그 구간 대기가 줄어드는 방향으로만 계산한다. 정본 §16.2 표준시간 값 근처
  * 자릿수를 쓰지만 출처가 있는 실측이 아니라 **화면 시연용 가정**이다.
  *
- * 2026-09-15 백엔드가 라이브로 붙어 `use-simulation*.ts` 는 더 이상 이 파일을 참조하지
- * 않는다(백엔드 노트 "프론트 계약") — 이 파일은 수동 테스트·스토리북용 표본으로만
- * 남긴다(`lib/mocks/slotting.ts` 와 같은 처지). 구간 키·필드 이름은 그 노트에 맞춰
- * 고쳤다(`RECEIVING_WAIT`→`RECEIVE_WAIT`, `PICKING`→`PICK`, `PACKING`→`PACK`,
- * `orderCount`→`orders`, `SimulationLeadtimeRow.kind` 제거(`label` 로 대체) 등).
+ * 2026-09-16 백엔드가 라이브로 붙어 `use-simulation*.ts` 는 더 이상 이 파일을 참조하지
+ * 않는다 — 수동 테스트·스토리북용 표본으로만 남긴다. 필드 이름은 라이브 대조로 확정된
+ * 모양(`key`/`kind`/`segments`/`orders` 등)에 맞췄다.
  */
 
 import type {
   LeadtimeSegment,
-  SaturatedResource,
-  SimulationBottleneck,
-  SimulationCompareResponse,
-  SimulationCompareSegmentRow,
   SimulationLeadtimeResponse,
   SimulationLeadtimeRow,
-  SimulationScenarioParams,
   SimulationTimelineBucket,
   SimulationTimelineResponse,
 } from "../types";
 import { LEADTIME_SEGMENTS } from "../types";
-import { BASELINE_PARAMS, DAILY_ORDERS_DEFAULT } from "./simulation";
+import { BASELINE_PARAMS, DAILY_ORDERS_DEFAULT, type MockResolvedParams } from "./simulation";
 
 /* ── 리드타임 분해 — 시나리오 params 로 결정되는 식 ─────────────────────────────── */
 
-const SEGMENT_KIND: Record<LeadtimeSegment, "WAIT" | "WORK"> = {
+/** `simulation-compare.ts`(병목·비교) 도 같이 쓴다 — export 해 둔다 */
+export const SEGMENT_KIND: Record<LeadtimeSegment, "WAIT" | "WORK"> = {
   RECEIVE_WAIT: "WAIT",
   WAVE_WAIT: "WAIT",
   PICK_WAIT: "WAIT",
@@ -43,7 +37,7 @@ const SEGMENT_KIND: Record<LeadtimeSegment, "WAIT" | "WORK"> = {
   SHIP_WAIT: "WAIT",
 };
 
-const SEGMENT_LABEL: Record<LeadtimeSegment, string> = {
+export const SEGMENT_LABEL: Record<LeadtimeSegment, string> = {
   RECEIVE_WAIT: "접수 대기",
   WAVE_WAIT: "웨이브 대기",
   PICK_WAIT: "피킹 대기",
@@ -58,8 +52,8 @@ const SEGMENT_LABEL: Record<LeadtimeSegment, string> = {
 /** 구간별 평균 초 — 자원이 기준(baseline)보다 많으면 그 구간 대기가 줄어드는 방향으로만
  * 계산한다(정본 §16.1 "병목은 대기 시간이 말한다"). 작업 시간은 조건에 거의 무관 —
  * `applySlotting` 만 피킹 작업 시간을 §15 정적 결과(5.31%)만큼 줄인다. `SHIP_WAIT` 는
- * 늘 0(백엔드 노트 — 시뮬레이션에 상차 단계가 없다). */
-function segmentAvgSec(segment: LeadtimeSegment, params: SimulationScenarioParams): number {
+ * 늘 0(라이브 대조 — 시뮬레이션에 상차 단계가 없다). */
+function segmentAvgSec(segment: LeadtimeSegment, params: MockResolvedParams): number {
   const pickerRatio = BASELINE_PARAMS.pickers / params.pickers;
   const rebinnerRatio = BASELINE_PARAMS.rebinners / params.rebinners;
   const packerRatio = BASELINE_PARAMS.packers / params.packers;
@@ -95,20 +89,22 @@ function segmentAvgSec(segment: LeadtimeSegment, params: SimulationScenarioParam
 /** `fraction`(기본 1) — 정지된 실행은 24시간 전체가 아니라 멈춘 시점까지만 주문을
  * 받았다(정본 §16.3 "진행 중인 배치는 끝까지, 새 주문은 멈춤"). `mockRunProgressFraction`
  * 이 넘겨준다 — 완료(DONE) 실행은 1 그대로라 계산이 그대로다. */
-export function deriveLeadtimeRows(params: SimulationScenarioParams, fraction = 1): SimulationLeadtimeRow[] {
+export function deriveLeadtimeRows(params: MockResolvedParams, fraction = 1): SimulationLeadtimeRow[] {
   const totalOrders = Math.round(DAILY_ORDERS_DEFAULT * (params.durationHours / 24) * fraction);
   const avgSecs = LEADTIME_SEGMENTS.map((segment) => segmentAvgSec(segment, params));
-  const totalAvg = avgSecs.reduce((sum, v) => sum + v, 0);
+  const totalAvg = avgSecs.reduce((sum, v) => sum + v, 0) || 1;
 
   return LEADTIME_SEGMENTS.map((segment, i) => {
     const avgSec = avgSecs[i];
     return {
-      segment,
+      key: segment,
       label: SEGMENT_LABEL[segment],
+      kind: SEGMENT_KIND[segment],
       avgSec,
       p50Sec: Math.round(avgSec * 0.9),
       p95Sec: Math.round(avgSec * 1.8),
-      share: totalAvg > 0 ? avgSec / totalAvg : 0,
+      // 퍼센트(0~100) — 라이브 대조
+      share: (avgSec / totalAvg) * 100,
       orders: totalOrders,
     };
   });
@@ -116,25 +112,34 @@ export function deriveLeadtimeRows(params: SimulationScenarioParams, fraction = 
 
 export function deriveLeadtimeResponse(
   runId: number,
-  params: SimulationScenarioParams,
+  params: MockResolvedParams,
   fraction = 1,
 ): SimulationLeadtimeResponse {
-  const rows = deriveLeadtimeRows(params, fraction);
-  const secs = rows.map((r) => r.avgSec);
-  const totalAvg = secs.reduce((sum, v) => sum + v, 0);
+  const segments = deriveLeadtimeRows(params, fraction);
+  const totalAvg = segments.reduce((sum, r) => sum + r.avgSec, 0);
+  const orders = segments[0]?.orders ?? 0;
+  const shipped = Math.round(orders * 0.9);
   return {
     runId,
-    rows,
-    totalOrders: rows[0]?.orders ?? 0,
+    orders: {
+      received: orders,
+      waved: Math.round(orders * 0.95),
+      picked: Math.round(orders * 0.94),
+      rebinned: Math.round(orders * 0.92),
+      shipped,
+      cancelled: 0,
+      completionPct: orders > 0 ? (shipped / orders) * 100 : 0,
+    },
     totalLeadtime: {
+      orders: shipped,
       avgSec: totalAvg,
       p50Sec: Math.round(totalAvg * 0.88),
       p95Sec: Math.round(totalAvg * 1.7),
       p99Sec: Math.round(totalAvg * 2.1),
       minSec: Math.round(totalAvg * 0.6),
       maxSec: Math.round(totalAvg * 2.6),
-      orders: rows[0]?.orders ?? 0,
     },
+    segments,
   };
 }
 
@@ -148,25 +153,20 @@ function defaultProfileWeights(): number[] {
   return weights.map((w) => w / sum);
 }
 
-function profileWeights(params: SimulationScenarioParams): number[] {
+function profileWeights(params: MockResolvedParams): number[] {
   if (params.orderProfile === "flat") return new Array(24).fill(1 / 24);
-  if (params.orderProfile === "custom" && params.customProfile) {
-    const sum = params.customProfile.reduce((s, v) => s + v, 0);
-    return sum > 0 ? params.customProfile.map((v) => v / sum) : new Array(24).fill(1 / 24);
-  }
   return defaultProfileWeights();
 }
 
 /** `fraction` — 정지된 실행은 멈춘 가상 시각 이후 시간대는 아예 데이터가 없다
  * (`deriveLeadtimeRows` 주석 참고). 그 시각까지의 칸만 유입·출고를 채운다. */
-export function deriveTimeline(runId: number, params: SimulationScenarioParams, fraction = 1): SimulationTimelineResponse {
+export function deriveTimeline(runId: number, params: MockResolvedParams, fraction = 1): SimulationTimelineResponse {
   const weights = profileWeights(params);
   const totalOrders = Math.round(DAILY_ORDERS_DEFAULT * (params.durationHours / 24));
   const elapsedHours = Math.round(Math.min(24, params.durationHours) * fraction);
   const rows = deriveLeadtimeRows(params);
-  const waitBySegment = Object.fromEntries(
-    rows.filter((r) => SEGMENT_KIND[r.segment] === "WAIT").map((r) => [r.segment, r.avgSec]),
-  );
+  const waitBySegment = Object.fromEntries(rows.filter((r) => r.kind === "WAIT").map((r) => [r.key, r.avgSec]));
+  const waitOrdersBySegment = Object.fromEntries(rows.filter((r) => r.kind === "WAIT").map((r) => [r.key, r.orders]));
 
   const buckets: SimulationTimelineBucket[] = weights.slice(0, Math.min(24, params.durationHours)).map((w, h) => {
     const reached = h < elapsedHours;
@@ -175,72 +175,22 @@ export function deriveTimeline(runId: number, params: SimulationScenarioParams, 
     const shipped = reached ? Math.round(received * (isPeak ? 0.82 : 0.97)) : 0;
     const load = isPeak ? 1.25 : 0.85;
     return {
-      bucketStart: `${String(h).padStart(2, "0")}:00`,
+      hour: h,
       hourOfDay: h,
-      ordersReceived: received,
-      ordersShipped: shipped,
-      avgWaitSecBySegment: Object.fromEntries(
+      received,
+      shipped,
+      waitSec: Object.fromEntries(
         Object.entries(waitBySegment).map(([seg, sec]) => [seg, Math.round((sec as number) * load)]),
       ),
-      idleTotesPct: Math.round(Math.max(5, 60 - (isPeak ? 40 : 15))),
-      packStationOccupancyPct: Math.min(100, Math.round(50 * load)),
-      pickerOccupancyPct: Math.min(100, Math.round(55 * load)),
-      rebinnerOccupancyPct: Math.min(100, Math.round(48 * load)),
+      waitOrders: waitOrdersBySegment,
+      idleTotes: Math.max(0, Math.round(params.totes * (1 - (isPeak ? 0.75 : 0.4)))),
+      packStationBusyPct: Math.round(50 * load),
+      pickerBusyPct: Math.round(55 * load),
+      rebinBusyPct: Math.round(48 * load),
+      openBatches: Math.max(0, Math.round(params.pickers / 4)),
     };
   });
 
-  return { runId, bucket: "1h", buckets };
+  return buckets;
 }
 
-/* ── 병목 — 대기가 가장 긴 구간 + 포화 자원 ────────────────────────────────────── */
-
-const SEGMENT_RESOURCE: Partial<Record<LeadtimeSegment, SaturatedResource>> = {
-  WAVE_WAIT: "TOTES",
-  PICK_WAIT: "PICKERS",
-  REBIN_WAIT: "REBINNERS",
-  PACK_WAIT: "PACK_STATIONS",
-};
-
-export function deriveBottleneck(params: SimulationScenarioParams): SimulationBottleneck {
-  const rows = deriveLeadtimeRows(params).filter((r) => SEGMENT_KIND[r.segment] === "WAIT");
-  const totalWait = rows.reduce((sum, r) => sum + r.avgSec, 0) || 1;
-  const worst = rows.reduce((max, r) => (r.avgSec > max.avgSec ? r : max), rows[0]);
-  return {
-    segment: worst.segment,
-    label: worst.label,
-    share: worst.avgSec / totalWait,
-    peakWaitSec: worst.avgSec,
-    saturated: [SEGMENT_RESOURCE[worst.segment] ?? "PICKERS"],
-    waits: rows.map((r) => ({ segment: r.segment, label: r.label, waitSec: r.avgSec, share: r.avgSec / totalWait })),
-    cost: worst.avgSec * (params.durationHours >= 24 ? 15000 : Math.round(15000 * (params.durationHours / 24))),
-  };
-}
-
-export function deriveCompare(
-  runA: number,
-  paramsA: SimulationScenarioParams,
-  runB: number,
-  paramsB: SimulationScenarioParams,
-): SimulationCompareResponse {
-  const rowsA = deriveLeadtimeRows(paramsA);
-  const rowsB = deriveLeadtimeRows(paramsB);
-  const segments: SimulationCompareSegmentRow[] = LEADTIME_SEGMENTS.map((segment, i) => {
-    const aSec = rowsA[i].avgSec;
-    const bSec = rowsB[i].avgSec;
-    const diffSec = aSec - bSec;
-    return { segment, aSec, bSec, diffSec, diffPct: aSec > 0 ? (diffSec / aSec) * 100 : 0 };
-  });
-
-  return {
-    runA,
-    runB,
-    segments,
-    completionRatePctA: 96.4,
-    completionRatePctB: paramsB.pickers > paramsA.pickers ? 98.9 : 95.1,
-    peakShipDelaySecA: segmentAvgSec("PACK_WAIT", paramsA) + segmentAvgSec("PICK_WAIT", paramsA),
-    peakShipDelaySecB: segmentAvgSec("PACK_WAIT", paramsB) + segmentAvgSec("PICK_WAIT", paramsB),
-    bottleneckA: deriveBottleneck(paramsA),
-    bottleneckB: deriveBottleneck(paramsB),
-    sameInput: paramsA.seed === paramsB.seed && paramsA.orderProfile === paramsB.orderProfile,
-  };
-}

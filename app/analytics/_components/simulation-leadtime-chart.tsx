@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import type { SimulationLeadtimeResponse } from "@/lib/types";
-import { SEGMENT_COLOR_CLASS, SEGMENT_FILL, segmentKindOf } from "./simulation-labels";
+import { SEGMENT_COLOR_CLASS, SEGMENT_FILL } from "./simulation-labels";
 import { Sunken, w98 } from "./win98-ui";
 
 const W = 620;
@@ -27,8 +27,8 @@ export function SimulationLeadtimeChart({ data }: { data: SimulationLeadtimeResp
     return <p className={`${w98.small} text-[color:var(--muted-foreground)]`}>리드타임 불러오는 중…</p>;
   }
 
-  const total = data.rows.reduce((sum, r) => sum + r[metric], 0) || 1;
-  const segments = data.rows.reduce<{ row: (typeof data.rows)[number]; x: number; width: number }[]>(
+  const total = data.segments.reduce((sum, r) => sum + r[metric], 0) || 1;
+  const segments = data.segments.reduce<{ row: (typeof data.segments)[number]; x: number; width: number }[]>(
     (acc, row) => {
       const prevEnd = acc.length > 0 ? acc[acc.length - 1].x + acc[acc.length - 1].width : 0;
       const width = (row[metric] / total) * W;
@@ -43,7 +43,8 @@ export function SimulationLeadtimeChart({ data }: { data: SimulationLeadtimeResp
       <div className="flex items-center justify-between">
         <span className={`${w98.small} font-bold`}>
           총 리드타임 {metric === "p50Sec" ? data.totalLeadtime.p50Sec : data.totalLeadtime.p95Sec}초 (
-          {metric === "p50Sec" ? "p50" : "p95"}) · 주문 {data.totalOrders.toLocaleString()}건
+          {metric === "p50Sec" ? "p50" : "p95"}) · 출고 {data.orders.shipped.toLocaleString()}건 (완료율{" "}
+          {data.orders.completionPct.toFixed(1)}%)
         </span>
         <div className="flex gap-1">
           {(["p50Sec", "p95Sec"] as const).map((m) => (
@@ -71,12 +72,12 @@ export function SimulationLeadtimeChart({ data }: { data: SimulationLeadtimeResp
         >
           {segments.map(({ row, x: segX, width }) => (
             <rect
-              key={row.segment}
+              key={row.key}
               x={segX}
               y={0}
               width={Math.max(0, width - 1)}
               height={H}
-              fill={SEGMENT_FILL[segmentKindOf(row.segment)]}
+              fill={SEGMENT_FILL[row.kind]}
             >
               <title>
                 {row.label} — {row[metric]}초
@@ -87,9 +88,9 @@ export function SimulationLeadtimeChart({ data }: { data: SimulationLeadtimeResp
       </Sunken>
 
       <div className="grid grid-cols-3 gap-x-3 gap-y-1">
-        {data.rows.map((row) => (
-          <div key={row.segment} className={`${w98.small} flex items-center gap-1.5`}>
-            <span className={`size-2.5 shrink-0 ${SEGMENT_COLOR_CLASS[segmentKindOf(row.segment)]}`} aria-hidden />
+        {data.segments.map((row) => (
+          <div key={row.key} className={`${w98.small} flex items-center gap-1.5`}>
+            <span className={`size-2.5 shrink-0 ${SEGMENT_COLOR_CLASS[row.kind]}`} aria-hidden />
             <span className="flex-1 truncate">{row.label}</span>
             <span className={`${w98.mono} text-[11px]`}>{row[metric]}s</span>
           </div>
