@@ -42,8 +42,21 @@ export function SimulationTimelineChart({ data }: { data: SimulationTimelineResp
         <Legend swatch="#3D6FA3" label="유입" />
         <Legend swatch="#D98A3D" label="출고" />
       </div>
-      <Sunken className="p-1.5">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="시간대별 유입 출고">
+      {/* ⚠️ 고정 높이(h-24) + `preserveAspectRatio="none"` — svg 를 `w-full` 만 주면
+       * viewBox 비율(620:160 ≈ 3.9:1)대로 늘어나 이 화면 폭(~1150px)에서 296px 까지
+       * 커진다. 결과 패널이 시나리오·비교 패널과 872px 고정 예산(analytics/layout.tsx
+       * "이 화면은 스크롤이 없다")을 나눠 쓰는데, 그 크기면 아래 자원 점유·병목 카드가
+       * 잘려 나간다(2026-09-15 화면 체크 s11e-3 "2 Issues"·잘림 발견). 꺾은선은 X(시간)·
+       * Y(값)가 서로 다른 척도라 원래도 종횡비를 지킬 이유가 없다 — 두 축을 독립적으로
+       * 눌러 담아도 뜻이 바뀌지 않는다. */}
+      <Sunken className="h-24 p-1.5">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          className="h-full w-full"
+          role="img"
+          aria-label="시간대별 유입 출고"
+        >
           {[0.25, 0.5, 0.75].map((f) => (
             <line
               key={f}

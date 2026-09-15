@@ -32,8 +32,16 @@ export function SimulationOccupancyChart({ data }: { data: SimulationTimelineRes
           <Legend key={s.key} swatch={s.color} label={s.label} />
         ))}
       </div>
-      <Sunken className="p-1.5">
-        <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} className="w-full" role="img" aria-label="자원 점유 추이">
+      {/* 고정 높이 — `simulation-timeline-chart.tsx` 의 같은 주의 참고(viewBox 비율대로
+       * 늘리면 872px 고정 예산 안에서 아래 병목 카드가 잘린다) */}
+      <Sunken className="h-20 p-1.5">
+        <svg
+          viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+          preserveAspectRatio="none"
+          className="h-full w-full"
+          role="img"
+          aria-label="자원 점유 추이"
+        >
           {SERIES.map((s) => (
             <polyline
               key={s.key}

@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, simulation } from "@/lib/endpoints";
+import { mockListRuns } from "@/lib/mocks/simulation";
 import { useCreateRun, useStopRun } from "../_data/use-simulation-mutations";
 import { useSimulationRunProgress, useSimulationRuns, useSimulationScenarios } from "../_data/use-simulation";
 import { RUN_STATUS_LABEL } from "./simulation-labels";
@@ -47,7 +48,13 @@ export function SimulationScenarioPanel({
    * 되돌아가지 못하고, 결과 패널도 폴링이 없어(정본 §16.4 "저장값 조회") 끝나기 전에
    * 한 번 그린 값(낮은 진행률의 표본 폴백)에 멈춰 있는다(2026-09-15 화면 체크에서
    * 둘 다 발견). `syncedRunIdRef` 로 같은 실행에 두 번 이상 반복하지 않는다 — `progress.data`
-   * 는 낙관 폴백이 매 렌더 새 객체를 만들어 참조가 안정적이지 않다. */
+   * 는 낙관 폴백이 매 렌더 새 객체를 만들어 참조가 안정적이지 않다.
+   * ⚠️ `old` 가 비었을 때 `[]` 로 대신하면 안 된다 — 완료(DONE)로 시드된 실행(baseline
+   * 등)을 뮤테이션 한 번 없이 바로 고르면 이 effect 가 이 쿼리를 처음 건드리는 자리가
+   * 되는데, `[]` 를 캐시에 쓰면 그 순간부터 쿼리가 "성공"으로 굳어(`usingMock` 이 꺼져)
+   * 시드 실행 3건이 전부 사라지고 다른 시나리오의 "최근 실행"이 "실행 없음"으로 보인다
+   * (2026-09-15 화면 체크 s11e-6 재현 — `useCreateRun`/`useStopRun` 과 같은 실수를 여기서
+   * 또 했다, `mockListRuns` 로 시드부터 채워야 한다). */
   const syncedRunIdRef = useRef<number | null>(null);
   useEffect(() => {
     if (selectedRunId === null || !progress.data) return;
@@ -57,7 +64,7 @@ export function SimulationScenarioPanel({
     queryClient.setQueryData(
       queryKeys.simulationRuns({ center }),
       (old: Awaited<ReturnType<typeof simulation.runs>> | undefined) =>
-        (old ?? []).map((r) => (r.id === selectedRunId ? { ...r, status: progress.data!.status } : r)),
+        (old ?? mockListRuns(center)).map((r) => (r.id === selectedRunId ? { ...r, status: progress.data!.status } : r)),
     );
     queryClient.invalidateQueries({ queryKey: queryKeys.simulationLeadtime(selectedRunId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.simulationTimeline(selectedRunId) });

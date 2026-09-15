@@ -28,6 +28,11 @@ export function SimulationComparePanel({
   const runs = useSimulationRuns(center);
   const doneRuns = (runs.data ?? []).filter((r) => r.status === "DONE");
   const compare = useSimulationCompare(runA, runB);
+  /** 부모(`simulation-tab.tsx`)가 이 값으로 패널 높이를 84px/280px 로 접었다 편다
+   * (872px 고정 예산, 위 세로 예산 주석) — 여기서도 접혔을 때는 셀렉트 두 줄만 남기고
+   * 안내문을 뺀다. 안 그러면 84px 안에 select(32px) + 안내문 줄이 겹쳐 아래 결과 패널을
+   * 침범한다(2026-09-15 화면 체크에서 발견). */
+  const compact = !(runA !== null && runB !== null);
 
   const nameOf = (run: SimulationRun) =>
     scenarios.data?.find((s) => s.id === run.scenarioId)?.name ?? `#${run.scenarioId}`;
@@ -37,15 +42,15 @@ export function SimulationComparePanel({
       <div className="flex shrink-0 items-center gap-3">
         <RunSelect label="실행 A" runs={doneRuns} value={runA} onChange={onSelectRunA} nameOf={nameOf} />
         <RunSelect label="실행 B" runs={doneRuns} value={runB} onChange={onSelectRunB} nameOf={nameOf} />
-        {doneRuns.length < 2 ? (
+        {!compact && doneRuns.length < 2 ? (
           <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>완료된 실행이 2개 이상이어야 비교할 수 있습니다.</span>
         ) : null}
       </div>
 
-      {compare.data ? <CompareBody data={compare.data} /> : (
-        <p className={`${w98.small} min-h-0 flex-1 text-[color:var(--muted-foreground)]`}>
-          {runA === null || runB === null ? "실행 두 개를 고르세요." : "비교 불러오는 중…"}
-        </p>
+      {compact ? null : compare.data ? (
+        <CompareBody data={compare.data} />
+      ) : (
+        <p className={`${w98.small} min-h-0 flex-1 text-[color:var(--muted-foreground)]`}>비교 불러오는 중…</p>
       )}
     </div>
   );

@@ -59,8 +59,16 @@ export function SimulationLeadtimeChart({ data }: { data: SimulationLeadtimeResp
         </div>
       </div>
 
-      <Sunken className="p-1.5">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="리드타임 구간 누적 막대">
+      {/* 고정 높이 — `simulation-timeline-chart.tsx` 머리말과 같은 이유(viewBox 비율대로
+       * 늘리면 이 화면 폭에서 52px 까지 커져 872px 예산을 갉아먹는다) */}
+      <Sunken className="h-8 p-1.5">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          className="h-full w-full"
+          role="img"
+          aria-label="리드타임 구간 누적 막대"
+        >
           {segments.map(({ row, x: segX, width }) => (
             <rect
               key={row.segment}

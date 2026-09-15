@@ -27,13 +27,15 @@ export function SimulationResultsPanel({ runId }: { runId: number | null }) {
     );
   }
 
+  /* gap-2(8px, 3칸 상한 아래 gap-3 보다 촘촘) — `simulation-tab.tsx` 가 이 패널에 주는
+   * 높이가 872px 고정 예산(스크롤 없음, `analytics/layout.tsx` 머리말)을 시나리오·비교
+   * 패널과 나눠 쓴 나머지라 빠듯하다. `overflow-y-auto` 는 그래도 넘칠 때(비교 패널이
+   * 펼쳐져 이 패널이 줄어들 때 등)의 안전망으로 남겨 둔다 — 평소에는 안 쓰인다. */
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
       <SimulationLeadtimeChart data={leadtime.data} />
-      <div className={w98.etched} />
       <SimulationTimelineChart data={timeline.data} />
       <SimulationOccupancyChart data={timeline.data} />
-      <div className={w98.etched} />
       <BottleneckCard bottleneck={bottleneck.data} />
     </div>
   );
