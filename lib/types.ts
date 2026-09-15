@@ -2691,3 +2691,197 @@ export interface RelocationsQuery {
   center: string;
   status?: RelocationItemStatus;
 }
+
+/* ── 16. 시간 인지 시뮬레이션 — 가상 시계·리드타임 분해·시나리오 비교 (Stage 11E) ───
+   정본 §16. 2026-09-15 시점 백엔드는 같은 브랜치에서 동시 작업 중이라(브리프 머리말)
+   엔드포인트가 아직 없다(curl 404 확인) — 이 파일의 모양은 정본 §16.3~16.5 표·문장에서
+   추론한 **가정**이다. 특히 시나리오 CRUD·실행 목록 조회 경로는 정본에 명시가 없어
+   `/admin/slotting/*` 관례(§15)를 그대로 따랐다 — 라이브 대조 필요(완료 보고 "백엔드
+   요청" 참고). */
+
+/** `GET/PUT /admin/simulation/params?center=` — 센터별 표준시간·압축 배율(정본 §16.2·16.7).
+ * `walkSpeedMps`·`levelPenaltySec`는 슬로팅 매개변수(`SlottingParams`)와 이름이 같지만
+ * 별도 테이블(`simulation_params`, 정본 "확장하지 않고 별도로 둔다")이라 이 화면 전용으로
+ * 다시 조회·편집한다. */
+export interface SimulationParams {
+  center: string;
+  walkSpeedMps: number;
+  pickLineSec: number;
+  levelPenaltySec: number;
+  rebinSecPerItem: number;
+  packBaseSec: number;
+  packSecPerItem: number;
+  batchPrepSec: number;
+  compression: number;
+}
+
+export type UpdateSimulationParamsRequest = Partial<Omit<SimulationParams, "center">>;
+
+/** 시간대별 유입 프로파일 — `default`(정본 §16.3 "일 1.5만·피크 20~23시 33%·정점 1.8배"),
+ * `flat`(균등), `custom`(24칸 직접 입력) */
+export type OrderProfileKind = "default" | "flat" | "custom";
+
+/** `simulation_scenario.params`(정본 §16.3 표) — 새 시나리오 Dialog 폼과 1:1 */
+export interface SimulationScenarioParams {
+  durationHours: number;
+  orderProfile: OrderProfileKind;
+  /** `orderProfile === "custom"` 일 때만 24칸(시간대별 건수) */
+  customProfile: number[] | null;
+  pickers: number;
+  rebinners: number;
+  packers: number;
+  batchSize: number;
+  totes: number;
+  packStations: number;
+  rebinSlots: number;
+  waveIntervalMin: number;
+  applySlotting: boolean;
+  seed: number;
+}
+
+/** 상단 띠 시나리오 목록 한 행 — `GET /admin/simulation/scenarios?center=` */
+export interface SimulationScenario {
+  id: number;
+  center: string;
+  name: string;
+  params: SimulationScenarioParams;
+  createdAt: string;
+}
+
+export interface CreateSimulationScenarioRequest {
+  center: string;
+  name: string;
+  params: SimulationScenarioParams;
+}
+
+export type SimulationRunStatus = "QUEUED" | "RUNNING" | "STOPPED" | "DONE" | "FAILED";
+
+/** `simulation_run`(정본 §16.3 표) 요약 — 목록·비교 Select 가 쓴다 */
+export interface SimulationRun {
+  id: number;
+  scenarioId: number;
+  status: SimulationRunStatus;
+  compression: number;
+  virtualStart: string | null;
+  virtualEnd: string | null;
+  realStartedAt: string | null;
+  realFinishedAt: string | null;
+  outboxSeqFrom: number | null;
+  outboxSeqTo: number | null;
+  error: string | null;
+}
+
+export interface StartSimulationRunRequest {
+  scenarioId: number;
+}
+
+export interface SimulationRunsQuery {
+  center: string;
+  scenarioId?: number;
+}
+
+/** `GET /admin/simulation/runs/{id}` 진행 — 2초 폴링(정본 §16.3 "진행" 문단 필드 그대로) */
+export interface SimulationRunProgress {
+  id: number;
+  status: SimulationRunStatus;
+  virtualNow: string;
+  progressPct: number;
+  ordersReceived: number;
+  ordersShipped: number;
+  openBatches: number;
+  idleTotes: number;
+  busyPackStations: number;
+  eventsPerSec: number;
+}
+
+/** 리드타임 구간 9개(정본 §16.4 표) — `WAIT`(대기)·`WORK`(작업) 성격 구분이 누적 막대의
+ * 색을 가른다 */
+export type LeadtimeSegment =
+  | "RECEIVING_WAIT"
+  | "WAVE_WAIT"
+  | "PICK_WAIT"
+  | "PICKING"
+  | "REBIN_WAIT"
+  | "REBIN"
+  | "PACK_WAIT"
+  | "PACKING"
+  | "SHIP_WAIT";
+
+export const LEADTIME_SEGMENTS: readonly LeadtimeSegment[] = [
+  "RECEIVING_WAIT",
+  "WAVE_WAIT",
+  "PICK_WAIT",
+  "PICKING",
+  "REBIN_WAIT",
+  "REBIN",
+  "PACK_WAIT",
+  "PACKING",
+  "SHIP_WAIT",
+] as const;
+
+export interface SimulationLeadtimeRow {
+  segment: LeadtimeSegment;
+  kind: "WAIT" | "WORK";
+  avgSec: number;
+  p50Sec: number;
+  p95Sec: number;
+  share: number;
+  orderCount: number;
+}
+
+/** `GET /admin/simulation/runs/{id}/leadtime` — 저장된 집계(정본 "실행 종료 시 한 번 계산") */
+export interface SimulationLeadtimeResponse {
+  runId: number;
+  rows: SimulationLeadtimeRow[];
+  totalOrders: number;
+  totalLeadtime: { avgSec: number; p50Sec: number; p95Sec: number };
+}
+
+/** `GET /admin/simulation/runs/{id}/timeline?bucket=1h` 시간대별 한 칸(정본 §16.4) */
+export interface SimulationTimelineBucket {
+  bucketStart: string;
+  ordersReceived: number;
+  ordersShipped: number;
+  avgWaitSecBySegment: Partial<Record<LeadtimeSegment, number>>;
+  idleTotesPct: number;
+  packStationOccupancyPct: number;
+  pickerOccupancyPct: number;
+  rebinnerOccupancyPct: number;
+}
+
+export interface SimulationTimelineResponse {
+  runId: number;
+  bucket: "1h";
+  buckets: SimulationTimelineBucket[];
+}
+
+export type SaturatedResource = "TOTES" | "REBIN_SLOTS" | "PACK_STATIONS" | "PICKERS" | "REBINNERS";
+
+/** `GET /admin/simulation/runs/{id}/bottleneck` — 대기 시간이 가장 긴 구간 하나(정본 §16.4) */
+export interface SimulationBottleneck {
+  segment: LeadtimeSegment;
+  bucketStart: string;
+  waitSec: number;
+  saturatedResource: SaturatedResource;
+}
+
+export interface SimulationCompareSegmentRow {
+  segment: LeadtimeSegment;
+  aSec: number;
+  bSec: number;
+  diffSec: number;
+  diffPct: number;
+}
+
+/** `GET /admin/simulation/compare?runA=&runB=`(정본 §16.5) */
+export interface SimulationCompareResponse {
+  runA: number;
+  runB: number;
+  segments: SimulationCompareSegmentRow[];
+  completionRatePctA: number;
+  completionRatePctB: number;
+  peakShipDelaySecA: number;
+  peakShipDelaySecB: number;
+  bottleneckA: SimulationBottleneck;
+  bottleneckB: SimulationBottleneck;
+}

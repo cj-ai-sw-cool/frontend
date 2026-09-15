@@ -27,6 +27,7 @@ import type {
   CreateApiKeyResponse,
   CreateAsnRequest,
   CreateSellerRequest,
+  CreateSimulationScenarioRequest,
   CreateTransferRequest,
   CreateWebhookEndpointRequest,
   CreateWebhookEndpointResponse,
@@ -101,15 +102,26 @@ import type {
   SimulateRelocationResponse,
   SimulateRequest,
   SimulateResponse,
+  SimulationBottleneck,
+  SimulationCompareResponse,
+  SimulationLeadtimeResponse,
+  SimulationParams,
+  SimulationRun,
+  SimulationRunProgress,
+  SimulationRunsQuery,
+  SimulationScenario,
+  SimulationTimelineResponse,
   SlottingEvaluateRequest,
   SlottingEvaluateResponse,
   SlottingParams,
   StartCountTaskRequest,
   StartCountTaskResponse,
+  StartSimulationRunRequest,
   StockItem,
   StockLedgerEntry,
   StockOccupancyRow,
   StockQuery,
+  UpdateSimulationParamsRequest,
   UpdateSlottingParamsRequest,
   VelocityQuery,
   VelocityResponse,
@@ -652,6 +664,16 @@ export const queryKeys = {
   slottingProposal: (id: number) => ["admin", "slotting", "proposals", id] as const,
   slottingEvaluate: (params: SlottingEvaluateRequest) => ["admin", "slotting", "evaluate", params] as const,
   relocations: (params: RelocationsQuery) => ["admin", "relocations", params] as const,
+  // Stage 11E — 시간 인지 시뮬레이션(정본 §16)
+  simulationParams: (center: string) => ["admin", "simulation", "params", center] as const,
+  simulationScenarios: (center: string) => ["admin", "simulation", "scenarios", center] as const,
+  simulationRuns: (params: SimulationRunsQuery) => ["admin", "simulation", "runs", params] as const,
+  simulationRun: (id: number) => ["admin", "simulation", "runs", id] as const,
+  simulationRunProgress: (id: number) => ["admin", "simulation", "runs", id, "progress"] as const,
+  simulationLeadtime: (id: number) => ["admin", "simulation", "runs", id, "leadtime"] as const,
+  simulationTimeline: (id: number) => ["admin", "simulation", "runs", id, "timeline"] as const,
+  simulationBottleneck: (id: number) => ["admin", "simulation", "runs", id, "bottleneck"] as const,
+  simulationCompare: (runA: number, runB: number) => ["admin", "simulation", "compare", runA, runB] as const,
 };
 
 /* ── 다창고 — 센터 축·주문 라우팅·센터 간 이동 (Stage 11D) ──────────────────────
@@ -926,5 +948,53 @@ function toRelocationsQuery(params: RelocationsQuery): string {
   const qs = new URLSearchParams();
   qs.set("center", params.center);
   if (params.status !== undefined) qs.set("status", params.status);
+  return `?${qs.toString()}`;
+}
+
+/* ── 시뮬레이션 — 가상 시계·리드타임 분해·시나리오 비교 (Stage 11E) ─────────────────
+   정본 §16. 2026-09-15 시점 백엔드 동시 작업 중(브리프 머리말) — 경로는 정본 §16.3~16.5
+   에서 추론한 가정이다(`types.ts` 16절 머리말 참고). 시나리오 CRUD·실행 목록은 정본에
+   명시가 없어 `/admin/slotting/*`(§15) REST 관례를 그대로 따랐다. */
+export const simulation = {
+  params: (center: string) => api.get<SimulationParams>(`/admin/simulation/params?center=${center}`),
+
+  updateParams: (center: string, body: UpdateSimulationParamsRequest) =>
+    api.put<SimulationParams>(`/admin/simulation/params?center=${center}`, body),
+
+  scenarios: (center: string) =>
+    api.get<SimulationScenario[]>(`/admin/simulation/scenarios?center=${center}`),
+
+  createScenario: (body: CreateSimulationScenarioRequest) =>
+    api.post<SimulationScenario>("/admin/simulation/scenarios", body),
+
+  runs: (params: SimulationRunsQuery) =>
+    api.get<SimulationRun[]>(`/admin/simulation/runs${toSimulationRunsQuery(params)}`),
+
+  /** 실행 시작 — 정본 §16.3 "비동기 1개만 동시 실행/센터", 202 */
+  createRun: (body: StartSimulationRunRequest) =>
+    api.post<SimulationRun>("/admin/simulation/runs", body),
+
+  /** 진행 — 2초 폴링(정본 §16.3 "진행" 문단) */
+  runProgress: (id: number) => api.get<SimulationRunProgress>(`/admin/simulation/runs/${id}`),
+
+  stopRun: (id: number) => api.post<SimulationRun>(`/admin/simulation/runs/${id}/stop`),
+
+  leadtime: (id: number) =>
+    api.get<SimulationLeadtimeResponse>(`/admin/simulation/runs/${id}/leadtime`),
+
+  timeline: (id: number) =>
+    api.get<SimulationTimelineResponse>(`/admin/simulation/runs/${id}/timeline?bucket=1h`),
+
+  bottleneck: (id: number) =>
+    api.get<SimulationBottleneck>(`/admin/simulation/runs/${id}/bottleneck`),
+
+  compare: (runA: number, runB: number) =>
+    api.get<SimulationCompareResponse>(`/admin/simulation/compare?runA=${runA}&runB=${runB}`),
+};
+
+function toSimulationRunsQuery(params: SimulationRunsQuery): string {
+  const qs = new URLSearchParams();
+  qs.set("center", params.center);
+  if (params.scenarioId !== undefined) qs.set("scenarioId", String(params.scenarioId));
   return `?${qs.toString()}`;
 }
