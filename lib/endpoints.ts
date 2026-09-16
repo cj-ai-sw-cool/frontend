@@ -92,6 +92,8 @@ import type {
   RelocationProposalDetail,
   RelocationsQuery,
   RelocationTask,
+  InvariantRun,
+  InvariantRunsQuery,
   Seller,
   SellerApiKey,
   ShipmentDetail,
@@ -103,6 +105,7 @@ import type {
   SimulateRequest,
   SimulateResponse,
   SimulationBottleneck,
+  SimulationBatchCompareResponse,
   SimulationCompareResponse,
   SimulationLeadtimeResponse,
   SimulationParams,
@@ -674,6 +677,10 @@ export const queryKeys = {
   simulationTimeline: (id: number) => ["admin", "simulation", "runs", id, "timeline"] as const,
   simulationBottleneck: (id: number) => ["admin", "simulation", "runs", id, "bottleneck"] as const,
   simulationCompare: (runA: number, runB: number) => ["admin", "simulation", "compare", runA, runB] as const,
+  simulationCompareBatches: (batchA: number, batchB: number) =>
+    ["admin", "simulation", "compare", "batches", batchA, batchB] as const,
+  // Stage 12 — 불변식 이력(정본 §17.3)
+  invariantRuns: (params: InvariantRunsQuery) => ["admin", "inventory", "invariant", "runs", params] as const,
 };
 
 /* ── 다창고 — 센터 축·주문 라우팅·센터 간 이동 (Stage 11D) ──────────────────────
@@ -996,11 +1003,38 @@ export const simulation = {
 
   compare: (runA: number, runB: number) =>
     api.get<SimulationCompareResponse>(`/admin/simulation/compare?runA=${runA}&runB=${runB}`),
+
+  /** 반복 실행 묶음 비교 — 백엔드 노트 §1.11: `/compare`와 경로가 다르다(응답 모양이
+   * 실행 대 실행과 섞이지 않게). `batchA`·`batchB`를 같은 값으로 불러도 200 — 배치
+   * 하나만의 집계가 필요할 때(결과 패널 범위 수염)도 이 호출의 `a`만 읽어 쓴다. */
+  compareBatches: (batchA: number, batchB: number) =>
+    api.get<SimulationBatchCompareResponse>(
+      `/admin/simulation/compare/batches?batchA=${batchA}&batchB=${batchB}`,
+    ),
 };
 
 function toSimulationRunsQuery(params: SimulationRunsQuery): string {
   const qs = new URLSearchParams();
   qs.set("center", params.center);
   if (params.scenarioId !== undefined) qs.set("scenarioId", String(params.scenarioId));
+  return `?${qs.toString()}`;
+}
+
+/* ── 불변식 이력 (Stage 12) ────────────────────────────────────────────────
+   정본 §17.3. 2026-09-16 curl 확인 — `GET /admin/inventory/invariant/runs`가 404, 백엔드
+   같은 브랜치(`feat/stage12-consistency`) 동시 작업 중 — `usingMock` 관례로 대신 그린다
+   (`lib/use-invariant.ts`). */
+export const invariant = {
+  runs: (params: InvariantRunsQuery) =>
+    api.get<InvariantRun[]>(`/admin/inventory/invariant/runs${toInvariantRunsQuery(params)}`),
+
+  /** "지금 검사" 버튼 — 행 하나 반환, 이력 갱신 */
+  run: (center: string) => api.post<InvariantRun>(`/admin/inventory/invariant/run?center=${center}`),
+};
+
+function toInvariantRunsQuery(params: InvariantRunsQuery): string {
+  const qs = new URLSearchParams();
+  qs.set("center", params.center);
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
   return `?${qs.toString()}`;
 }

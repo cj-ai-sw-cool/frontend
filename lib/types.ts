@@ -2873,6 +2873,11 @@ export interface SimulationRunResolvedParams {
 export interface SimulationRun {
   id?: number;
   runId?: number;
+  /** 반복 실행 묶음 식별자(§17.8) — 라이브 대조(2026-09-16, 백엔드 노트 §1.10): 항상 있고,
+   * **첫 판 실행 자신의 id**다. 혼자 돈 실행도 자기 자신을 가리키는 묶음이라 "묶음이
+   * 있는 실행"과 "없는 실행"을 가르지 않는다 — `runIds.length > 1`(같은 `batchId`를 가진
+   * 행이 여럿)일 때만 실제 반복 묶음으로 다룬다(`use-simulation-batch.ts`). */
+  batchId?: number;
   scenarioId: number;
   scenarioName?: string;
   center?: string;
@@ -2894,10 +2899,6 @@ export interface SimulationRun {
  * (`SimulationRun` 머리말 참고) — 둘 다 옵셔널로 둔 이유이기도 하다. */
 export function simulationRunId(run: SimulationRun): number {
   return (run.runId ?? run.id) as number;
-}
-
-export interface StartSimulationRunRequest {
-  scenarioId: number;
 }
 
 export interface SimulationRunsQuery {
@@ -3129,4 +3130,122 @@ export interface SimulationCompareResponse {
   bottleneck: { a: SimulationCompareBottleneck; b: SimulationCompareBottleneck };
   peakHour: { a: SimulationComparePeakHour; b: SimulationComparePeakHour };
   sameInput: boolean;
+}
+
+/** 반복 실행 — 정본 §17.8, §16.11 이월, 백엔드 노트(2026-09-16) §1.10~1.11 라이브 대조
+ * 완료. `POST /admin/simulation/runs`에 `repeat`(1~5)를 얹으면 **첫 판 실행 하나만
+ * 응답으로 돌아오고**, 나머지는 앞 판이 끝난 뒤 백엔드가 스스로 만든다("센터당 살아
+ * 있는 실행 하나" 제약 때문 — 미리 다 만들면 유니크 인덱스에 걸린다). 그래서 프론트는
+ * 이 엔드포인트를 **한 번만** 부르면 된다(`app/analytics/_data/use-simulation-batch.ts`
+ * — 예전엔 여기서 N번 순차 호출하는 클라이언트 루프가 있었으나 걷어냈다). 응답은 몇 회를
+ * 요청했는지 돌려주지 않아 "N/M 진행"의 M(분모)은 프론트가 요청 시점에 직접 기억한다. */
+export interface StartSimulationRunRequest {
+  scenarioId: number;
+  /** 1~5, 생략하면 1(반복 없음) */
+  repeat?: number;
+}
+
+/** 구간·총계 하나의 반복 범위(정본 §17.8, 라이브 대조) — `range`는 `max-min`,
+ * `rangePct`는 `range/avg`로 보이는 백분율(분모 0이면 `null`, 라이브 확인). */
+export interface SimulationRangeStat {
+  avg: number;
+  min: number;
+  max: number;
+  range: number;
+  rangePct: number | null;
+}
+
+/** `GET /admin/simulation/compare/batches`의 구간 행(한 배치 쪽) — 라이브 대조 */
+export interface SimulationBatchSegmentStat {
+  key: LeadtimeSegment;
+  label: string;
+  kind: "WAIT" | "WORK";
+  avgSec: SimulationRangeStat;
+}
+
+/** `GET /admin/simulation/compare/batches`의 `a`/`b` 한쪽 — 라이브 대조(2026-09-16).
+ * `batchA`와 `batchB`를 같은 값으로 불러도(자기 자신과 비교) 200이 오므로, 배치 하나만의
+ * 집계가 필요할 때(결과 패널의 범위 수염)도 이 응답의 `a`만 읽어 쓴다 — 전용 단일 배치
+ * 조회 엔드포인트는 없다(`use-simulation-batch.ts` `useSimulationBatchStats`). `runs`는
+ * 지금까지 만들어진 실행 수(요청한 반복 횟수보다 적을 수 있다), `completed`는 그중
+ * 리드타임을 낼 수 있는(DONE·STOPPED) 수. */
+export interface SimulationBatchSide {
+  batchId: number;
+  scenarioName: string;
+  runs: number;
+  completed: number;
+  runIds: number[];
+  segments: SimulationBatchSegmentStat[];
+  totalP50: SimulationRangeStat;
+  totalP95: SimulationRangeStat;
+  completionPct: SimulationRangeStat;
+}
+
+/** 두 값(또는 두 배치) 사이 차이 — `rangesOverlap`이 §17.8 "범위 겹치면 차이 불확실"의
+ * 그 판정을 백엔드가 이미 계산해 준다(프론트가 겹침을 다시 계산하지 않는다). */
+export interface SimulationRangeDiff {
+  diffSec: number;
+  diffPct: number | null;
+  rangesOverlap: boolean;
+}
+
+export interface SimulationBatchCompareSegmentRow {
+  key: LeadtimeSegment;
+  label: string;
+  kind: "WAIT" | "WORK";
+  a: SimulationRangeStat;
+  b: SimulationRangeStat;
+  diff: SimulationRangeDiff;
+}
+
+/** `GET /admin/simulation/compare/batches?batchA=&batchB=`(정본 §17.8, 백엔드 노트 §1.11
+ * — 기존 `/compare`와 경로가 다르다, 실행 대 실행 비교와 응답 모양이 섞이지 않게). */
+export interface SimulationBatchCompareResponse {
+  a: SimulationBatchSide;
+  b: SimulationBatchSide;
+  segments: SimulationBatchCompareSegmentRow[];
+  p50: SimulationRangeDiff;
+  p95: SimulationRangeDiff;
+  completionRate: SimulationRangeDiff;
+}
+
+/* ── 불변식 이력 (Stage 12, 정본 §17.3) ────────────────────────────────────────
+   `invariant_run` 한 행. 분석 개요 탭·허브 관제 탭 상단 배지와 그 이력 Dialog가 쓴다.
+   2026-09-16 처음 확인 시점 `GET /admin/inventory/invariant/runs`가 404 였다가, 같은
+   작업 중 백엔드가 라이브로 붙었다 — 라이브 대조로 가정과 달랐던 점:
+   - `centerId`(숫자)가 아니라 `center`(센터 코드 문자열, "C1") 그대로 온다
+   - `clean: boolean` 이 덤으로 온다(위반 3종 합이 0인지 — 화면은 안 쓴다, `invariantViolationCount`로 직접 계산)
+   - `detail`이 **빈 배열이어야 할 자리에 Jackson `JsonNode`의 리플렉션 필드들
+     (`array`·`bigDecimal`·`nodeType`…)이 그대로 직렬화**돼 온다(백엔드 버그로 보임 —
+     위반 0건일 때는 안 보이지만, 위반이 생기면 목록이 이 모양대로 깨질 것이다. 백엔드에
+     확인 요청). 그래서 배열 여부를 실행 시점에 확인하고(`Array.isArray`), 아니면 빈
+     배열처럼 다룬다(`invariant-format.ts`) — 화면이 죽지는 않는다. */
+export type InvariantTrigger = "SCHEDULED" | "MANUAL" | "SIMULATION";
+
+export interface InvariantRun {
+  id: number;
+  /** 센터 코드("C1") — 라이브 대조: `centerId` 숫자가 아니다 */
+  center: string;
+  /** 오프셋 없는 `LocalDateTime` 문자열 — `events-time.ts`의 `parseServerInstant`로 읽는다 */
+  ranAt: string;
+  trigger: InvariantTrigger;
+  /** 위반 3종 각각 건수, 없으면 0 */
+  stockVsLedger: number;
+  allocationOverStock: number;
+  ledgerVsOutbox: number;
+  durationMs: number;
+  /** 위반 목록 — 정상이면 빈 배열이지만, 라이브 대조 결과 실제로는 `JsonNode` 리플렉션
+   * 필드가 섞여 온다(위 머리말) — 그래서 배열이라고 단정하지 않는다. */
+  detail: unknown;
+  /** 시뮬레이션 실행 종료가 트리거했을 때만 그 실행 id, 아니면 null */
+  runRef: number | null;
+}
+
+export function invariantViolationCount(run: InvariantRun): number {
+  return run.stockVsLedger + run.allocationOverStock + run.ledgerVsOutbox;
+}
+
+export interface InvariantRunsQuery {
+  center: string;
+  limit?: number;
 }

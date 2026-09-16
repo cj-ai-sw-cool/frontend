@@ -3,7 +3,9 @@
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useCenter } from "@/lib/center";
 import { FlowPanel } from "./flow-panel";
+import { InvariantBadge } from "./invariant-badge";
 import { InventoryWindow } from "./inventory-window";
 import { MasterWindow, type WarehouseApi } from "./master-window";
 import { MonthlyPanel } from "./monthly-panel";
@@ -114,6 +116,7 @@ export default function AnalyticsPage() {
    * "개요" 탭의 트리거만 갖고 있지만, 상태·Esc 핸들러는 탭과 무관하게 이 컴포넌트 최상단에
    * 그대로 둔다(다른 탭에 있는 동안 열려 있을 이유가 없어 트리거만 숨긴다). */
   const [tab, setTab] = useState<TopTab>("개요");
+  const center = useCenter();
 
   /* 3D 전체 화면이 떠 있는가 */
   const [full, setFull] = useState(false);
@@ -225,7 +228,7 @@ export default function AnalyticsPage() {
             놓았다. 974 → 1390 이라 네 단계에 각각 320px 이 돌아간다.
           ★ 120 → **170px** (사용자 요청 — 글씨를 크게, 세련되게). 글자를 키우려면 세로가
             있어야 한다. 안쪽 122px 이면 이름 / 큰 숫자 / 부연 세 줄이 넉넉히 들어간다. */}
-      <Panel title="입출고 흐름" className="h-[170px] shrink-0">
+      <Panel title="입출고 흐름" right={<InvariantBadge center={center} />} className="h-[170px] shrink-0">
         <FlowPanel />
       </Panel>
 

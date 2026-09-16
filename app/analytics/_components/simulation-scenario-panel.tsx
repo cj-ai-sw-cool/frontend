@@ -17,6 +17,8 @@ import {
   useSimulationScenarios,
 } from "../_data/use-simulation";
 import { RUN_STATUS_LABEL } from "./simulation-labels";
+import { ProgressBar } from "./simulation-progress-bar";
+import { SimulationRunDialog } from "./simulation-run-dialog";
 import { SimulationScenarioCreateDialog } from "./simulation-scenario-create-dialog";
 import { Btn, Sunken, w98 } from "./win98-ui";
 import {
@@ -37,6 +39,8 @@ export function SimulationScenarioPanel({
   selectedRunId,
   onSelectRun,
   onOpen3D,
+  batchRepeatById,
+  onRecordBatchRepeat,
 }: {
   center: string;
   selectedScenarioId: number | null;
@@ -44,8 +48,14 @@ export function SimulationScenarioPanel({
   selectedRunId: number | null;
   onSelectRun: (id: number) => void;
   onOpen3D: () => void;
+  /** 배치 id → 사용자가 "실행" Dialog에서 요청한 반복 횟수(§17.8 "N/M 진행"의 M) — 서버
+   * 응답은 이 값을 돌려주지 않아(백엔드 노트 §1.10) 요청 시점에 직접 기억해 둔다
+   * (`simulation-tab.tsx`가 들고 있다). */
+  batchRepeatById: Record<number, number>;
+  onRecordBatchRepeat: (batchId: number, repeat: number) => void;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
   const scenarios = useSimulationScenarios(center);
   const centerParams = useSimulationParams(center);
   const runs = useSimulationRuns(center);
@@ -54,6 +64,17 @@ export function SimulationScenarioPanel({
   const stopRun = useStopRun(center);
   const createDefaults = useCreateDefaultScenarios(center);
   const queryClient = useQueryClient();
+
+  /** 선택된 실행이 속한 반복 실행 묶음(§17.8, `SimulationRun.batchId` 라이브 대조 —
+   * 첫 판 실행 자신의 id가 묶음 식별자다) — 그 배치 id를 가진 실행이 2개 이상일 때만
+   * 진짜 반복 묶음으로 다룬다(혼자 돈 실행도 자기 자신을 가리키는 batchId를 갖는다). */
+  const selectedRun = runs.data?.find((r) => simulationRunId(r) === selectedRunId);
+  const selectedBatchId = selectedRun?.batchId;
+  const batchMembers = selectedBatchId === undefined ? [] : (runs.data ?? []).filter((r) => r.batchId === selectedBatchId);
+  const activeBatch =
+    selectedBatchId !== undefined && batchMembers.length > 1
+      ? { batchId: selectedBatchId, size: batchRepeatById[selectedBatchId] ?? batchMembers.length, count: batchMembers.length }
+      : null;
 
   /** 실행이 끝나면(DONE/STOPPED/FAILED) "최근 실행" 칸과 결과 패널(리드타임·타임라인·
    * 병목)을 같이 갱신한다. `useCreateRun` 의 `onSuccess` 가 캐시에 한 번 써 넣은 뒤로는
@@ -100,7 +121,20 @@ export function SimulationScenarioPanel({
 
   const handleRun = () => {
     if (selectedScenarioId === null) return;
-    createRun.mutate({ scenarioId: selectedScenarioId }, { onSuccess: (run) => onSelectRun(simulationRunId(run)) });
+    setRunDialogOpen(true);
+  };
+
+  const handleSubmitRun = (repeat: number) => {
+    if (selectedScenarioId === null) return;
+    createRun.mutate(
+      { scenarioId: selectedScenarioId, repeat },
+      {
+        onSuccess: (run) => {
+          onSelectRun(simulationRunId(run));
+          if (repeat > 1 && run.batchId !== undefined) onRecordBatchRepeat(run.batchId, repeat);
+        },
+      },
+    );
   };
 
   const handleStop = () => {
@@ -194,12 +228,20 @@ export function SimulationScenarioPanel({
       </Sunken>
 
       {selectedRunId !== null ? (
-        <ProgressBar progress={progress.data} />
+        <ProgressBar progress={progress.data} batch={activeBatch} />
       ) : (
         <p className={`${w98.small} shrink-0 text-[color:var(--muted-foreground)]`}>
           {selectedScenarioId === null ? "시나리오를 고르세요." : '"실행"을 눌러 시작하세요.'}
         </p>
       )}
+
+      {/* 실행 생성 실패(예: 센터당 동시 실행 1개 제약에 다른 호출이 먼저 걸림, 정본
+       * §16.3) — 조용히 멈추면 왜 안 됐는지 알 수 없다. */}
+      {createRun.error ? (
+        <p role="alert" className={`${w98.small} shrink-0 bg-[#ffdad6] p-1.5 font-bold text-[color:var(--status-error)]`}>
+          실행 오류: {createRun.error.message}
+        </p>
+      ) : null}
 
       <SimulationScenarioCreateDialog
         open={createOpen}
@@ -207,25 +249,15 @@ export function SimulationScenarioPanel({
         center={center}
         onCreated={(id) => onSelectScenario(id)}
       />
-    </div>
-  );
-}
 
-function ProgressBar({ progress }: { progress: ReturnType<typeof useSimulationRunProgress>["data"] }) {
-  if (!progress) {
-    return <Sunken className="shrink-0 px-3 py-2"><span className={`${w98.small} text-[color:var(--muted-foreground)]`}>진행 불러오는 중…</span></Sunken>;
-  }
-  return (
-    <Sunken className={`${w98.mono} flex shrink-0 items-center gap-4 px-3 py-2 text-[12px]`}>
-      <span className="font-bold">{RUN_STATUS_LABEL[progress.status]}</span>
-      <span>가상 시각 {progress.virtualHours.toFixed(1)}h</span>
-      <span>진행 {progress.progressPct.toFixed(1)}%</span>
-      <span>유입 {progress.ordersReceived.toLocaleString()}</span>
-      <span>출고 {progress.ordersShipped.toLocaleString()}</span>
-      <span>유휴 토트 {progress.idleTotes?.toLocaleString() ?? "—"}</span>
-      <span>포장대 가동 {progress.busyPackStations}</span>
-      <span>{progress.eventsPerSec}건/s</span>
-    </Sunken>
+      <SimulationRunDialog
+        open={runDialogOpen}
+        onOpenChange={setRunDialogOpen}
+        scenarioName={scenarios.data?.find((s) => simulationScenarioId(s) === selectedScenarioId)?.name ?? ""}
+        isPending={createRun.isPending}
+        onSubmit={handleSubmitRun}
+      />
+    </div>
   );
 }
 

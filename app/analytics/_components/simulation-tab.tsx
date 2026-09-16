@@ -16,7 +16,7 @@
  * `simulation-scenario-panel.tsx`) — 남는 공간을 전부 결과 패널(`flex-1`)에 준다.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useCenter } from "@/lib/center";
 import { SimulationComparePanel } from "./simulation-compare-panel";
 import { SimulationResultsPanel } from "./simulation-results-panel";
@@ -30,7 +30,17 @@ export function SimulationTab({ onOpen3D }: { onOpen3D: () => void }) {
   const [compareA, setCompareA] = useState<number | null>(null);
   const [compareB, setCompareB] = useState<number | null>(null);
 
-  const compareActive = compareA !== null && compareB !== null;
+  /** 배치 id → 사용자가 요청한 반복 횟수(§17.8 "N/M") — 서버 응답이 이 값을 안 줘서
+   * (백엔드 노트 §1.10) 실행·비교 패널이 함께 봐야 해서 이 탭이 들고 있는다
+   * (`compareA`/`compareB` 와 같은 얕은 상태 끌어올리기). */
+  const [batchRepeatById, setBatchRepeatById] = useState<Record<number, number>>({});
+  const recordBatchRepeat = useCallback((batchId: number, repeat: number) => {
+    setBatchRepeatById((prev) => ({ ...prev, [batchId]: repeat }));
+  }, []);
+
+  /** 패널이 스스로 판정한 "펼침" 여부를 받는다 — 실행 모드는 두 실행 다 골랐을 때,
+   * 묶음 모드는 두 묶음 다 골랐을 때(`simulation-compare-panel.tsx`) */
+  const [compareActive, setCompareActive] = useState(false);
   const compareHeightClass = useMemo(() => (compareActive ? "h-[280px]" : "h-[84px]"), [compareActive]);
 
   return (
@@ -44,12 +54,14 @@ export function SimulationTab({ onOpen3D }: { onOpen3D: () => void }) {
           selectedRunId={selectedRunId}
           onSelectRun={setSelectedRunId}
           onOpen3D={onOpen3D}
+          batchRepeatById={batchRepeatById}
+          onRecordBatchRepeat={recordBatchRepeat}
         />
       </Panel>
 
       {/* ── 중단 — 선택한 실행의 결과. 시나리오·비교가 남긴 공간을 전부 받는다 ──── */}
       <Panel title="결과 — 리드타임 · 타임라인 · 병목" className="min-h-0 flex-1">
-        <SimulationResultsPanel runId={selectedRunId} />
+        <SimulationResultsPanel center={center} runId={selectedRunId} />
       </Panel>
 
       {/* ── 하단 — 실행 두 개 비교. 고르기 전에는 접혀 있는다(위 세로 예산 주석) ── */}
@@ -60,6 +72,7 @@ export function SimulationTab({ onOpen3D }: { onOpen3D: () => void }) {
           runB={compareB}
           onSelectRunA={setCompareA}
           onSelectRunB={setCompareB}
+          onActiveChange={setCompareActive}
         />
       </Panel>
     </div>

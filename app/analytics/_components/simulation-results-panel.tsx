@@ -5,17 +5,36 @@
  * 넷을 각자 파일로 나눴다(파일 300줄 상한).
  */
 
-import { useSimulationBottleneck, useSimulationLeadtime, useSimulationTimeline } from "../_data/use-simulation";
+import { useSimulationBatchStats } from "../_data/use-simulation-batch";
+import { useSimulationBottleneck, useSimulationLeadtime, useSimulationRuns, useSimulationTimeline } from "../_data/use-simulation";
 import { RESOURCE_LABEL } from "./simulation-labels";
 import { SimulationLeadtimeChart } from "./simulation-leadtime-chart";
 import { SimulationOccupancyChart } from "./simulation-occupancy-chart";
 import { SimulationTimelineChart } from "./simulation-timeline-chart";
 import { Sunken, w98 } from "./win98-ui";
+import { simulationRunId } from "@/lib/types";
 
-export function SimulationResultsPanel({ runId }: { runId: number | null }) {
+export function SimulationResultsPanel({
+  center,
+  runId,
+}: {
+  center: string;
+  runId: number | null;
+}) {
   const leadtime = useSimulationLeadtime(runId);
   const timeline = useSimulationTimeline(runId);
   const bottleneck = useSimulationBottleneck(runId);
+
+  /** 선택된 실행이 속한 반복 실행 묶음(§17.8, `SimulationRun.batchId` 라이브 대조) —
+   * 같은 `batchId`를 가진 실행이 2개 이상일 때만 "범위"가 뜻이 있다(혼자 돈 실행도
+   * 자기 자신을 가리키는 batchId를 갖는다, `SimulationRun` 머리말). `runs`는 이미
+   * 시나리오 패널이 캐시해 둔 같은 쿼리라 추가 네트워크 비용이 없다. */
+  const runs = useSimulationRuns(center);
+  const selectedRun = runs.data?.find((r) => simulationRunId(r) === runId);
+  const batchMembers = (runs.data ?? []).filter((r) => r.batchId === selectedRun?.batchId);
+  const activeBatchId = selectedRun?.batchId !== undefined && batchMembers.length > 1 ? selectedRun.batchId : null;
+  const batchStats = useSimulationBatchStats(activeBatchId);
+  const rangeStats = activeBatchId !== null ? (batchStats.data ?? null) : null;
 
   if (runId === null) {
     return (
@@ -33,7 +52,7 @@ export function SimulationResultsPanel({ runId }: { runId: number | null }) {
    * 펼쳐져 이 패널이 줄어들 때 등)의 안전망으로 남겨 둔다 — 평소에는 안 쓰인다. */
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-      <SimulationLeadtimeChart data={leadtime.data} />
+      <SimulationLeadtimeChart data={leadtime.data} range={rangeStats} />
       <SimulationTimelineChart data={timeline.data} />
       <SimulationOccupancyChart data={timeline.data} />
       <BottleneckCard bottleneck={bottleneck.data} />

@@ -8,10 +8,14 @@
  * 리드타임·병목이 정상적으로 나오는 걸 확인했다 — 둘 다 비교 대상에 넣는다.
  */
 
+import { useEffect, useState } from "react";
 import { useSimulationCompare, useSimulationRuns, useSimulationScenarios } from "../_data/use-simulation";
 import { RESOURCE_LABEL } from "./simulation-labels";
-import { Select, Sunken, w98 } from "./win98-ui";
+import { SimulationBatchComparePanel } from "./simulation-batch-compare-panel";
+import { Btn, Select, Sunken, w98 } from "./win98-ui";
 import { simulationRunId, simulationScenarioId, type SimulationRun } from "@/lib/types";
+
+type CompareMode = "run" | "batch";
 
 export function SimulationComparePanel({
   center,
@@ -19,13 +23,23 @@ export function SimulationComparePanel({
   runB,
   onSelectRunA,
   onSelectRunB,
+  onActiveChange,
 }: {
   center: string;
   runA: number | null;
   runB: number | null;
   onSelectRunA: (id: number | null) => void;
   onSelectRunB: (id: number | null) => void;
+  /** 부모(`simulation-tab.tsx`)에 "펼침" 여부를 보고한다 — 모드에 따라 판정 기준이
+   * 다르다(실행 둘 다 vs 묶음 둘 다) */
+  onActiveChange: (active: boolean) => void;
 }) {
+  const [mode, setMode] = useState<CompareMode>("run");
+  const [batchModeActive, setBatchModeActive] = useState(false);
+
+  useEffect(() => {
+    onActiveChange(mode === "run" ? runA !== null && runB !== null : batchModeActive);
+  }, [mode, runA, runB, batchModeActive, onActiveChange]);
   const scenarios = useSimulationScenarios(center);
   const runs = useSimulationRuns(center);
   const doneRuns = (runs.data ?? []).filter((r) => r.status === "DONE" || r.status === "STOPPED");
@@ -33,26 +47,42 @@ export function SimulationComparePanel({
   /** 부모(`simulation-tab.tsx`)가 이 값으로 패널 높이를 84px/280px 로 접었다 편다
    * (872px 고정 예산, 위 세로 예산 주석) — 여기서도 접혔을 때는 셀렉트 두 줄만 남기고
    * 안내문을 뺀다. 안 그러면 84px 안에 select(32px) + 안내문 줄이 겹쳐 아래 결과 패널을
-   * 침범한다(2026-09-15 화면 체크에서 발견). */
-  const compact = !(runA !== null && runB !== null);
+   * 침범한다(2026-09-15 화면 체크에서 발견). 묶음 모드는 자체 활성 상태(`batchModeActive`)
+   * 로 같은 접힘 판정에 합류한다. */
+  const compact = mode === "run" ? !(runA !== null && runB !== null) : !batchModeActive;
 
   const nameOf = (run: SimulationRun) =>
     scenarios.data?.find((s) => simulationScenarioId(s) === run.scenarioId)?.name ?? `#${run.scenarioId}`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="flex shrink-0 items-center gap-3">
-        <RunSelect label="실행 A" runs={doneRuns} value={runA} onChange={onSelectRunA} nameOf={nameOf} />
-        <RunSelect label="실행 B" runs={doneRuns} value={runB} onChange={onSelectRunB} nameOf={nameOf} />
-        {!compact && doneRuns.length < 2 ? (
-          <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>끝난(완료·정지) 실행이 2개 이상이어야 비교할 수 있습니다.</span>
-        ) : null}
+      <div className="flex shrink-0 items-center gap-2">
+        <Btn pressed={mode === "run"} onClick={() => setMode("run")} className="h-6 px-2 text-[11px]">
+          실행
+        </Btn>
+        <Btn pressed={mode === "batch"} onClick={() => setMode("batch")} className="h-6 px-2 text-[11px]">
+          묶음
+        </Btn>
       </div>
 
-      {compact ? null : compare.data ? (
-        <CompareBody data={compare.data} />
+      {mode === "batch" ? (
+        <SimulationBatchComparePanel center={center} onActiveChange={setBatchModeActive} />
       ) : (
-        <p className={`${w98.small} min-h-0 flex-1 text-[color:var(--muted-foreground)]`}>비교 불러오는 중…</p>
+        <>
+          <div className="flex shrink-0 items-center gap-3">
+            <RunSelect label="실행 A" runs={doneRuns} value={runA} onChange={onSelectRunA} nameOf={nameOf} />
+            <RunSelect label="실행 B" runs={doneRuns} value={runB} onChange={onSelectRunB} nameOf={nameOf} />
+            {!compact && doneRuns.length < 2 ? (
+              <span className={`${w98.small} text-[color:var(--muted-foreground)]`}>끝난(완료·정지) 실행이 2개 이상이어야 비교할 수 있습니다.</span>
+            ) : null}
+          </div>
+
+          {compact ? null : compare.data ? (
+            <CompareBody data={compare.data} />
+          ) : (
+            <p className={`${w98.small} min-h-0 flex-1 text-[color:var(--muted-foreground)]`}>비교 불러오는 중…</p>
+          )}
+        </>
       )}
     </div>
   );
