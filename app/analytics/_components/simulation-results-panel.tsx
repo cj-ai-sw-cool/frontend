@@ -5,17 +5,30 @@
  * 넷을 각자 파일로 나눴다(파일 300줄 상한).
  */
 
+import { useSimulationBatchLeadtime } from "../_data/use-simulation-batch";
 import { useSimulationBottleneck, useSimulationLeadtime, useSimulationTimeline } from "../_data/use-simulation";
 import { RESOURCE_LABEL } from "./simulation-labels";
 import { SimulationLeadtimeChart } from "./simulation-leadtime-chart";
 import { SimulationOccupancyChart } from "./simulation-occupancy-chart";
 import { SimulationTimelineChart } from "./simulation-timeline-chart";
 import { Sunken, w98 } from "./win98-ui";
+import type { SimulationBatchGroup } from "@/lib/types";
 
-export function SimulationResultsPanel({ runId }: { runId: number | null }) {
+export function SimulationResultsPanel({
+  runId,
+  batch,
+}: {
+  runId: number | null;
+  /** 선택된 실행이 속한 반복 실행 묶음(§17.8) — 있으면 리드타임 막대에 범위 수염을 얹는다 */
+  batch: SimulationBatchGroup | null;
+}) {
   const leadtime = useSimulationLeadtime(runId);
   const timeline = useSimulationTimeline(runId);
   const bottleneck = useSimulationBottleneck(runId);
+
+  const batchStats = useSimulationBatchLeadtime(batch);
+  // 완료된 실행이 2개 이상이어야 "범위"가 뜻이 있다(1개면 최소=최대=평균) — §17.8
+  const rangeStats = batch && batchStats.data && batchStats.data.readyRunIds.length >= 2 ? batchStats.data : null;
 
   if (runId === null) {
     return (
@@ -33,7 +46,7 @@ export function SimulationResultsPanel({ runId }: { runId: number | null }) {
    * 펼쳐져 이 패널이 줄어들 때 등)의 안전망으로 남겨 둔다 — 평소에는 안 쓰인다. */
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-      <SimulationLeadtimeChart data={leadtime.data} />
+      <SimulationLeadtimeChart data={leadtime.data} range={rangeStats} />
       <SimulationTimelineChart data={timeline.data} />
       <SimulationOccupancyChart data={timeline.data} />
       <BottleneckCard bottleneck={bottleneck.data} />

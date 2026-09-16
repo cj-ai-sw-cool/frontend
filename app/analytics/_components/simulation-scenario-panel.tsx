@@ -9,7 +9,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys, simulation } from "@/lib/endpoints";
-import { useCreateDefaultScenarios, useCreateRun, useStopRun } from "../_data/use-simulation-mutations";
+import { useCreateRunBatch } from "../_data/use-simulation-batch";
+import { useCreateDefaultScenarios, useStopRun } from "../_data/use-simulation-mutations";
 import {
   useSimulationParams,
   useSimulationRunProgress,
@@ -17,12 +18,14 @@ import {
   useSimulationScenarios,
 } from "../_data/use-simulation";
 import { RUN_STATUS_LABEL } from "./simulation-labels";
+import { SimulationRunDialog } from "./simulation-run-dialog";
 import { SimulationScenarioCreateDialog } from "./simulation-scenario-create-dialog";
 import { Btn, Sunken, w98 } from "./win98-ui";
 import {
   mergeScenarioParams,
   simulationRunId,
   simulationScenarioId,
+  type SimulationBatchGroup,
   type SimulationRun,
   type SimulationRunStatus,
   type SimulationScenario,
@@ -37,6 +40,8 @@ export function SimulationScenarioPanel({
   selectedRunId,
   onSelectRun,
   onOpen3D,
+  batches,
+  onBatchProgress,
 }: {
   center: string;
   selectedScenarioId: number | null;
@@ -44,16 +49,33 @@ export function SimulationScenarioPanel({
   selectedRunId: number | null;
   onSelectRun: (id: number) => void;
   onOpen3D: () => void;
+  /** 반복 실행 묶음 — 탭이 들고 있다(§17.8, `simulation-tab.tsx` 참고) */
+  batches: SimulationBatchGroup[];
+  onBatchProgress: (batch: SimulationBatchGroup) => void;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
   const scenarios = useSimulationScenarios(center);
   const centerParams = useSimulationParams(center);
   const runs = useSimulationRuns(center);
   const progress = useSimulationRunProgress(selectedRunId);
-  const createRun = useCreateRun(center);
+  const handleBatchProgress = (batch: SimulationBatchGroup) => {
+    onBatchProgress(batch);
+    // 배치의 첫 실행이 만들어지자마자 진행 띠에 올린다 — 순차 실행 나머지는 배경에서
+    // 계속되고("N/M 진행" 표시는 아래 `activeBatch`가 대신한다), 사용자가 지켜볼 대상은
+    // 항상 방금 시작한 실행이다.
+    if (batch.runIds.length === 1) onSelectRun(batch.runIds[0]);
+  };
+  const createRunBatch = useCreateRunBatch(center, handleBatchProgress);
   const stopRun = useStopRun(center);
   const createDefaults = useCreateDefaultScenarios(center);
   const queryClient = useQueryClient();
+
+  /** 선택된 실행이 속한 묶음(§17.8) — 진행 띠 옆 "묶음 N/M" 표시용 */
+  const activeBatch = useMemo(
+    () => (selectedRunId === null ? null : (batches.find((b) => b.runIds.includes(selectedRunId)) ?? null)),
+    [batches, selectedRunId],
+  );
 
   /** 실행이 끝나면(DONE/STOPPED/FAILED) "최근 실행" 칸과 결과 패널(리드타임·타임라인·
    * 병목)을 같이 갱신한다. `useCreateRun` 의 `onSuccess` 가 캐시에 한 번 써 넣은 뒤로는
@@ -100,7 +122,12 @@ export function SimulationScenarioPanel({
 
   const handleRun = () => {
     if (selectedScenarioId === null) return;
-    createRun.mutate({ scenarioId: selectedScenarioId }, { onSuccess: (run) => onSelectRun(simulationRunId(run)) });
+    setRunDialogOpen(true);
+  };
+
+  const handleSubmitRun = (repeat: number) => {
+    if (selectedScenarioId === null) return;
+    createRunBatch.mutate({ scenarioId: selectedScenarioId, repeat });
   };
 
   const handleStop = () => {
@@ -118,11 +145,11 @@ export function SimulationScenarioPanel({
           새 시나리오
         </Btn>
         <Btn
-          disabled={selectedScenarioId === null || anyRunning || createRun.isPending}
+          disabled={selectedScenarioId === null || anyRunning || createRunBatch.isPending}
           onClick={handleRun}
           className="h-7 px-3 text-[12px]"
         >
-          {createRun.isPending ? "시작 중…" : "실행"}
+          {createRunBatch.isPending ? "시작 중…" : "실행"}
         </Btn>
         <Btn disabled={!isSelectedRunning || stopRun.isPending} onClick={handleStop} className="h-7 px-3 text-[12px]">
           {stopRun.isPending ? "정지 중…" : "정지"}
@@ -194,12 +221,20 @@ export function SimulationScenarioPanel({
       </Sunken>
 
       {selectedRunId !== null ? (
-        <ProgressBar progress={progress.data} />
+        <ProgressBar progress={progress.data} batch={activeBatch} />
       ) : (
         <p className={`${w98.small} shrink-0 text-[color:var(--muted-foreground)]`}>
           {selectedScenarioId === null ? "시나리오를 고르세요." : '"실행"을 눌러 시작하세요.'}
         </p>
       )}
+
+      {/* 묶음 순차 생성 중 실패(예: 센터당 동시 실행 1개 제약에 다른 호출이 먼저 걸림,
+       * 정본 §16.3) — 조용히 멈추면 "N/M"이 왜 안 늘어나는지 알 수 없다. */}
+      {createRunBatch.error ? (
+        <p role="alert" className={`${w98.small} shrink-0 bg-[#ffdad6] p-1.5 font-bold text-[color:var(--status-error)]`}>
+          묶음 실행 중 오류: {createRunBatch.error.message}
+        </p>
+      ) : null}
 
       <SimulationScenarioCreateDialog
         open={createOpen}
@@ -207,16 +242,32 @@ export function SimulationScenarioPanel({
         center={center}
         onCreated={(id) => onSelectScenario(id)}
       />
+
+      <SimulationRunDialog
+        open={runDialogOpen}
+        onOpenChange={setRunDialogOpen}
+        scenarioName={scenarios.data?.find((s) => simulationScenarioId(s) === selectedScenarioId)?.name ?? ""}
+        isPending={createRunBatch.isPending}
+        onSubmit={handleSubmitRun}
+      />
     </div>
   );
 }
 
-function ProgressBar({ progress }: { progress: ReturnType<typeof useSimulationRunProgress>["data"] }) {
+function ProgressBar({
+  progress,
+  batch,
+}: {
+  progress: ReturnType<typeof useSimulationRunProgress>["data"];
+  /** 선택된 실행이 속한 반복 실행 묶음(§17.8) — 있으면 "묶음 N/M" 배지를 더 보여준다 */
+  batch: SimulationBatchGroup | null;
+}) {
   if (!progress) {
     return <Sunken className="shrink-0 px-3 py-2"><span className={`${w98.small} text-[color:var(--muted-foreground)]`}>진행 불러오는 중…</span></Sunken>;
   }
   return (
     <Sunken className={`${w98.mono} flex shrink-0 items-center gap-4 px-3 py-2 text-[12px]`}>
+      {batch ? <span className="font-bold">묶음 {batch.runIds.length}/{batch.size}</span> : null}
       <span className="font-bold">{RUN_STATUS_LABEL[progress.status]}</span>
       <span>가상 시각 {progress.virtualHours.toFixed(1)}h</span>
       <span>진행 {progress.progressPct.toFixed(1)}%</span>
