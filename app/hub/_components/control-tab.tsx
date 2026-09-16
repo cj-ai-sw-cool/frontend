@@ -15,6 +15,7 @@ import { centerPath } from "@/lib/center";
 import { parseServerInstant } from "@/lib/events-time";
 import { useEventStream, useEventsKpi } from "@/lib/use-events";
 import { useHubCenters } from "../_data/use-hub";
+import { InvariantBadge } from "./invariant-badge";
 import { Th, Td } from "./table";
 import { Select, Sunken, w98 } from "./win98-ui";
 import type { CenterCode } from "@/lib/types";
@@ -39,6 +40,7 @@ export function ControlTab() {
           ))}
         </Select>
         <StatusLine connected={stream.connected} usingMock={stream.usingMock} lagMs={stream.lagMs} />
+        <InvariantBadge center={center} />
         <Link
           href={centerPath(center, "analytics")}
           className={`${w98.btn} ${w98.raised} ml-auto px-3 py-1 text-[12px] font-bold`}

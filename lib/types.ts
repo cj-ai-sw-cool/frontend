@@ -2896,10 +2896,6 @@ export function simulationRunId(run: SimulationRun): number {
   return (run.runId ?? run.id) as number;
 }
 
-export interface StartSimulationRunRequest {
-  scenarioId: number;
-}
-
 export interface SimulationRunsQuery {
   center: string;
   scenarioId?: number;
@@ -3129,4 +3125,86 @@ export interface SimulationCompareResponse {
   bottleneck: { a: SimulationCompareBottleneck; b: SimulationCompareBottleneck };
   peakHour: { a: SimulationComparePeakHour; b: SimulationComparePeakHour };
   sameInput: boolean;
+}
+
+/** 반복 실행 — 정본 §17.8, §16.11 이월. `POST /admin/simulation/runs`에 `repeat`(1~5)를
+ * 얹으면 순차로 N 번 실행해 `batch_id`로 묶는다는 것이 정본이지만, 2026-09-16 시점 이
+ * 필드를 백엔드가 아직 받지 않는다(브리프 "확인 전 표본" 대상) — 프론트는 같은 단일
+ * 실행 엔드포인트를 N번 순차 호출하고 `batchId`를 **클라이언트에서**
+ * `SimulationBatchGroup`으로 따로 묶는다(`app/analytics/_data/use-simulation-batch.ts`).
+ * 라이브가 진짜 `batchId`를 실행 응답에 얹어 주기 시작하면 이 클라이언트 묶음을 걷어내고
+ * 서버 값으로 바꾼다. */
+export interface StartSimulationRunRequest {
+  scenarioId: number;
+  /** 1~5, 생략하면 1(반복 없음) */
+  repeat?: number;
+}
+
+/** 반복 실행 묶음 — 클라이언트가 만든 그룹(§17.8 "묶음"). 서버가 아직 `batchId`를 주지
+ * 않아 `runIds`를 직접 들고 있는다. `size`는 사용자가 요청한 반복 횟수(N), `runIds`는
+ * 지금까지 실제로 만들어진 실행(순차 생성 중이면 `size`보다 적을 수 있다). */
+export interface SimulationBatchGroup {
+  batchId: string;
+  scenarioId: number;
+  center: string;
+  size: number;
+  runIds: number[];
+  createdAt: string;
+}
+
+/** 구간 하나의 배치 내 범위(§17.8 "구간 막대에 범위 수염") — 초 단위, `avg`는 산술평균 */
+export interface SimulationBatchRange {
+  min: number;
+  max: number;
+  avg: number;
+  n: number;
+}
+
+/** 배치 리드타임 집계 — 완료(DONE·STOPPED)된 실행만으로 계산한다. `perSegment`는
+ * `LeadtimeSegment` 키별 p50 범위, `totalP50`은 총 리드타임 p50 범위. */
+export interface SimulationBatchLeadtimeStats {
+  readyRunIds: number[];
+  perSegment: Partial<Record<LeadtimeSegment, SimulationBatchRange>>;
+  totalP50: SimulationBatchRange | null;
+}
+
+/* ── 불변식 이력 (Stage 12, 정본 §17.3) ────────────────────────────────────────
+   `invariant_run` 한 행. 분석 개요 탭·허브 관제 탭 상단 배지와 그 이력 Dialog가 쓴다.
+   2026-09-16 처음 확인 시점 `GET /admin/inventory/invariant/runs`가 404 였다가, 같은
+   작업 중 백엔드가 라이브로 붙었다 — 라이브 대조로 가정과 달랐던 점:
+   - `centerId`(숫자)가 아니라 `center`(센터 코드 문자열, "C1") 그대로 온다
+   - `clean: boolean` 이 덤으로 온다(위반 3종 합이 0인지 — 화면은 안 쓴다, `invariantViolationCount`로 직접 계산)
+   - `detail`이 **빈 배열이어야 할 자리에 Jackson `JsonNode`의 리플렉션 필드들
+     (`array`·`bigDecimal`·`nodeType`…)이 그대로 직렬화**돼 온다(백엔드 버그로 보임 —
+     위반 0건일 때는 안 보이지만, 위반이 생기면 목록이 이 모양대로 깨질 것이다. 백엔드에
+     확인 요청). 그래서 배열 여부를 실행 시점에 확인하고(`Array.isArray`), 아니면 빈
+     배열처럼 다룬다(`invariant-format.ts`) — 화면이 죽지는 않는다. */
+export type InvariantTrigger = "SCHEDULED" | "MANUAL" | "SIMULATION";
+
+export interface InvariantRun {
+  id: number;
+  /** 센터 코드("C1") — 라이브 대조: `centerId` 숫자가 아니다 */
+  center: string;
+  /** 오프셋 없는 `LocalDateTime` 문자열 — `events-time.ts`의 `parseServerInstant`로 읽는다 */
+  ranAt: string;
+  trigger: InvariantTrigger;
+  /** 위반 3종 각각 건수, 없으면 0 */
+  stockVsLedger: number;
+  allocationOverStock: number;
+  ledgerVsOutbox: number;
+  durationMs: number;
+  /** 위반 목록 — 정상이면 빈 배열이지만, 라이브 대조 결과 실제로는 `JsonNode` 리플렉션
+   * 필드가 섞여 온다(위 머리말) — 그래서 배열이라고 단정하지 않는다. */
+  detail: unknown;
+  /** 시뮬레이션 실행 종료가 트리거했을 때만 그 실행 id, 아니면 null */
+  runRef: number | null;
+}
+
+export function invariantViolationCount(run: InvariantRun): number {
+  return run.stockVsLedger + run.allocationOverStock + run.ledgerVsOutbox;
+}
+
+export interface InvariantRunsQuery {
+  center: string;
+  limit?: number;
 }
