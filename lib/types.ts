@@ -2691,3 +2691,442 @@ export interface RelocationsQuery {
   center: string;
   status?: RelocationItemStatus;
 }
+
+/* ── 16. 시간 인지 시뮬레이션 — 가상 시계·리드타임 분해·시나리오 비교 (Stage 11E) ───
+   정본 §16. 2026-09-16 백엔드 라이브 대조 완료(`localhost:8000`, 커밋 c735b63) — 아래는
+   실제 응답 모양이다. 처음 만들 때 가정했던 모양과 달랐던 자리는 주석에 남긴다. */
+
+/** `GET/PUT /admin/simulation/params?center=` 안쪽 `params` — 센터 전체 기본값. 라이브
+ * 대조: 표준시간(`secPerLine`·`rebinSecPerUnit`·`packFixedSec`·`batchSetupSec` — 가정
+ * 이름 `pickLineSec`·`rebinSecPerItem`·`packBaseSec`·`packPrepSec` 와 전부 달랐다)뿐
+ * 아니라 자원 기본값(`pickers`~`waveIntervalMin`)과 `ordersPerDay`·`durationHours` 까지
+ * 한 객체에 다 있다 — 시나리오는 이 값들을 널이면 상속하는 **오버라이드**(아래
+ * `SimulationScenarioParams` 참고). */
+export interface SimulationCenterParams {
+  compression: number;
+  walkSpeedMps: number;
+  secPerLine: number;
+  levelPenaltySec: number;
+  rebinSecPerUnit: number;
+  packFixedSec: number;
+  packSecPerItem: number;
+  batchSetupSec: number;
+  pickers: number;
+  rebinners: number;
+  packers: number;
+  batchSize: number;
+  totes: number;
+  packStations: number;
+  rebinSlots: number;
+  waveIntervalMin: number;
+  ordersPerDay: number;
+  durationHours: number;
+}
+
+/** `GET/PUT /admin/simulation/params?center=` 응답 — 라이브 대조: 플랫이 아니라
+ * `{center, params, sources}` 래퍼다. `sources` 는 값마다 "가정 — 출처 미확인" 같은
+ * 출처 문구(정본 §16.1 "표준시간은 매개변수이고 출처를 단다") — 화면에는 아직 안 쓴다. */
+export interface SimulationParams {
+  center: string;
+  params: SimulationCenterParams;
+  sources: Record<string, string>;
+}
+
+export type UpdateSimulationParamsRequest = Partial<SimulationCenterParams>;
+
+/** 시간대별 유입 프로파일 — `default`(정본 §16.3 "일 1.5만·피크 20~23시 33%·정점 1.8배"),
+ * `flat`(균등), `custom`(24칸 직접 입력) — Dialog 폼의 선택값(UI 전용). 서버로 보낼 때는
+ * `SimulationOrderProfileRequest` 로 바꾼다. */
+export type OrderProfileKind = "default" | "flat" | "custom";
+
+/** `params.orderProfile` 로 서버에 보내는 실제 모양(백엔드 최종 계약, 2026-09-16 정정) —
+ * `default`·`flat` 은 문자열 그대로, `custom` 은 `customProfile` 같은 별도 필드가 아니라
+ * 이 필드 자체가 `{kind:"custom", hourly:[24개]}` 객체가 된다. */
+export type SimulationOrderProfileRequest = "default" | "flat" | { kind: "custom"; hourly: number[] };
+
+/** `simulation_scenario.params`(정본 §16.3 표) — 새 시나리오 Dialog 폼과 1:1.
+ * ⚠️ 라이브 대조: 실제 시나리오 응답의 `params` 는 **전부 null 허용**이다 — null 이면
+ * `SimulationCenterParams` 값을 상속한다(시드 4개 중 `pickers+5` 는 `pickers`만,
+ * `batch30` 은 `batchSize`만, `slotting` 은 `applySlotting`만 채워져 있고 나머지는
+ * null). 화면 표시는 `mergeScenarioParams()` 로 상속까지 계산한 값을 쓴다. `compression`·
+ * `ordersPerDay` 도 시나리오 단위로 얹을 수 있다(라이브 대조로 발견, 정본에는 없던 필드). */
+export interface SimulationScenarioParams {
+  durationHours: number | null;
+  orderProfile: SimulationOrderProfileRequest | null;
+  pickers: number | null;
+  rebinners: number | null;
+  packers: number | null;
+  batchSize: number | null;
+  totes: number | null;
+  packStations: number | null;
+  rebinSlots: number | null;
+  waveIntervalMin: number | null;
+  applySlotting: boolean | null;
+  seed: number | null;
+  compression?: number | null;
+  ordersPerDay?: number | null;
+}
+
+/** 시나리오의 null 필드를 센터 기본값으로 채운 실제 적용값 — 시나리오 목록 표가 쓴다 */
+export function mergeScenarioParams(
+  params: SimulationScenarioParams,
+  center: SimulationCenterParams | undefined,
+): {
+  durationHours: number;
+  pickers: number;
+  rebinners: number;
+  packers: number;
+  batchSize: number;
+  totes: number;
+  packStations: number;
+  rebinSlots: number;
+  waveIntervalMin: number;
+  applySlotting: boolean;
+} {
+  const c = center;
+  return {
+    durationHours: params.durationHours ?? c?.durationHours ?? 24,
+    pickers: params.pickers ?? c?.pickers ?? 0,
+    rebinners: params.rebinners ?? c?.rebinners ?? 0,
+    packers: params.packers ?? c?.packers ?? 0,
+    batchSize: params.batchSize ?? c?.batchSize ?? 0,
+    totes: params.totes ?? c?.totes ?? 0,
+    packStations: params.packStations ?? c?.packStations ?? 0,
+    rebinSlots: params.rebinSlots ?? c?.rebinSlots ?? 0,
+    waveIntervalMin: params.waveIntervalMin ?? c?.waveIntervalMin ?? 0,
+    applySlotting: params.applySlotting ?? false,
+  };
+}
+
+/** 상단 띠 시나리오 목록 한 행 — `GET /admin/simulation/scenarios?center=`.
+ * ⚠️ 라이브 대조: `id` 가 아니라 `scenarioId` 다(실행과 같은 결) — `simulationScenarioId()`
+ * 로만 읽는다. */
+export interface SimulationScenario {
+  id?: number;
+  scenarioId?: number;
+  center: string;
+  name: string;
+  params: SimulationScenarioParams;
+  createdAt: string;
+}
+
+export function simulationScenarioId(scenario: SimulationScenario): number {
+  return (scenario.scenarioId ?? scenario.id) as number;
+}
+
+export interface CreateSimulationScenarioRequest {
+  center: string;
+  name: string;
+  params: SimulationScenarioParams;
+}
+
+/** `POST /admin/simulation/scenarios/defaults?center=` — 기본 시나리오 4개(baseline·
+ * pickers+5·batch30·slotting)를 만든다(멱등). 라이브 대조: 2026-09-16 시점 데모 시드
+ * 컨테이너는 이미 4개가 심겨 있었다 — 빈 센터에서만 이 버튼이 뜬다. */
+export interface CreateDefaultScenariosRequest {
+  center: string;
+}
+
+export type SimulationRunStatus = "QUEUED" | "RUNNING" | "STOPPED" | "DONE" | "FAILED";
+
+/** 표준시간 — 실행이 시작될 때 그 시점의 센터 `params` 를 그대로 굳혀 보관한다(나중에
+ * `PUT /admin/simulation/params` 로 바꿔도 이미 시작된 실행은 영향 없다, 라이브 확인) */
+export interface SimulationRunStandardTime {
+  compression: number;
+  walkSpeedMps: number;
+  secPerLine: number;
+  levelPenaltySec: number;
+  rebinSecPerUnit: number;
+  packFixedSec: number;
+  packSecPerItem: number;
+  batchSetupSec: number;
+}
+
+/** 실행에 실제로 적용된 값 — 시나리오의 null 오버라이드가 이미 센터 기본값으로 채워진
+ * 상태(`SimulationScenarioParams`↔`SimulationCenterParams` 병합 결과, 라이브 대조).
+ * `hourly` 는 `orderProfileKind` 로 만든 24칸 시간대별 유입 건수(정본 §16.2 유입
+ * 프로파일이 실제로 어떻게 풀렸는지). */
+export interface SimulationRunResolvedParams {
+  durationHours: number;
+  hourly: number[];
+  orderProfileKind: string;
+  pickers: number;
+  rebinners: number;
+  packers: number;
+  batchSize: number;
+  totes: number;
+  packStations: number;
+  rebinSlots: number;
+  waveIntervalMin: number;
+  applySlotting: boolean;
+  seed: number;
+  compression: number;
+  ordersPerDay: number;
+  standardTime: SimulationRunStandardTime;
+}
+
+/** `simulation_run`(정본 §16.3 표) 요약 — 목록·비교 Select 가 쓴다.
+ * ⚠️ 라이브 대조: `id` 가 아니라 `runId` 다(시나리오와 같은 결) — `simulationRunId()`
+ * 로만 읽는다(컴포넌트가 `run.id` 를 직접 쓰지 않는다). `scenarioName`·`center`·`params`
+ * (실제 적용값)·`summary`(종료 후 집계, 모양 미확인이라 느슨하게 둔다)는 라이브 대조로
+ * 추가됐다 — 정본 §16.3 표에는 없던 필드다. */
+export interface SimulationRun {
+  id?: number;
+  runId?: number;
+  scenarioId: number;
+  scenarioName?: string;
+  center?: string;
+  virtualHours?: number;
+  status: SimulationRunStatus;
+  compression: number;
+  params?: SimulationRunResolvedParams;
+  virtualStart: string | null;
+  virtualEnd: string | null;
+  realStartedAt: string | null;
+  realFinishedAt: string | null;
+  outboxSeqFrom: number | null;
+  outboxSeqTo: number | null;
+  error: string | null;
+  summary?: Record<string, unknown> | null;
+}
+
+/** `run.id`/`run.runId` 어느 쪽이 진짜인지 확정되기 전까지 이 함수로만 읽는다
+ * (`SimulationRun` 머리말 참고) — 둘 다 옵셔널로 둔 이유이기도 하다. */
+export function simulationRunId(run: SimulationRun): number {
+  return (run.runId ?? run.id) as number;
+}
+
+export interface StartSimulationRunRequest {
+  scenarioId: number;
+}
+
+export interface SimulationRunsQuery {
+  center: string;
+  scenarioId?: number;
+}
+
+/** `GET /admin/simulation/runs/{id}` 진행 — 2초 폴링(정본 §16.3 "진행" 문단 필드 그대로).
+ * 라이브 대조: `id` 아니라 `runId`, `virtualNow` 는 "Xh Ym" 같은 요약이 아니라 가상
+ * 시각의 ISO `LocalDateTime` 문자열(`events-time.ts` 의 `parseServerInstant` 로 읽는다)
+ * — 화면은 그 대신 숫자인 `virtualHours` 를 표시에 쓴다. */
+export interface SimulationRunProgress {
+  runId: number;
+  status: SimulationRunStatus;
+  virtualNow: string;
+  virtualHours: number;
+  progressPct: number;
+  ordersReceived: number;
+  ordersShipped: number;
+  openBatches: number;
+  /** 라이브 대조: 종료(STOPPED 등) 후에는 null 로 온다 */
+  idleTotes: number | null;
+  busyPackStations: number;
+  eventsPerSec: number;
+}
+
+/** 리드타임 구간 9개(정본 §16.4 표) — `WAIT`(대기)·`WORK`(작업) 성격 구분이 누적 막대의
+ * 색을 가른다. 2026-09-15 백엔드 노트(`stage11e-backend-notes.md` "프론트 계약")로 라이브
+ * 대조: 키 이름이 가정과 달랐다 — `RECEIVING_WAIT`→`RECEIVE_WAIT`, `PICKING`→`PICK`,
+ * `PACKING`→`PACK`(나머지 6개는 그대로 맞았다). 구간마다 한글 `label` 이 같이 온다 —
+ * 로직·색은 이 키로, 화면 표시는 `label` 로 한다(`SEGMENT_LABEL` 하드코딩 맵 대신). */
+export type LeadtimeSegment =
+  | "RECEIVE_WAIT"
+  | "WAVE_WAIT"
+  | "PICK_WAIT"
+  | "PICK"
+  | "REBIN_WAIT"
+  | "REBIN"
+  | "PACK_WAIT"
+  | "PACK"
+  | "SHIP_WAIT";
+
+export const LEADTIME_SEGMENTS: readonly LeadtimeSegment[] = [
+  "RECEIVE_WAIT",
+  "WAVE_WAIT",
+  "PICK_WAIT",
+  "PICK",
+  "REBIN_WAIT",
+  "REBIN",
+  "PACK_WAIT",
+  "PACK",
+  "SHIP_WAIT",
+] as const;
+
+/** 2026-09-16 라이브 대조(`localhost:8000`, 실제 JSON 확인) — `kind` 는 실제로 온다
+ * (백엔드 노트가 "없다"고 했던 것과 달리 응답에 있었다). `share` 는 분수(0~1)가 아니라
+ * **퍼센트(0~100)** 다. `SHIP_WAIT` 는 늘 0(시뮬레이션에 상차 단계가 없다, 정상값). */
+export interface SimulationLeadtimeRow {
+  key: LeadtimeSegment;
+  label: string;
+  kind: "WAIT" | "WORK";
+  orders: number;
+  avgSec: number;
+  p50Sec: number;
+  p95Sec: number;
+  /** 퍼센트(0~100) */
+  share: number;
+}
+
+/** `GET /admin/simulation/runs/{id}/leadtime` 응답 — 저장된 집계(정본 "실행 종료 시 한
+ * 번 계산"). 라이브 대조: 구간 배열 이름이 `rows` 가 아니라 `segments`, 주문 수는
+ * `totalOrders` 하나가 아니라 접수~출고 단계별 `orders` 객체로 온다. */
+export interface SimulationLeadtimeOrders {
+  received: number;
+  waved: number;
+  picked: number;
+  rebinned: number;
+  shipped: number;
+  cancelled: number;
+  completionPct: number;
+}
+
+export interface SimulationLeadtimeResponse {
+  runId: number;
+  orders: SimulationLeadtimeOrders;
+  totalLeadtime: {
+    orders: number;
+    avgSec: number;
+    p50Sec: number;
+    p95Sec: number;
+    p99Sec: number;
+    minSec: number;
+    maxSec: number;
+  };
+  segments: SimulationLeadtimeRow[];
+}
+
+/** `GET /admin/simulation/runs/{id}/timeline?bucket=1h` — 라이브 대조: 배열을 그대로
+ * 준다(`{runId,bucket,buckets}` 래퍼가 아니다). 칸마다 `hour`(그 실행 안에서 몇 번째
+ * 시간인지, 0부터)·`hourOfDay`(실제 몇 시인지)가 따로 온다. `waitSec`(구간별 평균 대기
+ * 초)·`waitOrders`(그 구간에서 대기를 겪은 주문 수, 초가 아니라 건수) 가 각각 딴
+ * 필드다. `*BusyPct` 는 100을 넘을 수 있다(그 시간에 필요한 처리량 대비 배율로 보인다
+ * — 0~100 점유율이 아니다, 화면은 원값을 그대로 보여준다). */
+export interface SimulationTimelineBucket {
+  hour: number;
+  hourOfDay: number;
+  received: number;
+  shipped: number;
+  waitSec: Partial<Record<LeadtimeSegment, number>>;
+  waitOrders: Partial<Record<LeadtimeSegment, number>>;
+  idleTotes: number;
+  packStationBusyPct: number;
+  pickerBusyPct: number;
+  rebinBusyPct: number;
+  openBatches: number;
+}
+
+export type SimulationTimelineResponse = SimulationTimelineBucket[];
+
+/** 라이브 대조: 단수형(`PACK_STATION`·`PICKER`·`REBINNER` 확인) — `TOTE`·`REBIN_SLOT` 는
+ * 같은 명명 규칙으로 미룬 추정, 실제 값이 나오면 정정한다. `NONE` 은 실제로 나왔다(완료된
+ * 주문이 0건이라 포화 자원을 못 고른 경우, 라이브 대조). */
+export type SaturatedResource = "TOTE" | "REBIN_SLOT" | "PACK_STATION" | "PICKER" | "REBINNER" | "NONE";
+
+export interface SimulationBottleneckCost {
+  realSeconds: number;
+  virtualSeconds: number;
+  compression: number;
+  events: number;
+  eventsPerSec: number;
+  outboxSeqFrom: number;
+  outboxSeqTo: number;
+}
+
+/** `GET /admin/simulation/runs/{id}/bottleneck` — 대기 시간이 가장 긴 구간(정본 §16.4).
+ * 라이브 대조: 가정했던 8개 계약 중 여기가 가장 크게 갈렸다 — `segmentKey`(구간 자체는
+ * `segment` 가 아니다)·`hour`(그 구간이 가장 밀린 시간)·`saturatedResource`(대표 자원
+ * 하나, 단수)·`waitSec`(그 구간의 평균 대기, `SimulationLeadtimeRow.avgSec` 과 같은
+ * 값)·`share`·`peakWaitSec`(시간대별 최댓값, `waitSec` 보다 크다)·`saturated[]`(포화
+ * 자원 목록)·`waits[]`(대기 구간 6개의 `SimulationLeadtimeRow` 그대로)·`cost`(실행
+ * 비용 진단 — 숫자 하나가 아니라 `{realSeconds, virtualSeconds, compression, events,
+ * eventsPerSec, outboxSeqFrom, outboxSeqTo}` 객체였다, 가정과 전혀 달랐다). */
+export interface SimulationBottleneck {
+  runId: number;
+  segmentKey: LeadtimeSegment;
+  label: string;
+  hour: number;
+  saturatedResource: SaturatedResource;
+  waitSec: number;
+  share: number;
+  peakWaitSec: number;
+  saturated: SaturatedResource[];
+  waits: SimulationLeadtimeRow[];
+  cost: SimulationBottleneckCost;
+}
+
+export interface SimulationCompareSegmentRow {
+  key: LeadtimeSegment;
+  label: string;
+  kind: "WAIT" | "WORK";
+  aSec: number;
+  bSec: number;
+  diffSec: number;
+  /** A 가 0이면(그 구간을 아무도 안 거쳤다, 주로 `SHIP_WAIT`) null — 라이브에서 실제로
+   * null 이 와서 화면이 죽던 결함을 2026-09-16 라이브 화면 체크에서 발견·수정했다. */
+  diffPct: number | null;
+}
+
+/** 비교의 `bottleneck.a`/`.b` — `GET …/bottleneck`(`SimulationBottleneck`) 과 비슷하지만
+ * 더 가볍다: `runId`·`waits[]` 가 없고, `avgSec`(= `waitSec` 과 같은 값, 둘 다 온다)·
+ * `peakAvgSec`(= 독립 조회의 `peakWaitSec` 에 대응)로 이름이 다르다(라이브 대조). */
+export interface SimulationCompareBottleneck {
+  segmentKey: LeadtimeSegment;
+  label: string;
+  hour: number;
+  waitSec: number;
+  avgSec: number;
+  share: number;
+  peakAvgSec: number;
+  saturatedResource: SaturatedResource;
+  saturated: SaturatedResource[];
+}
+
+export interface SimulationComparePeakHour {
+  hour: number;
+  hourOfDay: number;
+  received: number;
+  shipped: number;
+  totalWaitSec: number;
+}
+
+export interface SimulationCompareMetric {
+  a: number;
+  b: number;
+  diff: number;
+  /** 분모가 0이면 null(라이브 대조 — run B 가 0건 완료인 경우 관찰) */
+  diffPct: number | null;
+}
+
+/** 실행 한 쪽의 요약 — 비교 응답의 `a`/`b` (라이브 대조, 정본에 없던 모양) */
+export interface SimulationCompareSide {
+  runId: number;
+  name: string;
+  status: SimulationRunStatus;
+  compression: number;
+  seed: number;
+  orderProfile: string;
+  pickers: number;
+  batchSize: number;
+  applySlotting: boolean;
+  orders: SimulationLeadtimeOrders;
+  total: SimulationLeadtimeResponse["totalLeadtime"];
+  bottleneck: SimulationCompareBottleneck;
+  cost: SimulationBottleneckCost;
+}
+
+/** `GET /admin/simulation/compare?runA=&runB=`(정본 §16.5). ⚠️ 라이브 대조 완료
+ * (2026-09-16) — 가정했던 모양(`runA`·`runB`·`completionRatePctA/B`·`peakShipDelaySecA/B`·
+ * `bottleneckA/B` 플랫 구조)과 전혀 달랐다. 실제로는 `a`/`b` 두 실행 전체 요약 +
+ * `segments`(구간별 A·B·차이) + `p50`/`p95`(총 리드타임 비교) + `bottleneck.{a,b}` +
+ * `peakHour.{a,b}` + `sameInput`. `diffPct` 는 양수가 B 개선(라이브 대조로 확인, 가정과
+ * 일치). */
+export interface SimulationCompareResponse {
+  a: SimulationCompareSide;
+  b: SimulationCompareSide;
+  segments: SimulationCompareSegmentRow[];
+  p50: SimulationCompareMetric;
+  p95: SimulationCompareMetric;
+  bottleneck: { a: SimulationCompareBottleneck; b: SimulationCompareBottleneck };
+  peakHour: { a: SimulationComparePeakHour; b: SimulationComparePeakHour };
+  sameInput: boolean;
+}

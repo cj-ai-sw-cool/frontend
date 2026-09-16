@@ -7,10 +7,11 @@ import { FlowPanel } from "./flow-panel";
 import { InventoryWindow } from "./inventory-window";
 import { MasterWindow, type WarehouseApi } from "./master-window";
 import { MonthlyPanel } from "./monthly-panel";
+import { SimulationTab } from "./simulation-tab";
 import { SlottingTab } from "./slotting-tab";
 import { Btn, Panel, Sunken, w98 } from "./win98-ui";
 
-const TOP_TABS = ["개요", "슬로팅"] as const;
+const TOP_TABS = ["개요", "슬로팅", "시뮬레이션"] as const;
 type TopTab = (typeof TOP_TABS)[number];
 
 /* 창고 맵은 캔버스와 `ResizeObserver` 를 쓰므로 서버에서 그릴 수 없다.
@@ -214,6 +215,7 @@ export default function AnalyticsPage() {
       </div>
 
       {tab === "슬로팅" ? <SlottingTab /> : null}
+      {tab === "시뮬레이션" ? <SimulationTab onOpen3D={() => setFull(true)} /> : null}
 
       {tab !== "개요" ? null : (
         <>
