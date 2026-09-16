@@ -11,7 +11,7 @@
  */
 
 import { useState } from "react";
-import type { LeadtimeSegment, SimulationBatchLeadtimeStats, SimulationBatchRange, SimulationLeadtimeResponse } from "@/lib/types";
+import type { LeadtimeSegment, SimulationBatchSide, SimulationLeadtimeResponse, SimulationRangeStat } from "@/lib/types";
 import { SEGMENT_COLOR_CLASS, SEGMENT_FILL } from "./simulation-labels";
 import { Sunken, w98 } from "./win98-ui";
 
@@ -25,10 +25,11 @@ export function SimulationLeadtimeChart({
   range,
 }: {
   data: SimulationLeadtimeResponse | undefined;
-  /** 반복 실행 묶음의 리드타임 범위(§17.8) — 있으면 총 p50을 "평균 ± 범위"로, 구간마다
-   * 범위 수염을 더 보여준다. p50 전용(정본 "baseline 3회 반복의 총 p50 범위") — 있는
-   * 동안은 p95 토글을 숨긴다. */
-  range: SimulationBatchLeadtimeStats | null;
+  /** 반복 실행 묶음의 리드타임 범위(§17.8, `GET …/compare/batches`의 `a` 쪽 그대로,
+   * `use-simulation-batch.ts` `useSimulationBatchStats`) — 있으면 총 p50을 "평균 ± 범위"로,
+   * 구간마다 범위 수염을 더 보여준다. p50 전용(정본 "baseline 3회 반복의 총 p50 범위") —
+   * 있는 동안은 p95 토글을 숨긴다. */
+  range: SimulationBatchSide | null;
 }) {
   const [metric, setMetric] = useState<Metric>("p50Sec");
   const effectiveMetric: Metric = range ? "p50Sec" : metric;
@@ -52,10 +53,10 @@ export function SimulationLeadtimeChart({
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className={`${w98.small} font-bold`}>
-          {range?.totalP50 ? (
+          {range ? (
             <>
               총 리드타임 p50 평균 {range.totalP50.avg.toFixed(0)}s (범위 {range.totalP50.min.toFixed(0)}~
-              {range.totalP50.max.toFixed(0)}s, {range.totalP50.n}회) ·{" "}
+              {range.totalP50.max.toFixed(0)}s, {range.completed}/{range.runs}회 완료) ·{" "}
             </>
           ) : (
             <>
@@ -110,7 +111,7 @@ export function SimulationLeadtimeChart({
 
       <div className="grid grid-cols-3 gap-x-3 gap-y-1">
         {data.segments.map((row) => {
-          const segRange = range?.perSegment[row.key as LeadtimeSegment];
+          const segRange = range?.segments.find((s) => s.key === (row.key as LeadtimeSegment))?.avgSec;
           return (
             <div key={row.key} className={`${w98.small} flex items-center gap-1.5`}>
               <span className={`size-2.5 shrink-0 ${SEGMENT_COLOR_CLASS[row.kind]}`} aria-hidden />
@@ -131,7 +132,7 @@ export function SimulationLeadtimeChart({
  * min~max 로 스케일을 잡는다(구간마다 초 단위가 크게 달라 위 누적 막대의 공용 스케일에
  * 얹으면 짧은 구간의 수염이 안 보인다). 색은 `simulation-labels.ts` 의 기존 팔레트를
  * 재사용 — 새 하드코딩 색을 만들지 않는다. */
-function SegmentWhisker({ r }: { r: SimulationBatchRange }) {
+function SegmentWhisker({ r }: { r: SimulationRangeStat }) {
   const boxW = 44;
   const h = 10;
   const pad = 3;

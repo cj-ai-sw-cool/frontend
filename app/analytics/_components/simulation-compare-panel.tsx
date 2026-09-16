@@ -13,7 +13,7 @@ import { useSimulationCompare, useSimulationRuns, useSimulationScenarios } from 
 import { RESOURCE_LABEL } from "./simulation-labels";
 import { SimulationBatchComparePanel } from "./simulation-batch-compare-panel";
 import { Btn, Select, Sunken, w98 } from "./win98-ui";
-import { simulationRunId, simulationScenarioId, type SimulationBatchGroup, type SimulationRun } from "@/lib/types";
+import { simulationRunId, simulationScenarioId, type SimulationRun } from "@/lib/types";
 
 type CompareMode = "run" | "batch";
 
@@ -23,7 +23,6 @@ export function SimulationComparePanel({
   runB,
   onSelectRunA,
   onSelectRunB,
-  batches,
   onActiveChange,
 }: {
   center: string;
@@ -31,8 +30,6 @@ export function SimulationComparePanel({
   runB: number | null;
   onSelectRunA: (id: number | null) => void;
   onSelectRunB: (id: number | null) => void;
-  /** 반복 실행 묶음(§17.8) — "묶음" 모드에서 고를 대상 */
-  batches: SimulationBatchGroup[];
   /** 부모(`simulation-tab.tsx`)에 "펼침" 여부를 보고한다 — 모드에 따라 판정 기준이
    * 다르다(실행 둘 다 vs 묶음 둘 다) */
   onActiveChange: (active: boolean) => void;
@@ -69,7 +66,7 @@ export function SimulationComparePanel({
       </div>
 
       {mode === "batch" ? (
-        <SimulationBatchComparePanel center={center} batches={batches} onActiveChange={setBatchModeActive} />
+        <SimulationBatchComparePanel center={center} onActiveChange={setBatchModeActive} />
       ) : (
         <>
           <div className="flex shrink-0 items-center gap-3">

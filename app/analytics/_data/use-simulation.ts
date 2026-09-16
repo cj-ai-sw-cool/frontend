@@ -33,16 +33,24 @@ export function useSimulationScenarios(center: string) {
   });
 }
 
+const TERMINAL_STATUSES: SimulationRunStatus[] = ["DONE", "STOPPED", "FAILED"];
+
 /** 센터의 실행 전체 — 시나리오 목록의 "최근 실행 상태" 칸과 하단 비교 Select 가 같이 쓴다
- * (N+1 없이 한 번만 조회). */
+ * (N+1 없이 한 번만 조회). 반복 실행 중에는 3초마다 다시 받는다 — 백엔드 노트(2026-09-16)
+ * §1.10 라이브 대조: `repeat`의 둘째 판부터는 앞 판이 끝난 뒤 **백엔드가 스스로** 만들어
+ * (프론트가 다시 `createRun`을 부르지 않는다), 폴링 없이는 그 새 실행이 이 목록에 나타날
+ * 방법이 없다 — 어떤 실행이든 아직 안 끝났으면 계속 돈다, 끝나면 멈춘다. */
 export function useSimulationRuns(center: string, scenarioId?: number) {
   return useQuery({
     queryKey: queryKeys.simulationRuns({ center, scenarioId }),
     queryFn: () => simulation.runs({ center, scenarioId }),
+    refetchInterval: (q) => {
+      const runs = q.state.data;
+      if (!runs || runs.some((r) => !TERMINAL_STATUSES.includes(r.status))) return 3000;
+      return false;
+    },
   });
 }
-
-const TERMINAL_STATUSES: SimulationRunStatus[] = ["DONE", "STOPPED", "FAILED"];
 
 /** 진행 띠 — 실행 중일 때만 2초 폴링(정본 §16.3 "진행" 문단). 끝난 실행은 한 번만 받고
  * 멈춘다 — `refetchInterval` 을 콜백으로 줘서 최신 `status` 를 보고 스스로 켜고 끈다. */

@@ -5,30 +5,36 @@
  * 넷을 각자 파일로 나눴다(파일 300줄 상한).
  */
 
-import { useSimulationBatchLeadtime } from "../_data/use-simulation-batch";
-import { useSimulationBottleneck, useSimulationLeadtime, useSimulationTimeline } from "../_data/use-simulation";
+import { useSimulationBatchStats } from "../_data/use-simulation-batch";
+import { useSimulationBottleneck, useSimulationLeadtime, useSimulationRuns, useSimulationTimeline } from "../_data/use-simulation";
 import { RESOURCE_LABEL } from "./simulation-labels";
 import { SimulationLeadtimeChart } from "./simulation-leadtime-chart";
 import { SimulationOccupancyChart } from "./simulation-occupancy-chart";
 import { SimulationTimelineChart } from "./simulation-timeline-chart";
 import { Sunken, w98 } from "./win98-ui";
-import type { SimulationBatchGroup } from "@/lib/types";
+import { simulationRunId } from "@/lib/types";
 
 export function SimulationResultsPanel({
+  center,
   runId,
-  batch,
 }: {
+  center: string;
   runId: number | null;
-  /** 선택된 실행이 속한 반복 실행 묶음(§17.8) — 있으면 리드타임 막대에 범위 수염을 얹는다 */
-  batch: SimulationBatchGroup | null;
 }) {
   const leadtime = useSimulationLeadtime(runId);
   const timeline = useSimulationTimeline(runId);
   const bottleneck = useSimulationBottleneck(runId);
 
-  const batchStats = useSimulationBatchLeadtime(batch);
-  // 완료된 실행이 2개 이상이어야 "범위"가 뜻이 있다(1개면 최소=최대=평균) — §17.8
-  const rangeStats = batch && batchStats.data && batchStats.data.readyRunIds.length >= 2 ? batchStats.data : null;
+  /** 선택된 실행이 속한 반복 실행 묶음(§17.8, `SimulationRun.batchId` 라이브 대조) —
+   * 같은 `batchId`를 가진 실행이 2개 이상일 때만 "범위"가 뜻이 있다(혼자 돈 실행도
+   * 자기 자신을 가리키는 batchId를 갖는다, `SimulationRun` 머리말). `runs`는 이미
+   * 시나리오 패널이 캐시해 둔 같은 쿼리라 추가 네트워크 비용이 없다. */
+  const runs = useSimulationRuns(center);
+  const selectedRun = runs.data?.find((r) => simulationRunId(r) === runId);
+  const batchMembers = (runs.data ?? []).filter((r) => r.batchId === selectedRun?.batchId);
+  const activeBatchId = selectedRun?.batchId !== undefined && batchMembers.length > 1 ? selectedRun.batchId : null;
+  const batchStats = useSimulationBatchStats(activeBatchId);
+  const rangeStats = activeBatchId !== null ? (batchStats.data ?? null) : null;
 
   if (runId === null) {
     return (

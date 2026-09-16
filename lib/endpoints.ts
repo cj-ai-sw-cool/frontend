@@ -105,6 +105,7 @@ import type {
   SimulateRequest,
   SimulateResponse,
   SimulationBottleneck,
+  SimulationBatchCompareResponse,
   SimulationCompareResponse,
   SimulationLeadtimeResponse,
   SimulationParams,
@@ -676,6 +677,8 @@ export const queryKeys = {
   simulationTimeline: (id: number) => ["admin", "simulation", "runs", id, "timeline"] as const,
   simulationBottleneck: (id: number) => ["admin", "simulation", "runs", id, "bottleneck"] as const,
   simulationCompare: (runA: number, runB: number) => ["admin", "simulation", "compare", runA, runB] as const,
+  simulationCompareBatches: (batchA: number, batchB: number) =>
+    ["admin", "simulation", "compare", "batches", batchA, batchB] as const,
   // Stage 12 — 불변식 이력(정본 §17.3)
   invariantRuns: (params: InvariantRunsQuery) => ["admin", "inventory", "invariant", "runs", params] as const,
 };
@@ -1000,6 +1003,14 @@ export const simulation = {
 
   compare: (runA: number, runB: number) =>
     api.get<SimulationCompareResponse>(`/admin/simulation/compare?runA=${runA}&runB=${runB}`),
+
+  /** 반복 실행 묶음 비교 — 백엔드 노트 §1.11: `/compare`와 경로가 다르다(응답 모양이
+   * 실행 대 실행과 섞이지 않게). `batchA`·`batchB`를 같은 값으로 불러도 200 — 배치
+   * 하나만의 집계가 필요할 때(결과 패널 범위 수염)도 이 호출의 `a`만 읽어 쓴다. */
+  compareBatches: (batchA: number, batchB: number) =>
+    api.get<SimulationBatchCompareResponse>(
+      `/admin/simulation/compare/batches?batchA=${batchA}&batchB=${batchB}`,
+    ),
 };
 
 function toSimulationRunsQuery(params: SimulationRunsQuery): string {

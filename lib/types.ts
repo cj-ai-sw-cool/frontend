@@ -2873,6 +2873,11 @@ export interface SimulationRunResolvedParams {
 export interface SimulationRun {
   id?: number;
   runId?: number;
+  /** 반복 실행 묶음 식별자(§17.8) — 라이브 대조(2026-09-16, 백엔드 노트 §1.10): 항상 있고,
+   * **첫 판 실행 자신의 id**다. 혼자 돈 실행도 자기 자신을 가리키는 묶음이라 "묶음이
+   * 있는 실행"과 "없는 실행"을 가르지 않는다 — `runIds.length > 1`(같은 `batchId`를 가진
+   * 행이 여럿)일 때만 실제 반복 묶음으로 다룬다(`use-simulation-batch.ts`). */
+  batchId?: number;
   scenarioId: number;
   scenarioName?: string;
   center?: string;
@@ -3127,45 +3132,81 @@ export interface SimulationCompareResponse {
   sameInput: boolean;
 }
 
-/** 반복 실행 — 정본 §17.8, §16.11 이월. `POST /admin/simulation/runs`에 `repeat`(1~5)를
- * 얹으면 순차로 N 번 실행해 `batch_id`로 묶는다는 것이 정본이지만, 2026-09-16 시점 이
- * 필드를 백엔드가 아직 받지 않는다(브리프 "확인 전 표본" 대상) — 프론트는 같은 단일
- * 실행 엔드포인트를 N번 순차 호출하고 `batchId`를 **클라이언트에서**
- * `SimulationBatchGroup`으로 따로 묶는다(`app/analytics/_data/use-simulation-batch.ts`).
- * 라이브가 진짜 `batchId`를 실행 응답에 얹어 주기 시작하면 이 클라이언트 묶음을 걷어내고
- * 서버 값으로 바꾼다. */
+/** 반복 실행 — 정본 §17.8, §16.11 이월, 백엔드 노트(2026-09-16) §1.10~1.11 라이브 대조
+ * 완료. `POST /admin/simulation/runs`에 `repeat`(1~5)를 얹으면 **첫 판 실행 하나만
+ * 응답으로 돌아오고**, 나머지는 앞 판이 끝난 뒤 백엔드가 스스로 만든다("센터당 살아
+ * 있는 실행 하나" 제약 때문 — 미리 다 만들면 유니크 인덱스에 걸린다). 그래서 프론트는
+ * 이 엔드포인트를 **한 번만** 부르면 된다(`app/analytics/_data/use-simulation-batch.ts`
+ * — 예전엔 여기서 N번 순차 호출하는 클라이언트 루프가 있었으나 걷어냈다). 응답은 몇 회를
+ * 요청했는지 돌려주지 않아 "N/M 진행"의 M(분모)은 프론트가 요청 시점에 직접 기억한다. */
 export interface StartSimulationRunRequest {
   scenarioId: number;
   /** 1~5, 생략하면 1(반복 없음) */
   repeat?: number;
 }
 
-/** 반복 실행 묶음 — 클라이언트가 만든 그룹(§17.8 "묶음"). 서버가 아직 `batchId`를 주지
- * 않아 `runIds`를 직접 들고 있는다. `size`는 사용자가 요청한 반복 횟수(N), `runIds`는
- * 지금까지 실제로 만들어진 실행(순차 생성 중이면 `size`보다 적을 수 있다). */
-export interface SimulationBatchGroup {
-  batchId: string;
-  scenarioId: number;
-  center: string;
-  size: number;
-  runIds: number[];
-  createdAt: string;
-}
-
-/** 구간 하나의 배치 내 범위(§17.8 "구간 막대에 범위 수염") — 초 단위, `avg`는 산술평균 */
-export interface SimulationBatchRange {
+/** 구간·총계 하나의 반복 범위(정본 §17.8, 라이브 대조) — `range`는 `max-min`,
+ * `rangePct`는 `range/avg`로 보이는 백분율(분모 0이면 `null`, 라이브 확인). */
+export interface SimulationRangeStat {
+  avg: number;
   min: number;
   max: number;
-  avg: number;
-  n: number;
+  range: number;
+  rangePct: number | null;
 }
 
-/** 배치 리드타임 집계 — 완료(DONE·STOPPED)된 실행만으로 계산한다. `perSegment`는
- * `LeadtimeSegment` 키별 p50 범위, `totalP50`은 총 리드타임 p50 범위. */
-export interface SimulationBatchLeadtimeStats {
-  readyRunIds: number[];
-  perSegment: Partial<Record<LeadtimeSegment, SimulationBatchRange>>;
-  totalP50: SimulationBatchRange | null;
+/** `GET /admin/simulation/compare/batches`의 구간 행(한 배치 쪽) — 라이브 대조 */
+export interface SimulationBatchSegmentStat {
+  key: LeadtimeSegment;
+  label: string;
+  kind: "WAIT" | "WORK";
+  avgSec: SimulationRangeStat;
+}
+
+/** `GET /admin/simulation/compare/batches`의 `a`/`b` 한쪽 — 라이브 대조(2026-09-16).
+ * `batchA`와 `batchB`를 같은 값으로 불러도(자기 자신과 비교) 200이 오므로, 배치 하나만의
+ * 집계가 필요할 때(결과 패널의 범위 수염)도 이 응답의 `a`만 읽어 쓴다 — 전용 단일 배치
+ * 조회 엔드포인트는 없다(`use-simulation-batch.ts` `useSimulationBatchStats`). `runs`는
+ * 지금까지 만들어진 실행 수(요청한 반복 횟수보다 적을 수 있다), `completed`는 그중
+ * 리드타임을 낼 수 있는(DONE·STOPPED) 수. */
+export interface SimulationBatchSide {
+  batchId: number;
+  scenarioName: string;
+  runs: number;
+  completed: number;
+  runIds: number[];
+  segments: SimulationBatchSegmentStat[];
+  totalP50: SimulationRangeStat;
+  totalP95: SimulationRangeStat;
+  completionPct: SimulationRangeStat;
+}
+
+/** 두 값(또는 두 배치) 사이 차이 — `rangesOverlap`이 §17.8 "범위 겹치면 차이 불확실"의
+ * 그 판정을 백엔드가 이미 계산해 준다(프론트가 겹침을 다시 계산하지 않는다). */
+export interface SimulationRangeDiff {
+  diffSec: number;
+  diffPct: number | null;
+  rangesOverlap: boolean;
+}
+
+export interface SimulationBatchCompareSegmentRow {
+  key: LeadtimeSegment;
+  label: string;
+  kind: "WAIT" | "WORK";
+  a: SimulationRangeStat;
+  b: SimulationRangeStat;
+  diff: SimulationRangeDiff;
+}
+
+/** `GET /admin/simulation/compare/batches?batchA=&batchB=`(정본 §17.8, 백엔드 노트 §1.11
+ * — 기존 `/compare`와 경로가 다르다, 실행 대 실행 비교와 응답 모양이 섞이지 않게). */
+export interface SimulationBatchCompareResponse {
+  a: SimulationBatchSide;
+  b: SimulationBatchSide;
+  segments: SimulationBatchCompareSegmentRow[];
+  p50: SimulationRangeDiff;
+  p95: SimulationRangeDiff;
+  completionRate: SimulationRangeDiff;
 }
 
 /* ── 불변식 이력 (Stage 12, 정본 §17.3) ────────────────────────────────────────
